@@ -3,9 +3,10 @@
 //! The `huginndb-mcp` binary lives in its own workspace crate (see
 //! `mcp-server/` and gotcha #20 in `CLAUDE.md`) and ships as a Tauri
 //! `externalBin` sidecar — installed side-by-side with the main executable,
-//! never invoked by the desktop app itself. This command only resolves
-//! *where that sidecar ended up on disk* so the Settings → MCP panel can
-//! show the user a ready-to-use path instead of sending them hunting
+//! never started by the desktop app for itself (an AppImage's `--mcp` hands
+//! the whole process over to it, see `crate::mcp_launcher`). This command
+//! only resolves *how a client should start it* so the Settings → MCP panel
+//! can show the user a ready-to-use command instead of sending them hunting
 //! through the install directory.
 
 use crate::error::AppResult;
@@ -14,32 +15,33 @@ use std::path::PathBuf;
 
 #[derive(Serialize)]
 pub struct McpConnectorInfo {
-    /// Best-guess absolute path to the `huginndb-mcp` sidecar binary.
+    /// The command an MCP client runs: the `huginndb-mcp` sidecar, or — in an
+    /// AppImage, whose mount path changes on every launch — the `.AppImage`
+    /// file itself. See [`crate::mcp_launcher`].
     pub binary_path: String,
-    /// Whether a file actually exists at `binary_path`. False in `tauri dev`
+    /// Arguments that go right after `binary_path`, before anything the user
+    /// adds. Empty except for an AppImage, where it is `["--mcp"]`.
+    pub args: Vec<String>,
+    /// Whether the connector is actually there to be run. False in `tauri dev`
     /// / an unbundled `cargo run` — the sidecar is only staged in a
     /// packaged install (or a manual `cargo build -p huginndb-mcp --release`
     /// followed by `pnpm tauri:build`).
     pub available: bool,
 }
 
-/// Resolve the sidecar's path: Tauri stages `externalBin` binaries in the
-/// same directory as the main executable, so `current_exe()`'s parent is
-/// the one place to look, independent of the OS/bundle format.
+/// Resolve how a client should start the connector. Tauri stages
+/// `externalBin` binaries next to the main executable, so that is where the
+/// sidecar is looked for; what a client is *given* differs only for an
+/// AppImage ([`crate::mcp_launcher::resolve`]).
 #[tauri::command]
 pub fn get_mcp_connector_info() -> AppResult<McpConnectorInfo> {
-    let file_name = if cfg!(windows) {
-        "huginndb-mcp.exe"
-    } else {
-        "huginndb-mcp"
-    };
-    let path = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|dir| dir.join(file_name)))
-        .unwrap_or_else(|| file_name.into());
-    let available = path.is_file();
+    let launch = crate::mcp_launcher::resolve();
+    // Both halves must exist: in an AppImage the sidecar is inside the mount
+    // and the program is the image file next to it on the real filesystem.
+    let available = launch.sidecar.is_file() && launch.program.is_file();
     Ok(McpConnectorInfo {
-        binary_path: path.to_string_lossy().into_owned(),
+        binary_path: launch.program.to_string_lossy().into_owned(),
+        args: launch.args,
         available,
     })
 }
@@ -131,9 +133,9 @@ fn find_in_path(name: &str) -> Option<PathBuf> {
 /// have to copy a path into a terminal.
 ///
 /// Runs exactly the command the panel displays —
-/// `claude mcp add huginndb -s user -- <sidecar>` — and nothing else. It is
-/// reversible with `claude mcp remove huginndb`, and it writes only to the
-/// CLI's own config: the button click is the confirmation, so nothing prompts
+/// `claude mcp add huginndb -s user -- <command> [<args>]` — and nothing else.
+/// It is reversible with `claude mcp remove huginndb`, and it writes only to
+/// the CLI's own config: the button click is the confirmation, so nothing prompts
 /// again.
 ///
 /// No `tauri-plugin-shell`. That plugin exists to let the *frontend* spawn
@@ -164,6 +166,7 @@ pub async fn register_with_claude_code() -> AppResult<ClaudeCodeRegistration> {
             "--",
             info.binary_path.as_str(),
         ])
+        .args(&info.args)
         .output();
     let out = match tokio::time::timeout(std::time::Duration::from_secs(30), run).await {
         Ok(Ok(out)) => out,

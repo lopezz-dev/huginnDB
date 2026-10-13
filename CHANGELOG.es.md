@@ -6,9 +6,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
+## [Sin publicar]
 
 ### Corregido
 
+- **El conector MCP dejaba de funcionar en Linux cada vez que se cerraba un
+  AppImage.**
+  - Un AppImage se ejecuta desde una carpeta temporal (`/tmp/.mount_Huginn…`)
+    que cambia de nombre en cada arranque y desaparece al cerrar la app.
+    Ajustes → MCP, y el botón **Añadir a Claude Code**, registraban el
+    conector en esa ruta temporal, así que el cliente de IA lo perdía en
+    cuanto HuginnDB se cerraba o se reiniciaba.
+  - Desde un AppImage, los clientes apuntan ahora al propio archivo
+    `.AppImage` con `--mcp` (`HuginnDB.AppImage --mcp`), que arranca el
+    conector dentro de la imagen. Esa ruta sobrevive a reinicios y
+    actualizaciones. Si ya lo habías registrado, pulsa otra vez **Añadir a
+    Claude Code** (o antes `claude mcp remove huginndb`, si dice que ya está
+    registrado). El resto de tipos de instalación no cambian.
 - **El conector MCP seguía usando los datos antiguos de una conexión después
   de editarla.**
   - Apuntar una conexión guardada a otra base de datos (u otro host, u otro
