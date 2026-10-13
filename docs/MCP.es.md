@@ -107,6 +107,26 @@ configuración lista para pegar en Claude Code / Claude Desktop / otros
 clientes. El resto de este documento es la referencia de lo que ofrece ese
 panel, más los clientes para los que no genera una plantilla (Codex).
 
+**AppImage en Linux.** Un AppImage se ejecuta desde un montaje temporal
+(`/tmp/.mount_Huginn…`) que cambia de nombre en cada arranque y se elimina al
+cerrar la app, así que el *sidecar* que lleva dentro no tiene una ruta que un
+cliente pueda guardar. Desde un AppImage, Ajustes → MCP da por eso el propio
+archivo `.AppImage` más el argumento `--mcp`, que arranca el conector dentro
+de la imagen:
+
+```bash
+claude mcp add huginndb -s user -- /ruta/a/HuginnDB.AppImage --mcp
+```
+
+```json
+{ "mcpServers": { "huginndb": { "command": "/ruta/a/HuginnDB.AppImage", "args": ["--mcp"] } } }
+```
+
+Esa ruta sobrevive a reinicios y a las actualizaciones desde la app (que
+sustituyen el archivo en su sitio). Mover o renombrar el `.AppImage` la rompe,
+como a cualquier ruta: vuelve a registrarlo. Cualquier otro argumento que
+pases (`--connections`, `--read-only`, …) va detrás de `--mcp`.
+
 **Mantenerse al día sin abrir la app.** En Windows, HuginnDB instala las
 versiones nuevas en segundo plano: una tarea programada comprueba al iniciar
 sesión y otra una vez al día, e instala sin avisar con el mismo feed firmado

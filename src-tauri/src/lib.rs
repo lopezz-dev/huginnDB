@@ -39,6 +39,7 @@ mod log_bus;
 /// data-path functions the desktop commands share.
 #[cfg(feature = "mcp")]
 pub mod mcp;
+mod mcp_launcher;
 /// The document a shared origin publishes, as an editable draft. Pure model
 /// only — no disk, no keychain; the I/O lives in `commands::origin_doc`.
 mod origin_doc;
@@ -252,6 +253,11 @@ fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {
 /// (used for SQLite file pickers), and wires up every command handler.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // `HuginnDB.AppImage --mcp` becomes the MCP connector before anything else
+    // runs, stdout included — see `mcp_launcher` for why an AppImage is
+    // registered that way.
+    #[cfg(unix)]
+    mcp_launcher::run_if_requested();
     // `huginndb.exe --update` & co. run with no window and never reach the
     // Builder below — see `updater::headless` for why it has to be this early.
     #[cfg(windows)]

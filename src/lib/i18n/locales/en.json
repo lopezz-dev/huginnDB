@@ -1683,6 +1683,7 @@
       "binaryLabel": "Connector binary",
       "available": "Installed and ready.",
       "unavailable": "Not found — this build wasn't installed from a packaged release, so the connector isn't bundled.",
+      "appImageHint": "Running from an AppImage: clients start the connector through the .AppImage file itself, because the path inside it changes on every launch. The command keeps working across restarts and updates — if you move or rename the .AppImage, register it again.",
       "connectionsLabel": "Connections to expose",
       "noConnections": "No saved connections yet — add one first.",
       "filterPlaceholder": "Filter connections…",
