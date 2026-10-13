@@ -119,8 +119,9 @@ claude mcp add huginndb -s user -- /path/to/HuginnDB.AppImage --mcp
 ```
 
 That path survives restarts and in-app updates (which replace the file in
-place). Moving or renaming the `.AppImage` breaks it, as it would any path —
-register it again. Anything else you pass (`--connections`, `--read-only`, …)
+place). Moving or renaming the `.AppImage` breaks it, as it would any path;
+Settings → MCP then shows the registration as out of date and offers
+**Update registration** (see [Claude Code](#claude-code-cli)). Anything else you pass (`--connections`, `--read-only`, …)
 goes after `--mcp`.
 
 **Staying up to date without opening the app.** On Windows, HuginnDB installs
@@ -182,6 +183,16 @@ and asks for the id instead of guessing.
 for you, when the `claude` CLI is on your `PATH`. Clicking it twice is
 harmless — it reports that the server is already registered rather than
 failing. Undo it with `claude mcp remove huginndb`.
+
+The panel also reads what Claude Code has registered as `huginndb` (from
+`~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json`; it never runs the CLI
+just to look). When that registration is this connector at a command this
+install no longer uses — an AppImage registered by an earlier version, which pointed
+into a temporary mount, or an install that moved — it says so and offers
+**Update registration**. That runs `claude mcp remove huginndb -s user` and
+then the `add` above, keeping any arguments you had added (`--connections`,
+`--read-only`, …); if the `add` fails, the old entry is put back. A different
+server that happens to be called `huginndb` is shown and left alone.
 
 The same thing by hand:
 

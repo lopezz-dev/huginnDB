@@ -33,6 +33,7 @@ import { buildRailSections } from "@/lib/connection/railSections";
 import { useOrigins } from "@/stores/sync/origins";
 import type {
   ClaudeCodeRegistration,
+  ClaudeCodeStatus,
   ConnectionProfile,
   McpConnectorInfo,
   McpWritePolicy,
@@ -91,6 +92,15 @@ export function McpSection() {
   const [registration, setRegistration] =
     useState<ClaudeCodeRegistration | null>(null);
   const [registering, setRegistering] = useState(false);
+  /**
+   * What Claude Code has registered as `huginndb`, read when the section opens.
+   * The point is the `stale` case: a registration made from an AppImage before
+   * the AppImage fix points into a mount that no longer exists, and "Add" only
+   * ever said it was already there.
+   */
+  const [claudeStatus, setClaudeStatus] = useState<ClaudeCodeStatus | null>(
+    null,
+  );
   const [bulkError, setBulkError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -102,7 +112,15 @@ export function McpSection() {
       .listProfiles()
       .then(setProfiles)
       .catch(() => setProfiles([]));
+    refreshClaudeStatus();
   }, []);
+
+  function refreshClaudeStatus() {
+    void api
+      .getClaudeCodeRegistration()
+      .then(setClaudeStatus)
+      .catch(() => setClaudeStatus(null));
+  }
 
   /**
    * The checked set is not local UI state: it *is* `ConnectionProfile.mcp_exposed`,
@@ -301,13 +319,23 @@ export function McpSection() {
    * right there as the fallback.
    */
   async function addToClaudeCode() {
+    await runRegistration(api.registerWithClaudeCode);
+  }
+
+  /** Replace a stale registration — the button only the `stale` notice shows. */
+  async function updateClaudeCode() {
+    await runRegistration(api.updateClaudeCodeRegistration);
+  }
+
+  async function runRegistration(run: () => Promise<ClaudeCodeRegistration>) {
     setRegistering(true);
     try {
-      setRegistration(await api.registerWithClaudeCode());
+      setRegistration(await run());
     } catch (e) {
       setRegistration({ outcome: "failed", detail: String(e) });
     } finally {
       setRegistering(false);
+      refreshClaudeStatus();
     }
   }
 
@@ -470,6 +498,44 @@ export function McpSection() {
         }
         padded
       >
+        {claudeStatus?.state === "stale" && (
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-2xs leading-relaxed text-warning">
+              {t(
+                claudeStatus.gone
+                  ? "settings.mcp.claudeStatus.staleGone"
+                  : "settings.mcp.claudeStatus.stale",
+              )}{" "}
+              <code className="break-all font-mono">
+                {claudeStatus.registered}
+              </code>
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={registering}
+              onClick={() => void updateClaudeCode()}
+            >
+              {registering
+                ? t("settings.mcp.claudeStatus.updating")
+                : t("settings.mcp.claudeStatus.update")}
+            </Button>
+          </div>
+        )}
+        {claudeStatus?.state === "custom" && (
+          <p className="mb-2 text-2xs leading-relaxed text-muted-foreground">
+            {t("settings.mcp.claudeStatus.custom")}{" "}
+            <code className="break-all font-mono">
+              {claudeStatus.registered}
+            </code>
+          </p>
+        )}
+        {claudeStatus?.state === "current" && !registration && (
+          <p className="mb-2 text-2xs leading-relaxed text-muted-foreground">
+            {t("settings.mcp.claudeStatus.current")}
+          </p>
+        )}
         {registration && (
           <p
             className={

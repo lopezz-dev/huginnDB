@@ -38,6 +38,7 @@ import type {
   BatchResult,
   ConnectionProfile,
   ClaudeCodeRegistration,
+  ClaudeCodeStatus,
   DeleteProfilesReport,
   McpWritePolicy,
   ConnectionTabState,
@@ -308,6 +309,21 @@ export const api = {
    */
   registerWithClaudeCode: () =>
     invoke<ClaudeCodeRegistration>("register_with_claude_code"),
+
+  /** What Claude Code has registered as `huginndb`, read from its config file
+   *  without running the CLI (which would health-check, i.e. start, the
+   *  connector). */
+  getClaudeCodeRegistration: () =>
+    invoke<ClaudeCodeStatus>("get_claude_code_registration"),
+
+  /**
+   * Replace a stale `huginndb` registration with this install's command,
+   * keeping any arguments the user added (`--connections`, `--read-only`).
+   * The backend re-checks that it is stale, so it never touches another
+   * server under the same name.
+   */
+  updateClaudeCodeRegistration: () =>
+    invoke<ClaudeCodeRegistration>("update_claude_code_registration"),
 
   /**
    * Open a throwaway pool, run `SELECT 1`, then close it. `sshSecret` is

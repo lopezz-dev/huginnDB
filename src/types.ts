@@ -256,8 +256,23 @@ export interface SecretOverride {
 export type ClaudeCodeOutcome =
   | "added"
   | "already-registered"
+  | "stale"
+  | "updated"
   | "cli-not-found"
   | "failed";
+
+/** What Claude Code has registered as `huginndb`, against what this install
+ *  would register — `ClaudeCodeStatus` in Rust (`get_claude_code_registration`).
+ *  `stale` is this connector at a command this install no longer uses (an
+ *  AppImage mount from an earlier launch, a moved install); `gone` means that
+ *  command no longer exists. `custom` is some other server under the same
+ *  name, which the panel never touches. */
+export type ClaudeCodeStatus =
+  | { state: "missing" }
+  | { state: "current" }
+  | { state: "stale"; registered: string; gone: boolean }
+  | { state: "custom"; registered: string }
+  | { state: "unknown" };
 
 export interface ClaudeCodeRegistration {
   outcome: ClaudeCodeOutcome;

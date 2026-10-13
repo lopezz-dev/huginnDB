@@ -128,7 +128,9 @@ claude mcp add huginndb -s user -- /ruta/a/HuginnDB.AppImage --mcp
 
 Esa ruta sobrevive a reinicios y a las actualizaciones desde la app (que
 sustituyen el archivo en su sitio). Mover o renombrar el `.AppImage` la rompe,
-como a cualquier ruta: vuelve a registrarlo. Cualquier otro argumento que
+como a cualquier ruta; Ajustes → MCP muestra entonces el registro como
+desfasado y ofrece **Actualizar registro** (ver [Claude Code](#claude-code-cli)).
+Cualquier otro argumento que
 pases (`--connections`, `--read-only`, …) va detrás de `--mcp`.
 
 **Mantenerse al día sin abrir la app.** En Windows, HuginnDB instala las
@@ -193,6 +195,17 @@ adivinar.
 mismo por ti, si el CLI `claude` está en tu `PATH`. Pulsarlo dos veces es
 inofensivo — informa de que ya estaba registrado en vez de fallar. Para
 deshacerlo, `claude mcp remove huginndb`.
+
+El panel también lee qué tiene registrado Claude Code como `huginndb` (de
+`~/.claude.json`, o `$CLAUDE_CONFIG_DIR/.claude.json`; nunca ejecuta el CLI
+solo para mirar). Cuando ese registro es este conector pero con un comando que
+esta instalación ya no usa (un AppImage registrado por una versión anterior, que
+apuntaba a un montaje temporal, o una instalación que se movió), lo dice y
+ofrece **Actualizar registro**. Eso ejecuta `claude mcp remove huginndb -s
+user` y después el `add` de arriba, conservando los argumentos que hubieras
+añadido (`--connections`, `--read-only`, …); si el `add` falla, se restaura
+la entrada anterior. Otro servidor que casualmente se llame `huginndb` se
+muestra y se deja como está.
 
 Lo mismo a mano:
 

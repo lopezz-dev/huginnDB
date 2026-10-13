@@ -17,10 +17,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     closed or restarted.
   - From an AppImage, clients are now pointed at the `.AppImage` file itself
     with `--mcp` (`HuginnDB.AppImage --mcp`), which starts the connector inside
-    the image. That path survives restarts and updates. If you had already
-    registered it, run **Add to Claude Code** again (or `claude mcp remove
-    huginndb` first, if it says it is already registered). Other install types
+    the image. That path survives restarts and updates. Other install types
     are unchanged.
+  - If you had already registered it, Settings → MCP now says that Claude Code
+    points at a path that no longer exists, and **Update registration**
+    replaces it, keeping any arguments you had added (`--connections`,
+    `--read-only`). Before, **Add to Claude Code** only answered that it was
+    already registered.
 - **The MCP connector kept using a connection's old settings after you edited
   it.**
   - Pointing a saved connection at another database (or host, or user) in
