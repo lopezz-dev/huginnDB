@@ -312,14 +312,27 @@ export function McpSection() {
   }
 
   const path = info?.binary_path ?? "";
+  // `["--mcp"]` when the app runs from an AppImage: the command is then the
+  // image file, whose path survives a restart, rather than the sidecar inside
+  // its per-launch `/tmp/.mount_*` (see `mcp_launcher.rs`). Empty otherwise.
+  const args = info?.args ?? [];
+  const command = [path, ...args].join(" ");
   // No `--connections` and no uuids: the exposed set is the checkboxes above,
   // read from `profiles.json` on every call. That is what makes the snippet
   // paste-once — adding a connection later is a tick here, not an edit of every
   // client's config followed by a restart of each. (The flag still exists for
   // pinning one client to a fixed subset; `docs/MCP.md` covers it.)
-  const cliCommand = path ? `claude mcp add huginndb -s user -- ${path}` : "";
+  const cliCommand = path ? `claude mcp add huginndb -s user -- ${command}` : "";
   const jsonSnippet = path
-    ? JSON.stringify({ mcpServers: { huginndb: { command: path } } }, null, 2)
+    ? JSON.stringify(
+        {
+          mcpServers: {
+            huginndb: args.length ? { command: path, args } : { command: path },
+          },
+        },
+        null,
+        2,
+      )
     : "";
 
   return (
@@ -343,10 +356,15 @@ export function McpSection() {
       >
         <div className="flex items-center justify-between gap-2">
           <code className="break-all rounded-sm bg-muted px-1.5 py-0.5 font-mono text-2xs">
-            {path || "—"}
+            {command || "—"}
           </code>
-          {path && <CopyButton text={path} />}
+          {path && <CopyButton text={command} />}
         </div>
+        {args.length > 0 && (
+          <p className="mt-1.5 text-2xs leading-relaxed text-muted-foreground">
+            {t("settings.mcp.appImageHint")}
+          </p>
+        )}
       </PrefGroup>
 
       <ConnectionTreeCard

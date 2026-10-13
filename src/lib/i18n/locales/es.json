@@ -1683,6 +1683,7 @@
       "binaryLabel": "Binario del conector",
       "available": "Instalado y listo.",
       "unavailable": "No encontrado — esta build no viene de un release empaquetado, así que el conector no está incluido.",
+      "appImageHint": "Ejecutando desde un AppImage: los clientes arrancan el conector a través del propio archivo .AppImage, porque la ruta de dentro cambia en cada arranque. El comando sigue funcionando tras reinicios y actualizaciones; si mueves o renombras el .AppImage, vuelve a registrarlo.",
       "connectionsLabel": "Conexiones a exponer",
       "noConnections": "Aún no hay conexiones guardadas — añade una primero.",
       "filterPlaceholder": "Filtrar conexiones…",

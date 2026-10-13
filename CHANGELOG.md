@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **The MCP connector stopped working on Linux every time an AppImage was
+  closed.**
+  - An AppImage runs from a temporary folder (`/tmp/.mount_Huginn…`) that gets
+    a new name on every launch and disappears when the app closes. Settings →
+    MCP, and the **Add to Claude Code** button, registered the connector at
+    that temporary path, so the AI client lost it as soon as HuginnDB was
+    closed or restarted.
+  - From an AppImage, clients are now pointed at the `.AppImage` file itself
+    with `--mcp` (`HuginnDB.AppImage --mcp`), which starts the connector inside
+    the image. That path survives restarts and updates. If you had already
+    registered it, run **Add to Claude Code** again (or `claude mcp remove
+    huginndb` first, if it says it is already registered). Other install types
+    are unchanged.
+
 ## [1.32.0] — 2026-10-08
 
 ### Added

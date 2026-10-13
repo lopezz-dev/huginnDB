@@ -2442,11 +2442,15 @@ export interface Diagnostics {
   arch: string;
 }
 
-/** Where the `huginndb-mcp` sidecar binary lives, from
- *  `get_mcp_connector_info`. `available` is false outside a packaged
- *  install (e.g. `tauri dev`), where the sidecar isn't staged. */
+/** How an MCP client starts the `huginndb-mcp` connector, from
+ *  `get_mcp_connector_info`: `binary_path` is the command — the sidecar, or
+ *  the `.AppImage` file itself, whose mount path changes on every launch —
+ *  and `args` go right after it (`["--mcp"]` for an AppImage, else empty).
+ *  `available` is false outside a packaged install (e.g. `tauri dev`), where
+ *  the sidecar isn't staged. */
 export interface McpConnectorInfo {
   binary_path: string;
+  args: string[];
   available: boolean;
 }
 
