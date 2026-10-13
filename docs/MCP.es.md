@@ -56,7 +56,11 @@ en el mismo panel:
 
 Déjalo todo en `read-only` hasta que tengas un motivo para no hacerlo. Tanto
 esto como el paso 2 se releen en **cada llamada**, así que puedes cambiar de
-opinión después sin reiniciar nada.
+opinión después sin reiniciar nada. Lo mismo vale para la propia conexión: si
+la editas en HuginnDB (otra base de datos, host o usuario), la siguiente
+llamada del conector usa los datos nuevos. Si esa conexión está abierta en la
+app con el *bridge* activado, el conector te pide que la reconectes allí
+primero, en vez de cerrarla por debajo de tus pestañas.
 
 **4. Apunta tu cliente al conector.**
 

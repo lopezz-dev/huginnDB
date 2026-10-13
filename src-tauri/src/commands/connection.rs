@@ -976,6 +976,37 @@ pub(crate) async fn connect_inner(
     let open_lock = state.open_lock(&id);
     let _opening = open_lock.lock().await;
 
+    // The profile may have been edited since the pool for this id opened —
+    // pointed at another database, host or user — and the reuse path below
+    // would keep answering from the old one. A pool only the connector uses
+    // is closed and dialled again; one a window is showing is the person's
+    // own, so the connector is told to ask them rather than having it pulled
+    // out from under their tabs.
+    let target = profile.dial_target();
+    let redialed = state.connections.read().redialed(&id, &target);
+    match (redialed, origin) {
+        (Some(PoolOrigin::Bridge), _) => {
+            close_connection(
+                app,
+                state,
+                window_label,
+                &id,
+                "disconnect: the connection was edited since the MCP connector opened it; \
+                 reopening with the new settings",
+            )
+            .await;
+        }
+        (Some(PoolOrigin::User), PoolOrigin::Bridge) => {
+            return Err(AppError::InvalidInput(format!(
+                "the connection {:?} was edited in HuginnDB while it was open there, and that \
+                 session still uses the old settings. Disconnect it in HuginnDB (or reconnect \
+                 it) so the connector reaches what the connection now points at.",
+                profile.name
+            )));
+        }
+        _ => {}
+    }
+
     // Idempotent: a second `connect` for an already-active id — e.g. a
     // secondary window connecting to the same profile the main window
     // already opened — must NOT fall through to `ActiveConnections::insert`,
@@ -1127,6 +1158,7 @@ pub(crate) async fn connect_inner(
                     _endpoint: grant,
                     origin,
                     holders: window_label.map(str::to_string).into_iter().collect(),
+                    dialed: Some(target),
                     ..active
                 },
             );

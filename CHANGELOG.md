@@ -4,7 +4,22 @@ All notable changes to HuginnDB are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once it reaches `1.0`. Pre-1.0 minor releases may contain breaking changes; consult the relevant section before upgrading.
 
-## [Unreleased]
+
+### Fixed
+
+- **The MCP connector kept using a connection's old settings after you edited
+  it.**
+  - Pointing a saved connection at another database (or host, or user) in
+    HuginnDB did not reach a connector that was already running. It kept
+    querying the old database until the AI client was restarted, even after
+    an idle period, because it reopened from the settings it had read at
+    startup.
+  - The connector now reads the connection's current settings on every call,
+    and reopens a connection that was edited since it was opened.
+  - With the bridge on, a connection the connector opened through the app is
+    reopened the same way. If the connection is open in a HuginnDB window, the
+    connector asks you to reconnect it there instead of closing it under your
+    tabs.
 
 ## [1.32.0] — 2026-10-08
 

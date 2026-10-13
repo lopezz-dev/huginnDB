@@ -6,7 +6,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 > Nota: este archivo es la traducción al español de `CHANGELOG.md`. Cubre las versiones recientes; las versiones más antiguas se muestran en inglés dentro de la app hasta que se traduzcan.
 
-## [Sin publicar]
+
+### Corregido
+
+- **El conector MCP seguía usando los datos antiguos de una conexión después
+  de editarla.**
+  - Apuntar una conexión guardada a otra base de datos (u otro host, u otro
+    usuario) en HuginnDB no le llegaba a un conector que ya estaba en marcha.
+    Seguía consultando la base de datos anterior hasta reiniciar el cliente de
+    IA, incluso tras un rato de inactividad, porque reabría con los datos que
+    había leído al arrancar.
+  - El conector lee ahora los datos actuales de la conexión en cada llamada, y
+    reabre una conexión que se haya editado desde que la abrió.
+  - Con el *bridge* activado, una conexión que el conector abrió a través de
+    la app se reabre igual. Si la conexión está abierta en una ventana de
+    HuginnDB, el conector te pide que la reconectes allí en vez de cerrarla
+    por debajo de tus pestañas.
 
 ## [1.32.0] — 2026-10-08
 
