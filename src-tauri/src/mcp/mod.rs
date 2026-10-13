@@ -1068,22 +1068,32 @@ impl Huginn {
     /// Enforces the allowlist, resolves the password (and any SSH secret) from
     /// the OS keychain, and caches the pool in the shared [`AppState`] with no
     /// keepalive heartbeat (a short-lived headless process doesn't need one).
+    ///
+    /// **Dials what `profiles.json` says now**, not what it said when this
+    /// process started. It used to open from the startup snapshot and reuse
+    /// any pool it already held, so a connection repointed in HuginnDB (same
+    /// server, `db-1` → `db-2`) kept answering from `db-1` — after the idle
+    /// reaper closed the pool too, since the reopen read the same snapshot —
+    /// until the MCP client was restarted. Exposure and write policy were
+    /// already re-read per call; where the connection goes now is as well.
     async fn ensure_connected(&self, id: &str) -> AppResult<()> {
+        let profiles = self.all_profiles();
         // Second line of defence. Every tool canonicalises its argument through
         // `canonical_connection` first, which already resolves only among
         // exposed profiles — but that is a convention a new tool can forget,
         // and this is the gate, so it re-asks the question against disk here
         // where no caller can skip it.
-        if !self
-            .all_profiles()
-            .iter()
-            .any(|p| p.id == id && self.is_exposed(p))
-        {
+        if !profiles.iter().any(|p| p.id == id && self.is_exposed(p)) {
             return Err(crate::error::AppError::InvalidInput(format!(
                 "connection {id:?} is not exposed to this MCP server (tick it in HuginnDB → \
                  Settings → MCP, or pass --connections {id})"
             )));
         }
+        // Bring the in-memory copy up to date as well. The `_inner` functions
+        // this process runs read profiles from `AppState` rather than from
+        // disk — a Mongo connection's bound database, among others — and here
+        // that copy is only ever a cache: the sidecar never edits a profile.
+        *self.state.profiles.write() = profiles.clone();
         // And the organization's policy, before a pool is opened either here
         // or by the app — which checks it again on its side.
         crate::policy::enforce(
@@ -1099,19 +1109,30 @@ impl Huginn {
         if let Some(answer) = self.ensure_via_bridge(id).await {
             return answer;
         }
-        if self.state.connections.read().contains(id) {
-            return Ok(());
-        }
-        let profile = self
-            .state
-            .profiles
-            .read()
-            .iter()
+        let profile = profiles
+            .into_iter()
             .find(|p| p.id == id)
-            .cloned()
             .ok_or_else(|| crate::error::AppError::NotFound(format!("profile {id}")))?;
         // As the app does: the person's own database user, when one is in force.
         let profile = crate::credentials::effective_profile(&self.state.policy, &profile);
+        let target = profile.dial_target();
+        if self
+            .state
+            .connections
+            .read()
+            .redialed(id, &target)
+            .is_some()
+        {
+            // Every pool this process holds is its own (no window shows it),
+            // so an edited connection is simply closed and dialled again.
+            self.close_local(id).await;
+            eprintln!(
+                "[huginndb-mcp] connection {id} was edited in HuginnDB; reopening it with the \
+                 new settings"
+            );
+        } else if self.state.connections.read().contains(id) {
+            return Ok(());
+        }
 
         let password = crate::commands::connection::resolve_password(&profile)?;
         let ssh_secret = crate::commands::connection::resolve_ssh_secret(&profile)?;
@@ -1152,10 +1173,27 @@ impl Huginn {
             ActivePool {
                 _ssh: ssh_handle,
                 _endpoint: grant,
+                dialed: Some(target),
                 ..ActivePool::bare(pool)
             },
         );
         Ok(())
+    }
+
+    /// Close this process's pool for `id` and the `::db::` views riding on it,
+    /// the way the idle reaper does: views first, while the parent's tunnel is
+    /// still up, then the parent.
+    async fn close_local(&self, id: &str) {
+        let removed = self.state.connections.write().remove(id);
+        crate::pool_reaper::close_children(&self.state, id).await;
+        if let Some(active) = removed {
+            crate::db::pool::close_pool(
+                &active.pool,
+                crate::db::pool::PoolOwnership::for_id(id),
+                crate::db::pool::CLOSE_TIMEOUT,
+            )
+            .await;
+        }
     }
 
     /// Resolve which connection id a table-scoped (or `run_query`) call

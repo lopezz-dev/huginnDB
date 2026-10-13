@@ -553,6 +553,41 @@ pub struct SshTunnel {
 }
 
 impl ConnectionProfile {
+    /// Everything that decides *where* and *as whom* a pool for this profile
+    /// signs in, rendered as one comparable string.
+    ///
+    /// A pool is opened once and then reused by id, so without this nothing
+    /// noticed when the profile behind a live pool was edited: pointing a
+    /// connection from `db-1` to `db-2` in HuginnDB left the MCP connector
+    /// answering from `db-1` until its client was restarted. The pool records
+    /// this value when it opens ([`ActivePool::dialed`]) and whoever reuses it
+    /// compares ([`ActiveConnections::redialed`]).
+    ///
+    /// Deliberately an allowlist of the fields the drivers dial with. Name,
+    /// group, colour and every local flag (`mcp_*`, `pulse_enabled`, `ai_*`)
+    /// can change without making an open session wrong, and closing a
+    /// connection because it was renamed would be its own bug. The password is
+    /// not here either: it lives in the keychain, and a session that already
+    /// authenticated stays valid when it changes, exactly as in the app.
+    ///
+    /// Call it on the [`crate::credentials::effective_profile`], so a personal
+    /// database user taking effect counts as a change of `username`.
+    pub fn dial_target(&self) -> String {
+        serde_json::json!([
+            self.driver,
+            self.host,
+            self.port,
+            self.database,
+            self.username,
+            self.ssl,
+            self.ssh_tunnel,
+            self.connection_string,
+            self.auth_source,
+            self.mssql,
+        ])
+        .to_string()
+    }
+
     /// Key under which the password is stored in the OS keychain.
     ///
     /// We include the profile id so multiple profiles for the same user
@@ -827,6 +862,13 @@ pub struct ActivePool {
     /// which the reaper owns — and an empty set never triggers a close by
     /// itself; only a window *leaving* does.
     pub holders: std::collections::HashSet<String>,
+    /// The profile's [`ConnectionProfile::dial_target`] when this pool was
+    /// opened, so a reuse can tell that the profile has been edited since.
+    ///
+    /// `None` where nobody recorded it — the `::db::` views, which follow
+    /// their parent and are closed with it — and a `None` pool is never
+    /// called stale: guessing would close pools that are fine.
+    pub dialed: Option<String>,
 }
 
 impl ActivePool {
@@ -850,6 +892,7 @@ impl ActivePool {
             last_used: Arc::new(std::sync::atomic::AtomicU64::new(now_millis())),
             origin: PoolOrigin::User,
             holders: std::collections::HashSet::new(),
+            dialed: None,
         }
     }
 
@@ -1150,6 +1193,21 @@ impl ActiveConnections {
     /// tunnel) via [`Self::insert`]'s replace semantics.
     pub fn contains(&self, id: &str) -> bool {
         self.inner.contains_key(id)
+    }
+
+    /// The origin of the pool for `id` when it was opened for a different
+    /// [`ConnectionProfile::dial_target`] than `target` — i.e. the profile was
+    /// edited while the pool stayed open, and reusing it would answer from
+    /// the old server, database or user. `None` when there is no pool, when it
+    /// matches, or when it never recorded what it dialed.
+    ///
+    /// Returns the origin rather than a bool because the two callers may only
+    /// act on what is theirs: the sidecar owns every pool it holds, the app's
+    /// bridge only the ones no window is showing.
+    pub fn redialed(&self, id: &str, target: &str) -> Option<PoolOrigin> {
+        let active = self.inner.get(id)?;
+        let dialed = active.dialed.as_deref()?;
+        (dialed != target).then_some(active.origin)
     }
 
     /// Ids of every currently active connection.
@@ -1567,6 +1625,71 @@ mod tests {
             },
         );
         assert!(conns.release_window("win-1").is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // A pool whose profile was edited while it stayed open
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn the_dial_target_moves_with_where_a_pool_signs_in_and_nothing_else() {
+        let base = crate::testkit::profile("p");
+        let target = base.dial_target();
+
+        // The reported case: same server, another database.
+        let moved = ConnectionProfile {
+            database: "db-2".into(),
+            ..base.clone()
+        };
+        assert_ne!(moved.dial_target(), target);
+        for changed in [
+            ConnectionProfile {
+                host: "elsewhere".into(),
+                ..base.clone()
+            },
+            ConnectionProfile {
+                username: "someone-else".into(),
+                ..base.clone()
+            },
+            ConnectionProfile {
+                ssl: !base.ssl,
+                ..base.clone()
+            },
+        ] {
+            assert_ne!(changed.dial_target(), target);
+        }
+
+        // A rename or a local flag must not close a working session.
+        let cosmetic = ConnectionProfile {
+            name: "Renamed".into(),
+            group: Some("prod".into()),
+            mcp_exposed: !base.mcp_exposed,
+            pulse_enabled: !base.pulse_enabled,
+            ai_enabled: !base.ai_enabled,
+            ..base.clone()
+        };
+        assert_eq!(cosmetic.dial_target(), target);
+    }
+
+    #[tokio::test]
+    async fn a_pool_is_redialed_only_when_it_recorded_a_different_target() {
+        let mut conns = ActiveConnections::default();
+        conns.insert(
+            "p".into(),
+            ActivePool {
+                origin: PoolOrigin::Bridge,
+                dialed: Some("old".into()),
+                ..ActivePool::bare(dummy_pool())
+            },
+        );
+        conns.insert("q".into(), ActivePool::bare(dummy_pool()));
+
+        assert_eq!(conns.redialed("p", "new"), Some(PoolOrigin::Bridge));
+        assert_eq!(conns.redialed("p", "old"), None);
+        // Nothing recorded: never guessed stale.
+        assert_eq!(conns.redialed("q", "anything"), None);
+        // No pool at all.
+        assert_eq!(conns.redialed("absent", "new"), None);
     }
 
     #[tokio::test]

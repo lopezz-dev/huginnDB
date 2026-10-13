@@ -49,7 +49,11 @@ same panel:
 
 Leave everything at `read-only` until you have a reason not to. Both this and
 step 2 are re-read on **every call**, so you can change your mind later
-without restarting anything.
+without restarting anything. So is the connection itself: edit one in
+HuginnDB (another database, host or user) and the connector's next call uses
+the new settings. If that connection is open in the app while the
+[bridge](#sharing-the-apps-pools) is on, the connector asks you to reconnect it
+there first, rather than closing it out from under your tabs.
 
 **4. Point your client at it.**
 

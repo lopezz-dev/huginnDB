@@ -21,6 +21,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     registered it, run **Add to Claude Code** again (or `claude mcp remove
     huginndb` first, if it says it is already registered). Other install types
     are unchanged.
+- **The MCP connector kept using a connection's old settings after you edited
+  it.**
+  - Pointing a saved connection at another database (or host, or user) in
+    HuginnDB did not reach a connector that was already running. It kept
+    querying the old database until the AI client was restarted, even after
+    an idle period, because it reopened from the settings it had read at
+    startup.
+  - The connector now reads the connection's current settings on every call,
+    and reopens a connection that was edited since it was opened.
+  - With the bridge on, a connection the connector opened through the app is
+    reopened the same way. If the connection is open in a HuginnDB window, the
+    connector asks you to reconnect it there instead of closing it under your
+    tabs.
 
 ## [1.32.0] — 2026-10-08
 
