@@ -61,7 +61,7 @@ there first, rather than closing it out from under your tabs.
   whole step. (It runs `claude mcp add` for you; see
   [Claude Code (CLI)](#claude-code-cli) to do it by hand.)
 - **Claude Desktop** — download the `.mcpb` from the
-  [latest release](https://github.com/Alexfp28/huginnDB/releases) and drop it
+  [latest release](https://github.com/lopezz-dev/huginnDB/releases) and drop it
   into **Settings → Extensions**. See
   [Claude Desktop (one-click extension)](#claude-desktop-one-click-extension).
 - **Anything else** — copy the JSON snippet from Settings → MCP into your
@@ -223,7 +223,7 @@ Equivalent hand-written config (`~/.claude.json`, or a project `.mcp.json`):
 
 Each release attaches an **MCP Bundle** — `huginndb-mcp-<version>-win32.mcpb`
 (and a `-linux` one) on the
-[releases page](https://github.com/Alexfp28/huginnDB/releases). Download it and
+[releases page](https://github.com/lopezz-dev/huginnDB/releases). Download it and
 open Claude Desktop's **Settings → Extensions**, then drag the file in or use
 *Install extension*. No path to copy and no JSON to edit.
 

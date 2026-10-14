@@ -152,7 +152,7 @@ describe("DocsDialog", () => {
 
     await waitFor(() =>
       expect(openUrl).toHaveBeenCalledWith(
-        "https://github.com/Alexfp28/huginnDB/blob/main/docs/MCP_CONNECTOR_ROADMAP.md",
+        "https://github.com/lopezz-dev/huginnDB/blob/main/docs/MCP_CONNECTOR_ROADMAP.md",
       ),
     );
   });

@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 const GITHUB_PAT_ACCOUNT: &str = "github::pat";
 
 /// Owner/repo the reporter files against.
-const REPO: &str = "Alexfp28/huginnDB";
+const REPO: &str = "lopezz-dev/huginnDB";
 
 /// Mailbox the `mailto:` fallback targets when the user has no GitHub
 /// account. Kept separate from the maintainer's personal address on purpose.

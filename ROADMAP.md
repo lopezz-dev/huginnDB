@@ -111,7 +111,7 @@ in a roadmap and now don't:
    Rust `rpm` crate, so it builds from the same `ubuntu-22.04` leg with no
    extra system packages or CI changes. Smoke-tested via `workflow_dispatch`
    with the `v0.0.0-test` throwaway tag (run
-   [#32025472960](https://github.com/Alexfp28/huginnDB/actions/runs/32025472960)):
+   [#32025472960](https://github.com/lopezz-dev/huginnDB/actions/runs/32025472960)):
    both legs completed successfully and the draft release carried a valid
    `HuginnDB-1.16.0-1.x86_64.rpm` + `.sig` alongside the existing assets.
    What that confirms is that the bundler produces a well-formed package —

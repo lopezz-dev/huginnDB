@@ -13,7 +13,7 @@ Thanks for taking the time to contribute. HuginnDB is a young project; clear, we
 
 Before opening an issue:
 
-1. Search [existing issues](https://github.com/Alexfp28/huginnDB/issues) to avoid duplicates.
+1. Search [existing issues](https://github.com/lopezz-dev/huginnDB/issues) to avoid duplicates.
 2. Reproduce on the latest `main`.
 3. Include: OS, Rust toolchain version (`rustc -V`), Node version (`node -v`), pnpm version, the database engine and version you were targeting, and the smallest sequence of steps that reproduces the problem.
 

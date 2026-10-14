@@ -158,7 +158,7 @@ export function UpdatesCard({ currentVersion }: Props) {
                       : t("update.installAndRelaunch")}
               </Button>
               <a
-                href="https://github.com/Alexfp28/huginnDB/releases"
+                href="https://github.com/lopezz-dev/huginnDB/releases"
                 target="_blank"
                 rel="noreferrer"
                 className="text-2xs text-muted-foreground hover:text-brand hover:underline"

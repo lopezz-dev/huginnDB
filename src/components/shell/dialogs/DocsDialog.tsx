@@ -70,7 +70,7 @@ import {
 } from "@/components/ui/dialog";
 
 /** Where an unregistered doc link goes instead of nowhere. */
-const REPO_BLOB = "https://github.com/Alexfp28/huginnDB/blob/main";
+const REPO_BLOB = "https://github.com/lopezz-dev/huginnDB/blob/main";
 
 /**
  * The doc a relative markdown href points at, or `null` when nothing in the

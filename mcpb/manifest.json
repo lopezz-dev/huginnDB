@@ -7,13 +7,13 @@
   "description": "Let an AI client inspect and query the databases HuginnDB already knows about — PostgreSQL, MySQL, SQLite, MongoDB and SQL Server — with a per-connection write policy.",
   "long_description": "HuginnDB's headless MCP connector exposes the connections saved in the HuginnDB desktop app, reading their passwords from the OS keychain. An assistant can inspect real schema, browse rows, run read-only statements, read server health and — only where you allow it — write.\n\nRequires the HuginnDB desktop app on the same machine: this extension reads its saved connection profiles and their keychain entries. Which connections it may reach is chosen in the app under Settings → MCP, and re-read on every call, so nothing is reachable until you tick it and no client restart is needed after you do.\n\nEverything stays on your machine. The connector opens database connections directly from this computer; it has no server, no account and no telemetry.",
   "author": {
-    "name": "Alexfp28",
+    "name": "Alex López",
     "email": "alexlopezdelafuente@gmail.com",
-    "url": "https://github.com/Alexfp28"
+    "url": "https://github.com/lopezz-dev"
   },
-  "homepage": "https://github.com/Alexfp28/huginnDB",
-  "documentation": "https://github.com/Alexfp28/huginnDB/blob/main/docs/MCP.md",
-  "support": "https://github.com/Alexfp28/huginnDB/issues",
+  "homepage": "https://github.com/lopezz-dev/huginnDB",
+  "documentation": "https://github.com/lopezz-dev/huginnDB/blob/main/docs/MCP.md",
+  "support": "https://github.com/lopezz-dev/huginnDB/issues",
   "icon": "icon.png",
   "license": "MIT",
   "keywords": [
@@ -26,7 +26,7 @@
     "sqlserver"
   ],
   "privacy_policies": [
-    "https://github.com/Alexfp28/huginnDB/blob/main/docs/PRIVACY.md"
+    "https://github.com/lopezz-dev/huginnDB/blob/main/docs/PRIVACY.md"
   ],
   "server": {
     "type": "binary",

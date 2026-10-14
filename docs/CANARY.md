@@ -82,7 +82,7 @@ git tag v1.10.1 && git push origin main v1.10.1
 ## How it runs on your machine
 
 1. **Install HuginnDB Canary once.** Download the installer from the rolling
-   [`canary` release](https://github.com/Alexfp28/huginnDB/releases/tag/canary)
+   [`canary` release](https://github.com/lopezz-dev/huginnDB/releases/tag/canary)
    and install it. It won't disturb your stable install.
 2. **After that, it auto-updates on its own channel.** Every canary build you
    publish replaces the rolling `canary` release, so the canary app detects the
