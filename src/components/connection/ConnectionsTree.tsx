@@ -104,6 +104,7 @@ export function ConnectionsTree() {
   const profiles = useConnections((s) => s.profiles);
   const active = useConnections((s) => s.active);
   const lostConnections = useConnectionHealth((s) => s.lost);
+  const editedConnections = useConnectionHealth((s) => s.edited);
   // Ids currently fetching their schema, so a row can show that even while
   // collapsed — the explorer's spinning refresh button carried that signal
   // before its icon strip moved to the context menu. Narrowed to a
@@ -538,6 +539,7 @@ export function ConnectionsTree() {
         isScopeTarget={scope.kind !== "all" && scope.connectionId === p.id}
         filtering={filtering}
         lostMessage={lostMessage}
+        edited={!!editedConnections[p.id]}
         summary={summary}
         matchState={summary ? rowMatchState(summary) : null}
         patterns={patterns}

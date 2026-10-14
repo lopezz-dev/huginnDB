@@ -129,6 +129,11 @@ export const api = {
   /** Return every saved profile. */
   listProfiles: () => invoke<ConnectionProfile[]>("list_profiles"),
 
+  /** Ids of connections open in a window whose profile was edited since they
+   *  opened (another database, host or user), so they still point at the old
+   *  target until reconnected. Asked after every `profiles-changed`. */
+  editedConnections: () => invoke<string[]>("edited_connections"),
+
   /**
    * Create or update a profile. Pass `password` to update the DB-password
    * keychain entry; omit it to keep the existing one. Pass `sshSecret`

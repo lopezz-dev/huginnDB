@@ -1210,6 +1210,22 @@ impl ActiveConnections {
         (dialed != target).then_some(active.origin)
     }
 
+    /// Of `targets` (profile id, current [`ConnectionProfile::dial_target`]),
+    /// the ids whose open pool a **person** opened for a different target —
+    /// the connections a window is still showing with settings the profile no
+    /// longer has. Bridge pools are left out: the bridge reopens those itself
+    /// on its next call.
+    pub fn redialed_by_people<'a>(
+        &self,
+        targets: impl IntoIterator<Item = (&'a str, String)>,
+    ) -> Vec<String> {
+        targets
+            .into_iter()
+            .filter(|(id, target)| self.redialed(id, target) == Some(PoolOrigin::User))
+            .map(|(id, _)| id.to_string())
+            .collect()
+    }
+
     /// Ids of every currently active connection.
     pub fn ids(&self) -> Vec<String> {
         self.inner.keys().cloned().collect()
@@ -1690,6 +1706,35 @@ mod tests {
         assert_eq!(conns.redialed("q", "anything"), None);
         // No pool at all.
         assert_eq!(conns.redialed("absent", "new"), None);
+    }
+
+    #[tokio::test]
+    async fn only_a_persons_pool_is_reported_as_edited_under_a_window() {
+        let mut conns = ActiveConnections::default();
+        for (id, origin) in [("mine", PoolOrigin::User), ("bridge", PoolOrigin::Bridge)] {
+            conns.insert(
+                id.into(),
+                ActivePool {
+                    origin,
+                    dialed: Some("old".into()),
+                    ..ActivePool::bare(dummy_pool())
+                },
+            );
+        }
+        conns.insert(
+            "fresh".into(),
+            ActivePool {
+                dialed: Some("same".into()),
+                ..ActivePool::bare(dummy_pool())
+            },
+        );
+        let edited = conns.redialed_by_people([
+            ("mine", "new".to_string()),
+            ("bridge", "new".to_string()),
+            ("fresh", "same".to_string()),
+            ("closed", "new".to_string()),
+        ]);
+        assert_eq!(edited, vec!["mine".to_string()]);
     }
 
     #[tokio::test]

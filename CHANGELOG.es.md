@@ -39,6 +39,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     la app se reabre igual. Si la conexión está abierta en una ventana de
     HuginnDB, el conector te pide que la reconectes allí en vez de cerrarla
     por debajo de tus pestañas.
+- **Editar una conexión abierta no surtía efecto hasta reconectarla, y nada
+  lo indicaba.**
+  - Apuntar una conexión abierta a otra base de datos (u otro host, usuario,
+    ajuste SSL o túnel SSH) dejaba el árbol, las pestañas y cada consulta en
+    la anterior.
+  - Esa conexión se marca ahora en ámbar en la lista de conexiones y en la
+    barra de estado, en todas las ventanas, con **Reconectar** en un clic. No
+    se cierra por ti, así que no se pierde una consulta en marcha ni las
+    ediciones del grid sin guardar.
+  - **Conectar** en el diálogo de conexión, después de editarla, ahora
+    reconecta. Antes reutilizaba la sesión abierta con los datos anteriores.
 
 ## [1.32.0] — 2026-10-08
 

@@ -476,6 +476,14 @@ export function ConnectionDialog({
                 sshSecret || undefined,
               )
             ).id;
+      // `connect` reuses a pool that is already open, and after an edit that
+      // pool still points at the old database, host or user. Pressing Connect
+      // here is an explicit ask for the settings on screen, so close it first
+      // — everywhere, since the pool is shared; the other windows see the
+      // ordinary connection-closed event.
+      if ((await api.editedConnections()).includes(id)) {
+        await useConnections.getState().disconnect(id);
+      }
       await connect(id, password || undefined);
       await refreshSchema(id);
       setEditingId(id);

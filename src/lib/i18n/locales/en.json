@@ -200,6 +200,8 @@
     "reconnectTooltip": "Connection lost — reconnect",
     "reconnect": "Reconnect",
     "lost": "Connection lost: {{message}}",
+    "edited": "Edited while open — still using the previous settings. Reconnect to apply the changes.",
+    "editedTooltip": "Connection edited — reconnect to apply",
     "refreshFailed": "Could not load the connections",
     "connected": "Connected",
     "connectFailed": "Could not connect to {{name}}",

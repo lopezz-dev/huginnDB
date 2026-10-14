@@ -31,6 +31,7 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useConnections } from "@/stores/session/connections";
+import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { usePolicyAccess } from "@/stores/session/policyAccess";
 
 const CONNECTION_CLOSED_EVENT = "huginndb://connection-closed";
@@ -50,6 +51,9 @@ export async function startConnectionSyncBridge(): Promise<UnlistenFn> {
   const unlistenProfiles = await listen(PROFILES_CHANGED_EVENT, () => {
     void useConnections.getState().refreshProfiles();
     usePolicyAccess.getState().invalidate();
+    // An edit to a connection that is open leaves its pool on the old target
+    // until it is reconnected; ask which ones, so the rows can say so.
+    void useConnectionHealth.getState().refreshEdited();
   });
   return () => {
     unlistenClosed();

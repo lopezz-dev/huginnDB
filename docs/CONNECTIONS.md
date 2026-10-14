@@ -203,6 +203,18 @@ connection is back.
 Per-database views are not pinged separately. They ride the same connection
 — and the same SSH tunnel — as their parent, and reopen by themselves.
 
+### Editing a connection that is open
+
+Saving changes to a connection that is open does not close it: that would cut
+a query that is running and drop grid edits you have not saved. When the
+change is to *where* it connects — host, port, database, user, SSL, the SSH
+tunnel or the connection string — the open session keeps using the old
+settings, so the connection is marked in amber in the connection list and the
+status bar, in every window, with the same one-click **Reconnect**. Renaming
+it, moving it to another group or changing its MCP, Pulse or AI settings does
+not need a reconnect and marks nothing. Pressing **Connect** in the connection
+dialog after an edit reconnects it straight away.
+
 ## Opening a connection from the command line
 
 | Flag | Meaning |
