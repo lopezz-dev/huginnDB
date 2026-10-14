@@ -1707,9 +1707,19 @@
       "nothingExposedHint": "Todavía no hay ninguna conexión marcada — el conector arrancará sin nada a lo que llegar. Marca una arriba; surte efecto sin reiniciar el cliente de IA.",
       "addToClaudeCode": "Añadir a Claude Code",
       "addingToClaudeCode": "Añadiendo…",
+      "claudeStatus": {
+        "current": "Registrado en Claude Code.",
+        "stale": "Claude Code tiene HuginnDB registrado con un comando que esta instalación ya no usa:",
+        "staleGone": "Claude Code tiene HuginnDB registrado en una ruta que ya no existe, así que el conector no arranca:",
+        "custom": "Claude Code tiene otro servidor llamado huginndb, que se deja como está:",
+        "update": "Actualizar registro",
+        "updating": "Actualizando…"
+      },
       "register": {
         "added": "Añadido a Claude Code. Abre una sesión y compruébalo con /mcp.",
-        "already-registered": "Ya estaba registrado en Claude Code — no hay nada que cambiar. Quítalo con `claude mcp remove huginndb` si quieres volver a añadirlo.",
+        "already-registered": "Ya está registrado en Claude Code y apunta aquí: no hay nada que cambiar.",
+        "stale": "Ya está registrado en Claude Code, pero con un comando antiguo: actualízalo arriba.",
+        "updated": "Registro actualizado. Reinicia las sesiones de Claude Code que ya estuvieran abiertas para que lo usen.",
         "cli-not-found": "El CLI de claude no está en el PATH de esta máquina. Copia el comando de abajo y ejecútalo en una terminal que lo tenga.",
         "failed": "El CLI de claude lo rechazó:"
       },

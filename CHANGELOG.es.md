@@ -20,9 +20,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   - Desde un AppImage, los clientes apuntan ahora al propio archivo
     `.AppImage` con `--mcp` (`HuginnDB.AppImage --mcp`), que arranca el
     conector dentro de la imagen. Esa ruta sobrevive a reinicios y
-    actualizaciones. Si ya lo habías registrado, pulsa otra vez **Añadir a
-    Claude Code** (o antes `claude mcp remove huginndb`, si dice que ya está
-    registrado). El resto de tipos de instalación no cambian.
+    actualizaciones. El resto de tipos de instalación no cambian.
+  - Si ya lo habías registrado, Ajustes → MCP te avisa de que Claude Code
+    apunta a una ruta que ya no existe, y **Actualizar registro** la
+    sustituye, conservando los argumentos que hubieras añadido
+    (`--connections`, `--read-only`). Antes, **Añadir a Claude Code** solo
+    respondía que ya estaba registrado.
 - **El conector MCP seguía usando los datos antiguos de una conexión después
   de editarla.**
   - Apuntar una conexión guardada a otra base de datos (u otro host, u otro

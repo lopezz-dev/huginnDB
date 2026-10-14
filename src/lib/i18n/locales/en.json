@@ -1707,9 +1707,19 @@
       "nothingExposedHint": "No connections are ticked yet — the connector will start with nothing to reach. Tick one above; it takes effect without restarting the AI client.",
       "addToClaudeCode": "Add to Claude Code",
       "addingToClaudeCode": "Adding…",
+      "claudeStatus": {
+        "current": "Registered in Claude Code.",
+        "stale": "Claude Code has HuginnDB registered at a command this install no longer uses:",
+        "staleGone": "Claude Code has HuginnDB registered at a path that no longer exists, so the connector fails to start:",
+        "custom": "Claude Code has a different server named huginndb, which is left as it is:",
+        "update": "Update registration",
+        "updating": "Updating…"
+      },
       "register": {
         "added": "Added to Claude Code. Open a session and check it with /mcp.",
-        "already-registered": "Already registered in Claude Code — nothing to change. Remove it with `claude mcp remove huginndb` if you want to re-add it.",
+        "already-registered": "Already registered in Claude Code, pointing here — nothing to change.",
+        "stale": "Already registered in Claude Code, but at an old command — see above to update it.",
+        "updated": "Registration updated. Restart Claude Code sessions that were already open so they pick it up.",
         "cli-not-found": "The claude CLI isn't on this machine's PATH. Copy the command below and run it in a terminal that has it.",
         "failed": "The claude CLI refused:"
       },
