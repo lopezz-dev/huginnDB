@@ -101,6 +101,33 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.33.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_33_0.tagline",
+    highlights: [
+      {
+        icon: Package,
+        titleKey: "whatsNew.releases.1_33_0.items.appImageMcp.title",
+        bodyKey: "whatsNew.releases.1_33_0.items.appImageMcp.body",
+      },
+      {
+        icon: Wand2,
+        titleKey: "whatsNew.releases.1_33_0.items.registrationRepair.title",
+        bodyKey: "whatsNew.releases.1_33_0.items.registrationRepair.body",
+      },
+      {
+        icon: Plug,
+        titleKey: "whatsNew.releases.1_33_0.items.mcpEditedConnection.title",
+        bodyKey: "whatsNew.releases.1_33_0.items.mcpEditedConnection.body",
+      },
+      {
+        icon: Pencil,
+        titleKey: "whatsNew.releases.1_33_0.items.editedConnectionFlagged.title",
+        bodyKey: "whatsNew.releases.1_33_0.items.editedConnectionFlagged.body",
+      },
+    ],
+  },
+  {
     version: "1.32.0",
     major: true,
     taglineKey: "whatsNew.releases.1_32_0.tagline",

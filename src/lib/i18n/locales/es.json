@@ -2596,6 +2596,27 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_33_0": {
+        "tagline": "El conector MCP sigue funcionando con los AppImage de Linux, sigue a una conexión que editas, y una conexión abierta que editas ahora te avisa de que hay que reconectarla.",
+        "items": {
+          "appImageMcp": {
+            "title": "El conector MCP sobrevive a cerrar un AppImage",
+            "body": "Desde un AppImage, los clientes de IA apuntan ahora al propio archivo .AppImage con --mcp en vez de a una carpeta temporal que desaparecía al cerrar la app, así que el conector sigue funcionando tras reinicios y actualizaciones."
+          },
+          "registrationRepair": {
+            "title": "Un registro roto en Claude Code se detecta y se arregla",
+            "body": "Ajustes → MCP avisa cuando Claude Code apunta a una ruta que ya no existe, y Actualizar registro la sustituye conservando los argumentos que hubieras añadido, como --connections o --read-only."
+          },
+          "mcpEditedConnection": {
+            "title": "El conector sigue a las conexiones que editas",
+            "body": "Apunta una conexión guardada a otra base de datos, host o usuario y un conector que ya está en marcha usa los datos nuevos en su siguiente llamada, en vez de consultar la base de datos anterior hasta reiniciar el cliente de IA."
+          },
+          "editedConnectionFlagged": {
+            "title": "Una conexión abierta que editas pide que la reconectes",
+            "body": "Cambia la base de datos, el host, el usuario, el SSL o el túnel SSH de una conexión abierta y se marca en ámbar en la lista de conexiones y en la barra de estado, en todas las ventanas, con Reconectar en un clic. No se cierra nada por debajo, así que una consulta en marcha o las ediciones sin guardar están a salvo."
+          }
+        }
+      },
       "1_32_0": {
         "tagline": "El visor de documentación se rehace con búsqueda, las conexiones aguantan mejor los límites del servidor, los túneles SSH se reconectan solos y el conector MCP ya no se para al cerrar HuginnDB.",
         "items": {

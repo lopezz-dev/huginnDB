@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.33.0] — 2026-10-14
+
 ### Corregido
 
 - **El conector MCP dejaba de funcionar en Linux cada vez que se cerraba un

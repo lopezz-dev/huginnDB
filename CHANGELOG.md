@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.33.0] — 2026-10-14
+
 ### Fixed
 
 - **The MCP connector stopped working on Linux every time an AppImage was

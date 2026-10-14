@@ -2596,6 +2596,27 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_33_0": {
+        "tagline": "The MCP connector keeps working on Linux AppImages, follows a connection you edit, and an open connection you edit now tells you it needs a reconnect.",
+        "items": {
+          "appImageMcp": {
+            "title": "The MCP connector survives closing an AppImage",
+            "body": "From an AppImage, AI clients are now pointed at the .AppImage file itself with --mcp instead of a temporary folder that vanished when the app closed, so the connector keeps working across restarts and updates."
+          },
+          "registrationRepair": {
+            "title": "A broken Claude Code registration is spotted and fixed",
+            "body": "Settings → MCP warns when Claude Code points at a path that no longer exists, and Update registration replaces it while keeping the arguments you had added, such as --connections or --read-only."
+          },
+          "mcpEditedConnection": {
+            "title": "The connector follows the connections you edit",
+            "body": "Point a saved connection at another database, host or user and a connector that is already running uses the new settings on its next call, instead of querying the old database until the AI client restarts."
+          },
+          "editedConnectionFlagged": {
+            "title": "An edited open connection asks to be reconnected",
+            "body": "Change the database, host, user, SSL or SSH tunnel of an open connection and it is marked in amber in the connection list and status bar, in every window, with a one-click Reconnect. Nothing is closed under you, so a running query or unsaved edits are safe."
+          }
+        }
+      },
       "1_32_0": {
         "tagline": "The documentation viewer is rebuilt with search, connections hold up better against server limits, SSH tunnels reconnect on their own, and the MCP connector no longer stops when HuginnDB is closed.",
         "items": {
