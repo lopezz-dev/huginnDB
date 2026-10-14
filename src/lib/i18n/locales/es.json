@@ -200,6 +200,8 @@
     "reconnectTooltip": "Conexión perdida — reconectar",
     "reconnect": "Reconectar",
     "lost": "Conexión perdida: {{message}}",
+    "edited": "Editada mientras estaba abierta: sigue usando los datos anteriores. Reconecta para aplicar los cambios.",
+    "editedTooltip": "Conexión editada — reconectar para aplicar",
     "refreshFailed": "No se pudieron cargar las conexiones",
     "connected": "Conectado",
     "connectFailed": "No se ha podido conectar con {{name}}",

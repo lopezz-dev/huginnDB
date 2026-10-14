@@ -74,6 +74,8 @@ interface ConnectionTreeRowProps {
   isScopeTarget: boolean;
   filtering: boolean;
   lostMessage: string | undefined;
+  /** Open, but the profile was edited since: still on the old target. */
+  edited: boolean;
   summary: ConnectionMatchSummary | undefined;
   matchState: RowMatchState | null;
   patterns: string[];
@@ -90,6 +92,7 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
   isScopeTarget,
   filtering,
   lostMessage,
+  edited,
   summary,
   matchState,
   patterns,
@@ -97,6 +100,8 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
 }: ConnectionTreeRowProps) {
   const { t } = useTranslation();
   const isLost = !!lostMessage;
+  // Lost outranks edited: a dead pool needs the reconnect for a better reason.
+  const isEdited = !isLost && edited && isActive;
   // Dimmed, never hidden: a connection row is what the user needs in order to
   // connect it or to narrow the search to it, so the filter may quieten it
   // but must not take it away.
@@ -140,17 +145,23 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
             }
           }}
           title={
-            isLost ? t("connections.lost", { message: lostMessage }) : p.name
+            isLost
+              ? t("connections.lost", { message: lostMessage })
+              : isEdited
+                ? t("connections.edited")
+                : p.name
           }
           className={cn(
             "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent focus-visible:ring-2 focus-visible:ring-brand/40",
             isLost && "bg-destructive/10",
+            isEdited && "bg-warning/10",
             dimmedByFilter && "opacity-55 hover:opacity-100",
             // Selected connection: the same brand rail the active table row
             // carries in `SchemaExplorer`, so "this is the one you're in"
             // reads identically at both levels of the tree, plus a hairline
             // blue edge as the card's quiet version of an active border.
             !isLost &&
+              !isEdited &&
               isSelected &&
               "bg-brand/10 ring-1 ring-inset ring-brand/25 shadow-[inset_2px_0_0_var(--brand)]",
           )}
@@ -174,9 +185,11 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
                 "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-background",
                 isLost
                   ? "bg-destructive"
-                  : isActive
-                    ? "bg-brand"
-                    : "bg-muted-foreground/40",
+                  : isEdited
+                    ? "bg-warning"
+                    : isActive
+                      ? "bg-brand"
+                      : "bg-muted-foreground/40",
               )}
             />
           </span>
@@ -218,11 +231,20 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
             />
           )}
           <VanishedOriginMark profileId={p.id} />
-          {isLost ? (
+          {isLost || isEdited ? (
             <button
               type="button"
-              title={t("connections.reconnectTooltip")}
-              className="flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/20"
+              title={t(
+                isLost
+                  ? "connections.reconnectTooltip"
+                  : "connections.editedTooltip",
+              )}
+              className={cn(
+                "flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium transition-colors",
+                isLost
+                  ? "text-destructive hover:bg-destructive/20"
+                  : "text-warning hover:bg-warning/20",
+              )}
               onClick={(e) => {
                 e.stopPropagation();
                 actionsRef.current.onReconnect(p);

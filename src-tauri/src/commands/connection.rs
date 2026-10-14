@@ -296,6 +296,33 @@ pub(crate) fn resolve_ssh_secret(profile: &ConnectionProfile) -> AppResult<Optio
     keychain::get_password(&account)
 }
 
+/// Ids of the connections that are open in a window but were edited since —
+/// pointed at another database, host or user — so every query from that
+/// window still goes where the connection *used* to point.
+///
+/// Saving a profile does not touch its open pool, deliberately: closing it
+/// would cut a running query and drop unsaved grid edits without asking. So
+/// the windows ask this after every `profiles-changed` and offer a one-click
+/// reconnect instead, the same affordance a lost connection gets. Compared on
+/// the effective profile, as `connect_inner` dials it, so a personal database
+/// user taking effect counts as an edit too.
+#[tauri::command]
+pub fn edited_connections(state: State<'_, AppState>) -> AppResult<Vec<String>> {
+    let targets: Vec<(String, String)> = state
+        .profiles
+        .read()
+        .iter()
+        .map(|p| {
+            let effective = crate::credentials::effective_profile(&state.policy, p);
+            (p.id.clone(), effective.dial_target())
+        })
+        .collect();
+    Ok(state
+        .connections
+        .read()
+        .redialed_by_people(targets.iter().map(|(id, t)| (id.as_str(), t.clone()))))
+}
+
 /// Return every saved profile.
 #[tauri::command]
 pub fn list_profiles(state: State<'_, AppState>) -> AppResult<Vec<ConnectionProfile>> {

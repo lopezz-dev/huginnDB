@@ -228,8 +228,11 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
   },
   markConnected: (id) => {
     // A successful (re)connect opens a fresh pool with its own heartbeat —
-    // any previous "connection lost" flag no longer applies.
+    // any previous "connection lost" flag no longer applies. Whether it is
+    // still *edited* is the backend's call: this may have reused a pool
+    // another window opened before the profile changed.
     useConnectionHealth.getState().clear(id);
+    void useConnectionHealth.getState().refreshEdited();
     set((s) => {
       if (s.active.has(id)) return s;
       const active = new Set(s.active);
@@ -269,6 +272,7 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
     // An explicit disconnect isn't a "lost" connection — clear any stale
     // flag so a later reconnect doesn't briefly show the wrong state.
     useConnectionHealth.getState().clear(id);
+    void useConnectionHealth.getState().refreshEdited();
     set((s) => {
       const active = new Set(s.active);
       active.delete(id);

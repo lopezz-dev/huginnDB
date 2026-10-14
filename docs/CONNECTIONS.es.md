@@ -213,6 +213,18 @@ aviso desaparece y se te informa de que la conexión ha vuelto.
 Las vistas por base de datos no se pinguean aparte. Usan la misma conexión — y
 el mismo túnel SSH — que su padre, y se reabren solas.
 
+### Editar una conexión que está abierta
+
+Guardar cambios en una conexión abierta no la cierra: eso cortaría una
+consulta en marcha y perdería las ediciones del grid que no hayas guardado.
+Cuando el cambio es *adónde* se conecta — host, puerto, base de datos,
+usuario, SSL, el túnel SSH o la cadena de conexión —, la sesión abierta sigue
+usando los datos anteriores, así que la conexión se marca en ámbar en la lista
+de conexiones y en la barra de estado, en todas las ventanas, con el mismo
+**Reconectar** en un clic. Renombrarla, moverla de grupo o cambiar sus ajustes
+de MCP, Pulse o IA no necesita reconectar y no marca nada. Pulsar **Conectar**
+en el diálogo de conexión después de editarla la reconecta en el momento.
+
 ## Abrir una conexión desde la línea de comandos
 
 | Flag | Significado |

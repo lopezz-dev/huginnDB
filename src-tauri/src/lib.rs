@@ -385,6 +385,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::connection::list_profiles,
+            commands::connection::edited_connections,
             commands::policy::policy_status,
             commands::policy::policy_access,
             commands::policy::policy_relation_access,

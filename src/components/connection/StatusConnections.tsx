@@ -40,6 +40,7 @@ export function StatusConnections() {
   const versions = useConnections((s) => s.versions);
   const disconnect = useConnections((s) => s.disconnect);
   const lostConnections = useConnectionHealth((s) => s.lost);
+  const editedConnections = useConnectionHealth((s) => s.edited);
   const dropSchema = useSchema((s) => s.drop);
   const closeTabs = useTabs((s) => s.closeForConnection);
   const selected = useUi((s) => s.selectedConnectionId);
@@ -120,6 +121,8 @@ export function StatusConnections() {
   function renderActiveItem(p: ConnectionProfile) {
     const lostError = lostConnections[p.id];
     const isLost = !!lostError;
+    // Open with settings the profile no longer has. Lost outranks it.
+    const isEdited = !isLost && !!editedConnections[p.id];
     return (
       <DropdownMenuItem
         key={p.id}
@@ -133,7 +136,9 @@ export function StatusConnections() {
           "gap-2",
           isLost
             ? "bg-destructive/10 focus:bg-destructive/15"
-            : selected === p.id && "bg-brand/10",
+            : isEdited
+              ? "bg-warning/10 focus:bg-warning/15"
+              : selected === p.id && "bg-brand/10",
         )}
       >
         {/* Circular state indicators, echoing the lit dots on the logo's
@@ -142,6 +147,8 @@ export function StatusConnections() {
             than merely coloured. */}
         {isLost ? (
           <span className="h-2 w-2 shrink-0 rounded-full bg-destructive shadow-[0_0_0_3px_color-mix(in_srgb,var(--destructive)_18%,transparent)]" />
+        ) : isEdited ? (
+          <span className="h-2 w-2 shrink-0 rounded-full bg-warning shadow-[0_0_0_3px_color-mix(in_srgb,var(--warning)_18%,transparent)]" />
         ) : selected === p.id ? (
           <Check className="h-3.5 w-3.5 shrink-0 text-brand" />
         ) : (
@@ -153,7 +160,11 @@ export function StatusConnections() {
             selected === p.id && "font-semibold",
           )}
           title={
-            isLost ? t("connections.lost", { message: lostError }) : undefined
+            isLost
+              ? t("connections.lost", { message: lostError })
+              : isEdited
+                ? t("connections.edited")
+                : undefined
           }
         >
           {p.name}
@@ -170,12 +181,21 @@ export function StatusConnections() {
         )}
         <VanishedOriginMark profileId={p.id} />
         <DriverBadge driver={p.driver} />
-        {isLost ? (
+        {isLost || isEdited ? (
           // Explicit labelled affordance rather than a cryptic red icon.
           <button
             type="button"
-            title={t("connections.reconnectTooltip")}
-            className="ml-0.5 flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium text-destructive transition-colors hover:bg-destructive/20"
+            title={t(
+              isLost
+                ? "connections.reconnectTooltip"
+                : "connections.editedTooltip",
+            )}
+            className={cn(
+              "ml-0.5 flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium transition-colors",
+              isLost
+                ? "text-destructive hover:bg-destructive/20"
+                : "text-warning hover:bg-warning/20",
+            )}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

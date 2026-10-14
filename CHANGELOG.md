@@ -37,6 +37,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     reopened the same way. If the connection is open in a HuginnDB window, the
     connector asks you to reconnect it there instead of closing it under your
     tabs.
+- **Editing an open connection did not take effect until you reconnected it,
+  and nothing said so.**
+  - Pointing a connection that was open at another database (or host, user,
+    SSL setting or SSH tunnel) left the tree, the tabs and every query on the
+    old one.
+  - Such a connection is now marked in amber in the connection list and the
+    status bar, in every window, with a one-click **Reconnect**. It is not
+    closed for you, so a running query or unsaved grid edits are not lost.
+  - **Connect** in the connection dialog, after an edit, now reconnects.
+    Before, it reused the open session with the old settings.
 
 ## [1.32.0] — 2026-10-08
 

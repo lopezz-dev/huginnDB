@@ -309,6 +309,7 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("connection::get_host_key", "none"),
     ("connection::get_startup_args", "none"),
     ("connection::import_profiles", "none"),
+    ("connection::edited_connections", "none"),
     ("connection::list_profiles", "none"),
     ("connection::open_new_window", "none"),
     ("connection::take_window_environment_intent", "none"),
