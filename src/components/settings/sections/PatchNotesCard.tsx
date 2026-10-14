@@ -130,7 +130,7 @@ export function PatchNotesCard({ currentVersion }: Props) {
 
       <div className="text-2xs">
         <a
-          href="https://github.com/Alexfp28/huginnDB/blob/main/CHANGELOG.md"
+          href="https://github.com/lopezz-dev/huginnDB/blob/main/CHANGELOG.md"
           target="_blank"
           rel="noreferrer"
           className="text-brand hover:underline"

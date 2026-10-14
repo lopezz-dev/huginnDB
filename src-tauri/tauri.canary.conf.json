@@ -20,7 +20,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/Alexfp28/huginnDB/releases/download/canary/latest.json"
+        "https://github.com/lopezz-dev/huginnDB/releases/download/canary/latest.json"
       ]
     }
   }

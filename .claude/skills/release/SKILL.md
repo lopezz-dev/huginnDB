@@ -92,7 +92,7 @@ Subject: `chore(release): cut X.Y.Z`.
 Body, in English, long-form (Alex reads it and values the why): what the cut promotes ("Everything under `Unreleased` since PREV becomes `[X.Y.Z] — date` in both changelogs…"), the places the version moved, that `mcpb/manifest.json` is untouched on purpose; for a minor, *why it is a minor* and what the headline is, and that `releaseNotes.ts` gained an entry flagged `major`; for a patch, which fixes it closes out. Mention anything out of the ordinary (e.g. a release that needs a manual step on users' machines). End with:
 
 ```
-Authored by Alex López (Alexfp28) <alexlopezdelafuente@gmail.com>.
+Authored by Alex López (lopezz-dev) <alexlopezdelafuente@gmail.com>.
 
 Co-Authored-By: <the attribution line the system gives you>
 ```
@@ -127,7 +127,7 @@ If a leg fails, read `gh run view <id> --log-failed`, report the cause, and stop
 When `release` is green, verify the **draft** (it has an `untagged-…` URL, so look it up by tag name):
 
 ```bash
-gh api repos/Alexfp28/huginnDB/releases --jq '.[] | select(.tag_name=="vX.Y.Z") | {draft, html_url, n: (.assets|length)}'
+gh api repos/lopezz-dev/huginnDB/releases --jq '.[] | select(.tag_name=="vX.Y.Z") | {draft, html_url, n: (.assets|length)}'
 ```
 
 Expect `draft: true` and about 11 assets: the Windows `HuginnDB_X.Y.Z_x64-setup.exe`, the Linux `.AppImage`/`.deb`/`.rpm`, the two `huginndb-mcp-X.Y.Z-*.mcpb`, `latest.json` and a `.sig` per installer. Download `latest.json` and confirm **every entry under `platforms` has a non-empty `signature` and a URL containing `X.Y.Z`** — without signatures every installed copy rejects the update. Don't just assert it; check it.

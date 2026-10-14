@@ -30,7 +30,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/Alexfp28/huginnDB/releases/latest/download/latest.json"
+        "https://github.com/lopezz-dev/huginnDB/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJCN0I0MkE5NEVCM0Y0MkQKUldRdDlMTk9xVUo3SzhvSWVEcFpaYWp1dU0vSS85dFZkdUYvVTJvaVhiTVNsY2s2NXVrK0NlMHQK"
     }

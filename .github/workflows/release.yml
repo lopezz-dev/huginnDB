@@ -188,7 +188,7 @@ jobs:
           tagName: ${{ steps.resolve_tag.outputs.tag }}
           releaseName: "HuginnDB ${{ steps.resolve_tag.outputs.tag }}"
           releaseBody: |
-            See [CHANGELOG.md](https://github.com/Alexfp28/huginnDB/blob/main/CHANGELOG.md) for the full list of changes.
+            See [CHANGELOG.md](https://github.com/lopezz-dev/huginnDB/blob/main/CHANGELOG.md) for the full list of changes.
 
             Installed builds with auto-update support will detect this release on next launch and offer to install it from inside the app.
           releaseDraft: true

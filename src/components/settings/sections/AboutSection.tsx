@@ -98,12 +98,12 @@ export function AboutSection() {
             </div>
             <div className="mt-2 text-xs">
               <a
-                href="https://github.com/Alexfp28/huginnDB"
+                href="https://github.com/lopezz-dev/huginnDB"
                 target="_blank"
                 rel="noreferrer"
                 className="text-brand hover:text-brand-hover hover:underline"
               >
-                github.com/Alexfp28/huginnDB
+                github.com/lopezz-dev/huginnDB
               </a>
             </div>
           </div>

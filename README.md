@@ -102,7 +102,7 @@ HuginnDB is split into two cooperating processes: a Tauri webview (React + TypeS
 
 ## Install
 
-**Windows** — download the `-setup.exe` from [Releases](https://github.com/Alexfp28/huginnDB/releases). First run triggers a SmartScreen warning (binaries aren't code-signed yet, not a malware flag) — click **More info → Run anyway**. You can verify the SHA-256 against the digest published on the release.
+**Windows** — download the `-setup.exe` from [Releases](https://github.com/lopezz-dev/huginnDB/releases). First run triggers a SmartScreen warning (binaries aren't code-signed yet, not a malware flag) — click **More info → Run anyway**. You can verify the SHA-256 against the digest published on the release.
 
 **Linux** (`x86_64`):
 
@@ -148,7 +148,7 @@ Equivalent packages exist on Fedora, Arch, and Alpine — see the [Tauri prerequ
 **macOS** — `xcode-select --install`. Not a primary target yet; build should work, please file an issue if not.
 
 ```bash
-git clone https://github.com/Alexfp28/huginnDB.git
+git clone https://github.com/lopezz-dev/huginnDB.git
 cd huginnDB
 pnpm install
 pnpm tauri:dev          # dev mode with HMR — first run takes 5-10 min (Cargo compiles all drivers from scratch)

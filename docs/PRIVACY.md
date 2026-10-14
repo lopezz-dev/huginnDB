@@ -121,4 +121,4 @@ Material changes to this policy will be noted in `CHANGELOG.md` and this file's
 ## Contact
 
 Security and privacy: <contact@shion.es>. Anything else:
-[open an issue](https://github.com/Alexfp28/huginnDB/issues).
+[open an issue](https://github.com/lopezz-dev/huginnDB/issues).

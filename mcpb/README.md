@@ -1,7 +1,7 @@
 # HuginnDB MCP connector
 
 Lets an AI client inspect and query the databases you have saved in the
-[HuginnDB](https://github.com/Alexfp28/huginnDB) desktop app — PostgreSQL,
+[HuginnDB](https://github.com/lopezz-dev/huginnDB) desktop app — PostgreSQL,
 MySQL, SQLite, MongoDB and Microsoft SQL Server — with a per-connection write
 policy that is read-only by default.
 
@@ -33,7 +33,7 @@ Read schema, browse rows, run read-only statements, and read server health
 separate set of tools, each refused unless the connection's policy allows it,
 and every write is recorded in `mcp-audit.log` next to your profiles.
 
-Full documentation: [docs/MCP.md](https://github.com/Alexfp28/huginnDB/blob/main/docs/MCP.md).
+Full documentation: [docs/MCP.md](https://github.com/lopezz-dev/huginnDB/blob/main/docs/MCP.md).
 
 ## Privacy Policy
 
@@ -56,7 +56,7 @@ and no telemetry.
 - **Retention:** the audit log stays on your disk until you delete it. Nothing
   else is retained.
 - **Contact:** <contact@shion.es>, or
-  [open an issue](https://github.com/Alexfp28/huginnDB/issues).
+  [open an issue](https://github.com/lopezz-dev/huginnDB/issues).
 
 The canonical version of this policy lives at
-[docs/PRIVACY.md](https://github.com/Alexfp28/huginnDB/blob/main/docs/PRIVACY.md).
+[docs/PRIVACY.md](https://github.com/lopezz-dev/huginnDB/blob/main/docs/PRIVACY.md).

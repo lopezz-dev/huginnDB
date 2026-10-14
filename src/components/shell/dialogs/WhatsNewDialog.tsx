@@ -44,7 +44,7 @@ import {
 } from "@/components/ui/dialog";
 
 const CHANGELOG_URL =
-  "https://github.com/Alexfp28/huginnDB/blob/main/CHANGELOG.md";
+  "https://github.com/lopezz-dev/huginnDB/blob/main/CHANGELOG.md";
 
 /** A highlight body: clamped to 2 lines, with a "Read more"/"Read less"
  *  toggle that only appears once the text is confirmed to overflow. */

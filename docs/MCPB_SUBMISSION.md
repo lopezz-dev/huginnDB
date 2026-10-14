@@ -19,10 +19,10 @@ detail moves.
 | Name | HuginnDB |
 | Connector type | Desktop extension (MCP Bundle, `.mcpb`) — local stdio, not a remote server |
 | Tagline | Let Claude read and query the databases you already have saved. |
-| Homepage | <https://github.com/Alexfp28/huginnDB> |
-| Documentation | <https://github.com/Alexfp28/huginnDB/blob/main/docs/MCP.md> |
-| Support | <https://github.com/Alexfp28/huginnDB/issues> |
-| Privacy policy | <https://github.com/Alexfp28/huginnDB/blob/main/docs/PRIVACY.md> |
+| Homepage | <https://github.com/lopezz-dev/huginnDB> |
+| Documentation | <https://github.com/lopezz-dev/huginnDB/blob/main/docs/MCP.md> |
+| Support | <https://github.com/lopezz-dev/huginnDB/issues> |
+| Privacy policy | <https://github.com/lopezz-dev/huginnDB/blob/main/docs/PRIVACY.md> |
 | License | MIT |
 | Platforms | `win32`, `linux` (one bundle each; no macOS build — see *Limitations*) |
 
@@ -41,7 +41,7 @@ needs the desktop app and any database. The quickest reproducible one, which
 the repo already documents:
 
 1. Install HuginnDB from the
-   [latest release](https://github.com/Alexfp28/huginnDB/releases).
+   [latest release](https://github.com/lopezz-dev/huginnDB/releases).
 2. Download the Chinook sample database (~1 MB):
    ```bash
    curl -L -o chinook.db \
