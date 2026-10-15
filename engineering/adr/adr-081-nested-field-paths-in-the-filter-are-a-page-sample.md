@@ -5,7 +5,7 @@ status: accepted
 date: 2026-09-10
 tags: [mongodb, grid, ui]
 triggered_by_external_trap: false
-related: [29]
+related: [29, 82]
 supersedes: []
 superseded_by: null
 amends: []
@@ -13,7 +13,7 @@ amends: []
 
 # ADR #81: MongoDB's filterable fields are a sample of the page, not a catalog — and a query path must not carry an array index
 
-The advanced filter could only name a top-level field, because its field list is `infer_columns`' output and that list is also the data grid's column list. The nested paths now offered come from the page on screen (`QueryResult.rows` + `row_types`), which makes them a *sample* — so the control that shows them has to accept a hand-typed path — and they deliberately drop the array index the list view's paths carry.
+The advanced filter could only name a top-level field, because its field list is `infer_columns`' output and that list is also the data grid's column list. The nested paths now offered come from the page on screen (`QueryResult.rows` + `row_types`), which makes them a *sample* — so the control that shows them has to accept a hand-typed path — and they deliberately drop the array index the list view's paths carry. Since 1.28.0 the advanced-filter dialog is gone and these conditions are edited in the inline query panel; see the addendum for what that changed.
 
 **Decision:** The filter's nested field suggestions are walked from the page's rows and BSON type trees (lib/grid/fieldPaths.ts) without array indexes, offered in a combobox that accepts hand-typed paths, with text matching mapped per array element and the suggestion panel positioned fixed with measured offsets.
 
@@ -40,3 +40,14 @@ The advanced filter could only name a top-level field, because its field list is
 - **`fixed` with `top`/`left` left `auto` is a trap that survives a first look.** Those offsets resolve to the box's *static position*, which put the panel exactly under its input — until the condition list was scrolled, at which point it opened as many pixels too low as the list had scrolled, because the static position is computed in the unscrolled flow and then read as an offset from the containing block. The offsets are measured instead (`fixedOrigin` finds the containing block the way CSS defines it, padding box included), and so is the width, since `width: 100%` on a fixed box resolves against the dialog rather than the input. Being out of the flow it follows neither the list nor the window, so a scroll or a resize closes it. All of this was found by rendering the real dialog in the browser — the layout is not something jsdom can answer.
 - **Escape and Enter belong to the dialog, and the picker has to give them back.** The panel lives inside a modal that closes on Escape. A suggestion list that let the key bubble would throw away every condition the user had built, so both keys are stopped *while the panel is open* and released the moment it closes — the behaviour with its own regression test, since it is invisible until it costs someone their work.
 - **The `$set` half of the bulk-update dialog deliberately does not get this.** Its match half does (it is the same `FilterConditionRow`, and letting the two dialogs disagree about what is filterable is how they drifted before). Writing `a.b` on every matching document *creates* that path where it is missing, which is a bigger promise than a picker making the path easy to reach should make on its own.
+
+## Addendum (2026-10-15): the filter left the dialog, and the dialog lost its transform
+
+The decision stands: suggested paths come from the page, carry no array index, and are offered in a combobox that accepts typed paths. Two later changes moved the ground under the Detail above, which describes the advanced-filter dialog as it was on 2026-09-10.
+
+- **The advanced-filter dialog no longer exists** (`0811423`, 2026-09-23, released in 1.28.0). `AdvancedFilterDialog` was deleted, not kept beside its replacement, because only one surface may edit the active server filters. The same `FilterConditionRow`, `filterConditions.ts` helpers and `FilterFieldPicker` now render in two places:
+  - **`QueryPanel`** (`src/components/grid/QueryPanel.tsx`), the inline section between the grid toolbar and the rows. It is not modal. Its condition list is still an `overflow-auto` scroller, so the clipping argument for `position: fixed` holds unchanged. The *portalled to `document.body`* failure mode does not arise here, because there is no modal `Dialog` disabling pointer events outside it.
+  - **The match half of `BulkUpdateDialog`**, still a modal `panel`-tier dialog with an `overflow-y-auto` condition list. Every failure mode listed above still applies there as written, including Escape and Enter belonging to the dialog.
+- **The panel's containing block is now the viewport, not `DialogContent`** (`c628dcf`, 2026-09-11). Dialogs are centred by their flex container instead of a `translate`, so that `tailwindcss-animate`'s `enter` keyframe can own `transform`. The bullet above that says the fixed panel's containing block is "`DialogContent`, centred with a `translate`" is therefore out of date. The conclusion is not: the viewport also sits above the scroller and clips nothing, and the panel is still a DOM descendant of whatever contains it, so pointer events, click-outside and focus management keep working. `fixedOrigin` already handles both cases, because it walks the ancestors the way CSS does and falls back to the viewport origin. `FilterFieldPicker`'s own header comment is the current description.
+- **Unchanged:** the `$set` half of `BulkUpdateDialog` still uses a closed `Select` of known fields, for the reason given above. `text_match_branches` (`db/mongo/query.rs`) still maps over array-valued paths.
+
