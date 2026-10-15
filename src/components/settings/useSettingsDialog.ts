@@ -38,6 +38,7 @@ export type SettingsSection =
   | "mcp"
   | "pulse"
   | "ai"
+  | "terminal"
   | "policy"
   | "about";
 

@@ -69,6 +69,7 @@ export type ActionId =
   | "togglePanelPulse"
   | "togglePanelAi"
   | "togglePanelConsole"
+  | "togglePanelTerminal"
   | "newWindow"
   | "resetLayout";
 
@@ -345,6 +346,17 @@ export const ACTIONS: ActionSpec[] = [
     scope: "global",
     defaults: ["Mod+`"],
     labelKey: "settings.shortcuts.togglePanelConsole",
+  },
+  {
+    id: "togglePanelTerminal",
+    category: "panels",
+    scope: "global",
+    // Next to the console's Mod+Backquote, as VS Code pairs its panel and terminal
+    // chords. Unlike the right dock's occupants it gets a default: the two
+    // bottom tabs share one slot, but a terminal is reached for from the
+    // keyboard far more often than from the rail.
+    defaults: ["Mod+Shift+`"],
+    labelKey: "settings.shortcuts.togglePanelTerminal",
   },
   {
     id: "newWindow",

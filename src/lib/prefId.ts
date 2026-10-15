@@ -32,7 +32,8 @@ type PrefGroup =
   | "connections"
   | "pulse"
   | "ai"
-  | "updates";
+  | "updates"
+  | "terminal";
 
 /** `"editor.wordWrap" | "grid.rowHeight" | …` — every real preference path. */
 type PrefPath = {

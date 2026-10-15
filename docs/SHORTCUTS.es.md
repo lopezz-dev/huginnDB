@@ -53,6 +53,10 @@ están permitidos. Dos atajos chocan solo cuando sus ámbitos se solapan — un
 Cuando la tecla que estás grabando sí choca, el diálogo dice qué acción la
 tiene y ofrece quitársela.
 
+**Dentro de un terminal**, el teclado es del terminal: el `Ctrl+R`, `Ctrl+K` o
+`Ctrl+B` de un shell no deben abrir ni cerrar un panel. Allí solo se oyen la
+paleta de comandos, Preferencias y los conmutadores de Consola / Terminal.
+
 ## Teclas que la app se reserva
 
 `Mod+R` siempre refresca, además de lo que le asignes a esa acción. No se

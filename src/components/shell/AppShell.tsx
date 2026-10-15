@@ -22,7 +22,16 @@
  */
 
 import { useEffect, useState } from "react";
-import { Activity, Blocks, Bot, Moon, Save, Settings, Sun } from "lucide-react";
+import {
+  Activity,
+  Blocks,
+  Bot,
+  Moon,
+  Save,
+  Settings,
+  SquareTerminal,
+  Sun,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useUi } from "@/stores/session/ui";
 import {
@@ -31,6 +40,9 @@ import {
   useSessionPanelLayout,
 } from "@/stores/session/panelLayout";
 import { useThemeStore, selectActiveMode } from "@/stores/preferences/theme";
+import { usePreferences } from "@/stores/preferences/preferences";
+import { useTerminals } from "@/stores/session/terminals";
+import { moduleEnabled } from "@/lib/panelModules";
 import {
   selectUpdateNotificationVisible,
   useUpdateStore,
@@ -318,9 +330,32 @@ export function AppShell() {
   // a drag never reaches this component.
   const rightPanel = useSessionPanelLayout((s) => s.rightPanel);
   const selectRightPanel = useSessionPanelLayout((s) => s.selectRightPanel);
+  const terminalShown = useSessionPanelLayout(
+    (s) => s.consoleOpen && s.bottomTab === "terminal",
+  );
+  const toggleTerminal = useSessionPanelLayout((s) => s.toggleTerminal);
+  const pulseOn = usePreferences((s) => moduleEnabled(s.prefs, "pulse"));
+  const aiOn = usePreferences((s) => moduleEnabled(s.prefs, "ai"));
+  const terminalOn = usePreferences((s) => moduleEnabled(s.prefs, "terminal"));
+
+  // A module switched off in Settings takes its panel with it — off screen,
+  // and out of what the dock's edge toggle would bring back. The terminal's
+  // sessions end too: a switch that hid the icon but left shells running
+  // would be the "hidden, not off" this switch promises not to be.
+  useEffect(() => {
+    const { retirePanel } = useSessionPanelLayout.getState();
+    if (!pulseOn) retirePanel("pulse");
+    if (!aiOn) retirePanel("ai");
+    if (!terminalOn) {
+      retirePanel("terminal");
+      useTerminals.getState().closeAll();
+    }
+  }, [pulseOn, aiOn, terminalOn]);
 
   // A *selector* over the dock's occupants, not two independent switches —
-  // see `panelLayout.ts`.
+  // see `panelLayout.ts`. The terminal is the one exception: it opens in the
+  // bottom dock (a terminal wants width), but it is reached from here like
+  // every other tool.
   const rightButtons: ActivityBarButton[] = [
     {
       id: "saved",
@@ -329,20 +364,39 @@ export function AppShell() {
       active: rightPanel === "saved",
       onClick: () => selectRightPanel("saved"),
     },
-    {
-      id: "pulse",
-      icon: Activity,
-      label: t("panels.pulse"),
-      active: rightPanel === "pulse",
-      onClick: () => selectRightPanel("pulse"),
-    },
-    {
-      id: "ai",
-      icon: Bot,
-      label: t("panels.ai"),
-      active: rightPanel === "ai",
-      onClick: () => selectRightPanel("ai"),
-    },
+    ...(pulseOn
+      ? [
+          {
+            id: "pulse",
+            icon: Activity,
+            label: t("panels.pulse"),
+            active: rightPanel === "pulse",
+            onClick: () => selectRightPanel("pulse"),
+          },
+        ]
+      : []),
+    ...(aiOn
+      ? [
+          {
+            id: "ai",
+            icon: Bot,
+            label: t("panels.ai"),
+            active: rightPanel === "ai",
+            onClick: () => selectRightPanel("ai"),
+          },
+        ]
+      : []),
+    ...(terminalOn
+      ? [
+          {
+            id: "terminal",
+            icon: SquareTerminal,
+            label: t("panels.terminal"),
+            active: terminalShown,
+            onClick: toggleTerminal,
+          },
+        ]
+      : []),
     {
       id: "extensions",
       icon: Blocks,

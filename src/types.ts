@@ -1018,6 +1018,8 @@ export interface Preferences {
   themes: ThemePrefs;
   /** Whether updates install in the background. See {@link UpdatePrefs}. */
   updates: UpdatePrefs;
+  /** The terminal panel. See {@link TerminalPrefs}. */
+  terminal: TerminalPrefs;
   /**
    * User-rebound keyboard shortcuts, keyed by action id to an ordered list of
    * bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is the
@@ -1104,6 +1106,10 @@ export interface ConnectionPrefs {
  * Mirrors `PulsePrefs` in `src-tauri/src/prefs.rs`.
  */
 export interface PulsePrefs {
+  /** Whether Pulse is offered at all: its activity-bar icon and the
+   *  background sampler. On by default. Off keeps each connection's
+   *  `pulseEnabled` opt-in, so turning it back on resumes the same set. */
+  enabled: boolean;
   /** How often the dock panel / expanded window poll live vital signs, in
    *  seconds, while on screen. Frontend-only (`usePulseLive` schedules this,
    *  not the backend) — kept alongside `historyIntervalSecs` so both of
@@ -1199,6 +1205,23 @@ export interface ThemePrefs {
  */
 export interface UpdatePrefs {
   autoInstall: boolean;
+}
+
+/**
+ * The terminal panel. Mirrors `TerminalPrefs` in `src-tauri/src/prefs.rs`.
+ * On by default: it reaches no endpoint and touches a database only through
+ * a `mongosh` the user installed, signed in as a connection they opened.
+ */
+export interface TerminalPrefs {
+  /** Whether the panel is offered: its icon in the right activity bar, and
+   *  the commands that open a session (which refuse while this is off). */
+  enabled: boolean;
+  /** Full path to `mongosh`. Empty = find it on `PATH` or where the official
+   *  installers put it. */
+  mongoshPath: string;
+  /** Full path to the shell a plain terminal starts. Empty = the platform
+   *  default (`pwsh`, else Windows PowerShell; `$SHELL`, else `bash`). */
+  shellPath: string;
 }
 
 export interface AiPrefs {

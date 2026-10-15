@@ -98,6 +98,7 @@ import {
   warmDatabases,
 } from "@/lib/schema/warmDatabases";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
+import { moduleEnabled } from "@/lib/panelModules";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import {
   ACTIONS,
@@ -137,6 +138,7 @@ const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   mcp: <Cable className="h-4 w-4" />,
   pulse: <Activity className="h-4 w-4" />,
   ai: <Bot className="h-4 w-4" />,
+  terminal: <SquareTerminal className="h-4 w-4" />,
   policy: <ShieldCheck className="h-4 w-4" />,
   about: <Info className="h-4 w-4" />,
 };
@@ -177,6 +179,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const updatePulse = usePreferences((s) => s.updatePulse);
   const updateAi = usePreferences((s) => s.updateAi);
   const updateUpdates = usePreferences((s) => s.updateUpdates);
+  const updateTerminal = usePreferences((s) => s.updateTerminal);
   const customThemes = useThemeStore((s) => s.customThemes);
   const themeId = useThemeStore((s) => s.themeId);
   const setThemeId = useThemeStore((s) => s.setThemeId);
@@ -187,6 +190,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const schemaOpen = useSessionPanelLayout((s) => s.schemaOpen);
   const rightPanel = useSessionPanelLayout((s) => s.rightPanel);
   const consoleOpen = useSessionPanelLayout((s) => s.consoleOpen);
+  const bottomTab = useSessionPanelLayout((s) => s.bottomTab);
 
   return useMemo<PaletteCommand[]>(() => {
     if (!enabled) return [];
@@ -201,6 +205,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       updatePulse,
       updateAi,
       updateUpdates,
+      updateTerminal,
     };
     /** The action's current primary binding, for the row's badge. `undefined`
      *  when it ships or was left unbound, so no empty chip renders. */
@@ -414,8 +419,16 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     }[] = [
       { id: "schema", actionId: "togglePanelSchema", i18nKey: "panels.schema", shown: schemaOpen, toggle: useSessionPanelLayout.getState().toggleSchema },
       { id: "saved", actionId: "togglePanelSaved", i18nKey: "panels.saved", shown: rightPanel === "saved", toggle: () => useSessionPanelLayout.getState().selectRightPanel("saved") },
-      { id: "pulse", actionId: "togglePanelPulse", i18nKey: "panels.pulse", shown: rightPanel === "pulse", toggle: () => useSessionPanelLayout.getState().selectRightPanel("pulse") },
-      { id: "console", actionId: "togglePanelConsole", i18nKey: "panels.console", shown: consoleOpen, toggle: useSessionPanelLayout.getState().toggleConsole },
+      ...(moduleEnabled(prefs, "pulse")
+        ? [{ id: "pulse", actionId: "togglePanelPulse" as const, i18nKey: "panels.pulse", shown: rightPanel === "pulse", toggle: () => useSessionPanelLayout.getState().selectRightPanel("pulse") }]
+        : []),
+      ...(moduleEnabled(prefs, "ai")
+        ? [{ id: "ai", actionId: "togglePanelAi" as const, i18nKey: "panels.ai", shown: rightPanel === "ai", toggle: () => useSessionPanelLayout.getState().selectRightPanel("ai") }]
+        : []),
+      { id: "console", actionId: "togglePanelConsole", i18nKey: "panels.console", shown: consoleOpen && bottomTab === "console", toggle: useSessionPanelLayout.getState().toggleConsole },
+      ...(moduleEnabled(prefs, "terminal")
+        ? [{ id: "terminal", actionId: "togglePanelTerminal" as const, i18nKey: "panels.terminal", shown: consoleOpen && bottomTab === "terminal", toggle: useSessionPanelLayout.getState().toggleTerminal }]
+        : []),
     ];
     for (const panel of PANEL_TOGGLES) {
       list.push({
@@ -867,6 +880,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     updatePulse,
     updateAi,
     updateUpdates,
+    updateTerminal,
     customThemes,
     themeId,
     setThemeId,
@@ -877,5 +891,6 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     schemaOpen,
     rightPanel,
     consoleOpen,
+    bottomTab,
   ]);
 }

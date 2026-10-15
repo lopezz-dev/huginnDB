@@ -110,6 +110,48 @@ desconocido, una expresión JS — se rechaza con un error claro en vez de
 interpretarse a medias en algo que se ejecuta. Siguen abiertos en el roadmap:
 `explain`, `bulkWrite`, `findAndModify`, change streams y GridFS.
 
+Para un script que necesite todo eso — el que escribe una herramienta de IA
+cuando le pides que compruebe algo en MongoDB — usa el terminal de abajo.
+
+## El terminal: `mongosh` tal cual
+
+El icono de **Terminal** de la barra de actividad derecha (o `` Mod+Shift+` ``)
+abre un terminal en el panel inferior, junto a la Consola. Su menú **+** abre:
+
+- **`mongosh` en la conexión actual** — la conexión MongoDB en la que está el
+  espacio de trabajo, abierta en la base de datos de la pestaña que estabas
+  mirando. Es el `mongosh` de verdad, así que las variables, los bucles,
+  `printjson`, `use otra_bd` y los scripts de varias líneas pegados desde una
+  herramienta de IA se ejecutan tal cual están escritos.
+- **Tu shell** — PowerShell 7 si está instalado, si no Windows PowerShell, en
+  Windows; tu `$SHELL`, si no `bash`, en el resto.
+
+Cada sesión es una pestaña; cambiar de pestaña o plegar el panel las mantiene
+en marcha, y cerrar una pestaña la termina. Desconectar una conexión cierra las
+sesiones de `mongosh` iniciadas en ella.
+
+**`mongosh` no viene incluido.** HuginnDB usa el que tengas instalado (desde
+<https://www.mongodb.com/try/download/shell>), que busca en el `PATH` o donde lo
+dejan los instaladores oficiales; Ajustes → **Terminal** muestra cuál ha
+encontrado y su versión, y admite una ruta si se equivoca.
+
+**Cómo inicia sesión.** Con las credenciales de la propia conexión — el mismo
+usuario, contraseña y túnel SSH que usa su pool, incluido un usuario de base de
+datos personal —, así que la conexión tiene que estar abierta antes. La
+contraseña se le pasa a `mongosh` en su entorno, nunca en su línea de comandos,
+donde otros usuarios del equipo podrían leerla, y se borra de `process.env`
+antes de que aparezca el prompt.
+
+**Teclas.** Con el foco en un terminal, el teclado es suyo: `Ctrl+R`, `Ctrl+K`
+o `Ctrl+B` hacen lo que hacen en un shell. La paleta de comandos, Preferencias
+y los conmutadores de Consola / Terminal siguen funcionando. Copia y pega con
+`Ctrl+Shift+C` / `Ctrl+Shift+V`, porque `Ctrl+C` interrumpe.
+
+Con una política gestionada, `mongosh` solo se ofrece en conexiones donde
+puedes lanzar consultas libres que lean y escriban cualquier cosa; consulta
+`POLICY.es.md`. Para ocultar el terminal del todo, desactívalo en Ajustes →
+**Terminal**.
+
 ## Editar documentos
 
 La **vista de lista** de la tabla se convierte en un editor de documentos con

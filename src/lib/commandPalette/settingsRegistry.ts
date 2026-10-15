@@ -48,6 +48,7 @@ export interface PrefsWriters {
   updatePulse: (patch: Partial<Preferences["pulse"]>) => void;
   updateAi: (patch: Partial<Preferences["ai"]>) => void;
   updateUpdates: (patch: Partial<Preferences["updates"]>) => void;
+  updateTerminal: (patch: Partial<Preferences["terminal"]>) => void;
 }
 
 export interface SettingEntry {
@@ -631,6 +632,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: num((p) => p.pulse.maxDiskMb),
   },
   {
+    prefId: "pulse.enabled",
+    section: "pulse",
+    labelKey: "settings.pulse.enabled.label",
+    descKey: "settings.pulse.enabled.desc",
+    keywords: "pulse monitoring module show hide icon monitorización módulo mostrar ocultar icono",
+    value: onOff((p) => p.pulse.enabled),
+    toggle: (p, w) => w.updatePulse({ enabled: !p.pulse.enabled }),
+  },
+  {
     prefId: "pulse.sampleWhenMinimized",
     section: "pulse",
     labelKey: "settings.pulse.sampleWhenMinimized.label",
@@ -651,6 +661,34 @@ export const SETTINGS_INDEX: SettingEntry[] = [
       "update automatic background silent scheduled task actualización automática segundo plano tarea programada",
     value: onOff((p) => p.updates.autoInstall),
     toggle: (p, w) => w.updateUpdates({ autoInstall: !p.updates.autoInstall }),
+  },
+
+  // ── Terminal ──────────────────────────────────────────────────────────────
+  {
+    prefId: "terminal.enabled",
+    section: "terminal",
+    labelKey: "settings.terminal.enabled.label",
+    descKey: "settings.terminal.enabled.desc",
+    keywords:
+      "terminal mongosh shell console powershell bash module icon terminal consola módulo icono",
+    value: onOff((p) => p.terminal.enabled),
+    toggle: (p, w) => w.updateTerminal({ enabled: !p.terminal.enabled }),
+  },
+  {
+    prefId: "terminal.mongoshPath",
+    section: "terminal",
+    labelKey: "settings.terminal.mongoshPath.label",
+    descKey: "settings.terminal.mongoshPath.desc",
+    keywords: "mongosh mongo shell path executable ruta ejecutable",
+    value: text((p) => p.terminal.mongoshPath),
+  },
+  {
+    prefId: "terminal.shellPath",
+    section: "terminal",
+    labelKey: "settings.terminal.shellPath.label",
+    descKey: "settings.terminal.shellPath.desc",
+    keywords: "shell powershell pwsh bash zsh path ruta intérprete",
+    value: text((p) => p.terminal.shellPath),
   },
 
   // ── AI ────────────────────────────────────────────────────────────────────

@@ -79,6 +79,9 @@ pub struct Preferences {
     /// Whether HuginnDB installs updates in the background. See
     /// [`UpdatePrefs`].
     pub updates: UpdatePrefs,
+    /// The terminal panel: whether it is offered, and which `mongosh` and
+    /// shell it starts. See [`TerminalPrefs`].
+    pub terminal: TerminalPrefs,
     /// User-rebound keyboard shortcuts, keyed by action id (e.g.
     /// `"openSettings"`, `"expandSelectedCell"`) to an ordered list of
     /// bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is
@@ -605,6 +608,16 @@ impl Default for ThemePrefs {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct PulsePrefs {
+    /// Whether Pulse is offered at all: its icon in the right activity bar,
+    /// and the background sampler. **On** by default — Pulse shipped visible,
+    /// and an upgrade must not take away a panel someone was using. Off is
+    /// the "I do not monitor from here" switch: the icon goes, and
+    /// `pulse::sampler` skips every tick even for connections whose
+    /// `pulse_enabled` is still set, so turning the module off is a promise
+    /// that it costs nothing rather than only that it is out of sight. The
+    /// per-connection opt-ins are kept, so turning it back on resumes exactly
+    /// what was sampled before.
+    pub enabled: bool,
     /// How often the dock panel / expanded window poll a connection's live
     /// vital signs, in seconds, while that surface is on screen. Frontend-only
     /// — the backend never schedules this tick, `usePulseLive` does — kept
@@ -638,6 +651,7 @@ pub struct PulsePrefs {
 impl Default for PulsePrefs {
     fn default() -> Self {
         Self {
+            enabled: true,
             live_interval_secs: 5,
             history_interval_secs: 60,
             retention_days: 30,
@@ -669,6 +683,41 @@ impl Default for UpdatePrefs {
     }
 }
 
+/// The terminal panel (`crate::terminal`).
+///
+/// **On** by default, unlike the AI panel: a terminal adds no endpoint, sends
+/// nothing anywhere and touches a database only through a `mongosh` the user
+/// installed themselves, signed in with the credentials the connection
+/// already uses. It is the escape hatch for the MongoDB scripts AI tools
+/// write — variables, loops, `printjson` — that the query editor's bounded
+/// parser (`db::mongo::shell`) refuses by design.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct TerminalPrefs {
+    /// Whether the panel is offered: its icon in the right activity bar, and
+    /// the commands that open a session (which refuse while this is off).
+    pub enabled: bool,
+    /// Full path to the `mongosh` executable. Empty means "find it":
+    /// `PATH` first, then the places the official installers put it — a GUI
+    /// app on Linux or macOS does not inherit the login shell's `PATH`, so
+    /// the lookup cannot stop at `PATH` alone. See [`crate::terminal::mongosh`].
+    pub mongosh_path: String,
+    /// Full path to the shell a plain terminal starts. Empty means the
+    /// platform default: PowerShell 7 (`pwsh`) if installed, else Windows
+    /// PowerShell, on Windows; `$SHELL`, else `bash`, else `sh`, elsewhere.
+    pub shell_path: String,
+}
+
+impl Default for TerminalPrefs {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            mongosh_path: String::new(),
+            shell_path: String::new(),
+        }
+    }
+}
+
 impl Default for Preferences {
     fn default() -> Self {
         Self {
@@ -682,6 +731,7 @@ impl Default for Preferences {
             ai: AiPrefs::default(),
             themes: ThemePrefs::default(),
             updates: UpdatePrefs::default(),
+            terminal: TerminalPrefs::default(),
             keybindings: HashMap::new(),
         }
     }
@@ -828,6 +878,20 @@ mod tests {
         let before = r#"{ "version": 1, "editor": { "fontSize": 13 } }"#;
         let parsed: Preferences = serde_json::from_str(before).unwrap();
         assert!(parsed.updates.auto_install);
+    }
+
+    /// Every existing `prefs.json` predates both switches. The terminal is
+    /// offered on upgrade (it is new, and it is the point of the release), and
+    /// Pulse stays exactly as visible — and sampling — as it was.
+    #[test]
+    fn a_blob_without_the_terminal_group_offers_it_and_keeps_pulse_on() {
+        let before = r#"{ "version": 1, "pulse": { "retentionDays": 7 } }"#;
+        let parsed: Preferences = serde_json::from_str(before).unwrap();
+        assert!(parsed.terminal.enabled);
+        assert_eq!(parsed.terminal.mongosh_path, "");
+        assert_eq!(parsed.terminal.shell_path, "");
+        assert!(parsed.pulse.enabled);
+        assert_eq!(parsed.pulse.retention_days, 7, "the rest must survive");
     }
 
     #[test]

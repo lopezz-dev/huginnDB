@@ -11,7 +11,7 @@
  *  - and gives TypeScript end-to-end types for command results.
  */
 
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type {
   InstalledTheme,
   InstalledThemeLibrary,
@@ -20,6 +20,10 @@ import type {
   ThemeUpdateReport,
   VsixPayload,
 } from "@/lib/vscodeTheme/types";
+import type {
+  TerminalEnvironment,
+  TerminalEvent,
+} from "@/lib/terminal/types";
 import type {
   AiChatMessage,
   AiProbeReport,
@@ -1796,4 +1800,69 @@ export const api = {
    *  boot, by `PulseWindow`. */
   takePulseWindowIntent: (label: string) =>
     invoke<string | null>("take_pulse_window_intent", { label }),
+
+  /** Which shell a plain terminal would start, and whether `mongosh` can be
+   *  found (and its version). Spawns `mongosh --version`, so about a second
+   *  on a cold start — call it when the panel or Settings opens, not per
+   *  render. */
+  terminalEnvironment: () =>
+    invoke<TerminalEnvironment>("terminal_environment"),
+
+  /**
+   * Start the user's shell in a new pseudo-terminal of `cols`×`rows`.
+   * `onEvent` receives its output and, last, its exit. Returns the session id
+   * the other `terminal*` calls take.
+   */
+  terminalOpenShell: (
+    cols: number,
+    rows: number,
+    onEvent: (event: TerminalEvent) => void,
+  ) => {
+    const channel = new Channel<TerminalEvent>();
+    channel.onmessage = onEvent;
+    return invoke<string>("terminal_open_shell", {
+      cols,
+      rows,
+      onEvent: channel,
+    });
+  },
+
+  /**
+   * Start `mongosh` signed in as the open MongoDB connection `connectionId`
+   * (a top-level connection, not a per-database view), switched to
+   * `database` when given. The password stays in the backend; refused under
+   * a managed policy that does not allow free queries with every verb.
+   */
+  terminalOpenMongosh: (
+    connectionId: string,
+    database: string | null,
+    cols: number,
+    rows: number,
+    onEvent: (event: TerminalEvent) => void,
+  ) => {
+    const channel = new Channel<TerminalEvent>();
+    channel.onmessage = onEvent;
+    return invoke<string>("terminal_open_mongosh", {
+      connectionId,
+      database,
+      cols,
+      rows,
+      onEvent: channel,
+    });
+  },
+
+  /** Keystrokes or a paste, as xterm.js reports them. */
+  terminalWrite: (id: string, data: string) =>
+    invoke<void>("terminal_write", { id, data }),
+
+  terminalResize: (id: string, cols: number, rows: number) =>
+    invoke<void>("terminal_resize", { id, cols, rows }),
+
+  /** End a session. A no-op for one that already exited. */
+  terminalClose: (id: string) => invoke<void>("terminal_close", { id }),
+
+  /** End every session this window has open — what a reloaded page calls
+   *  once, since the previous page's channels died with it. */
+  terminalCloseWindowSessions: () =>
+    invoke<number>("terminal_close_window_sessions"),
 };

@@ -119,6 +119,14 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 url = "2"
 parking_lot = "0.12"
+# Pseudo-terminals for the terminal panel (`crate::terminal`): ConPTY on
+# Windows, `openpty` on Linux/macOS, behind one API. A terminal needs a real
+# PTY rather than piped stdio — `mongosh` and every interactive shell check
+# `isatty` and drop their prompt, line editing and colours without one. This
+# is WezTerm's crate, the most widely used of its kind; the community
+# `tauri-plugin-pty` wraps the same crate with less audited glue, so we use
+# it directly and keep the session registry our own.
+portable-pty = "0.9"
 # The OS account a managed policy assigns a role to (`policy::current_user`). Read
 # from the operating system (`GetUserNameW`, `getpwuid`), never from `USERNAME`
 # / `USER`, which whoever launches the process controls. Already in the tree

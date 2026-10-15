@@ -276,6 +276,11 @@ schema-variance analysis (type distribution across a sample).
 - **Hook:** extend the `shell.rs` parser + `query.rs` executor; the parser is
   designed to reject unknown methods with a clear error, so additions are
   additive.
+- Arbitrary JavaScript (variables, loops, `printjson`) is deliberately **not**
+  on this path: the terminal panel runs the user's own `mongosh` signed in as
+  the connection (gotcha #107), which is where a script an AI tool wrote
+  belongs. What stays here is what the editor should do *natively* — grid
+  results, `explain`, per-statement tabs.
 - The **visual aggregation builder** that used to be listed here is ✅ **done** —
   see item #12 below.
 - `explain` is ✅ **done for `find`**: the grid's query panel reads the plan of

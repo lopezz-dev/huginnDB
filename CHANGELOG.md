@@ -6,6 +6,49 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **A terminal in the bottom dock, with `mongosh` signed in as your MongoDB
+  connection.**
+  - When you ask an AI tool to check something in MongoDB, it usually answers
+    with a `mongosh` script (variables, loops, `printjson`), which the query
+    editor refuses: it accepts one statement at a time and no JavaScript. Those
+    scripts can now be pasted into `mongosh` inside HuginnDB and run as
+    written.
+  - The **Terminal** icon in the right activity bar (or `` Mod+Shift+` ``) opens
+    it next to the Console. Its **+** menu starts `mongosh` on the current
+    MongoDB connection, opened on the database of the tab you were on, or
+    your own shell: PowerShell 7 (else Windows PowerShell) on Windows, your
+    `$SHELL` (else `bash`) elsewhere. Each session is a tab, and they keep
+    running while the dock is collapsed.
+  - `mongosh` signs in with the connection's own user, password and SSH
+    tunnel, so the connection has to be open first. The password is passed in
+    `mongosh`'s environment, never on its command line, and is removed before
+    the prompt appears. Disconnecting closes the `mongosh` sessions on that
+    connection.
+  - `mongosh` is not bundled. HuginnDB uses the one you installed, found on
+    `PATH` or where the official installers put it; Settings → **Terminal**
+    shows which one and its version, and accepts a path.
+  - With the focus in the terminal, shell keys such as `Ctrl+R` or `Ctrl+B`
+    reach the shell instead of the app. Copy and paste are
+    `Ctrl+Shift+C` / `Ctrl+Shift+V`.
+  - Under a managed policy, `mongosh` is only available on connections where
+    you may run free-form queries that read and write anything. The plain
+    shell is not affected.
+- **Pulse and the AI panel can be hidden.**
+  - Settings → Pulse has a new **Enable Pulse** switch, on by default. Off
+    removes Pulse from the activity bar, the View menu, the command palette
+    and its shortcut, and stops the background sampler. The connections you
+    had opted in are kept for when you turn it back on.
+  - The AI panel's existing switch now hides its icon too while it is off.
+  - The terminal has the same switch, in Settings → Terminal; off also
+    closes every open session.
+
+### Changed
+
+- **The status bar's console button switches to the Console when the
+  Terminal is showing**, instead of closing the dock.
+
 ## [1.33.0] — 2026-10-14
 
 ### Fixed
