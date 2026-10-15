@@ -2,7 +2,7 @@
  * The context menu a **database node** carries, wherever that node is drawn.
  *
  * There are two such places and they used to have nothing in common. In
- * multi-DB mode `MultiDbExplorer`'s `DatabaseRoot` owned this menu outright;
+ * multi-DB mode the database row (now `DatabaseRow`) owned this menu outright;
  * in single-DB mode there was no database node at all, so the two actions that
  * are unambiguously *about a database* — creating a collection in it, dropping
  * it — had been pushed up onto the connection's own menu for want of anywhere

@@ -59,10 +59,12 @@ src/                       frontend
     ui/                    shadcn primitives
     common/, connection/, schema/, query/, grid/, menus/, shell/, settings/,
                            aggregation/, indexes/, jsonSchema/
-                           (a tree/grid is one file per level: SchemaExplorer →
-                           Single/MultiDbExplorer → SchemaTableSection →
-                           SchemaTableRow; DataGrid → GridToolbar + GridRow,
-                           with its hooks under lib/grid/)
+                           (the schema tree is one flat virtualised list —
+                           lib/schema/flatTree.ts builds the rows, FlatTreeRow
+                           dispatches each kind to DatabaseRow / SchemaNodeRows /
+                           SchemaTableSection / SchemaTableRow, ADR #108;
+                           a grid is one file per level: DataGrid →
+                           GridToolbar + GridRow, hooks under lib/grid/)
   stores/                  Zustand stores, themselves grouped:
     session/               connections, tabs, schema, environments, ui, treeSearch,
                            persistedTabs

@@ -389,15 +389,15 @@ export async function hydrateTabState(connectionId: string): Promise<void> {
  * does for a top-level connection via `hydrateTabState`.
  *
  * A `<parentId>::db::<database>` child is never "connected" in the
- * `useConnections`/`connect()` sense: `SchemaExplorer.tsx` opens one directly
- * via `api.openDatabaseView` the first time a database node is expanded (or a
+ * `useConnections`/`connect()` sense: the schema tree opens one directly
+ * (`useDatabaseViews.ensure`) the first time a database node is expanded (or a
  * per-database action needs it), entirely independent of the top-level
  * connection lifecycle. Nothing about that path ever called `hydrateTabState`
  * or `attachSubscriptions`, so a table/query/security tab opened against a
  * child id was invisible to this module — never saved, never restored,
  * regardless of whether the environment switched, the app restarted, or
- * anything else. Every call site in `SchemaExplorer.tsx` that opens a
- * database view MUST go through this instead of calling
+ * anything else. Every call site that opens a database view for the tree
+ * MUST go through this instead of calling
  * `api.openDatabaseView` directly, or its tabs silently stop persisting
  * again.
  *
@@ -454,9 +454,9 @@ export function subscribedConnectionIds(): string[] {
  * which was the actual bug behind a report of "tabs come back but the split
  * doesn't": a table/query/security tab against a multi-DB "database view"
  * child (`<parent>::db::<database>`) is NOT restored by `restoreSession`'s
- * reconnect loop — it comes back later, whenever `SchemaExplorer`'s own
- * auto-re-expand effect (for a database node that was expanded before) gets
- * around to calling `openTrackedDatabaseView`, a completely separate React
+ * reconnect loop — it comes back later, whenever the schema tree's needs
+ * effect (`useSchemaTreeNeeds`, for a database node that was expanded before)
+ * gets around to calling `openTrackedDatabaseView`, a completely separate React
  * component's effect on its own schedule. A saved split whose panels all
  * belonged to such a child meant `useTabs` was still empty by the time this
  * ran, the old `if (tabs.length > 0)` gate skipped the whole restore, and the

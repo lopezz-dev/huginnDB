@@ -13,10 +13,11 @@
  * state and the `connectionGroupExpandMode` preference behave identically in
  * all of them — but each surface keeps its own session-local overrides after
  * that, so folding a folder in the connections manager while this tree is
- * open no longer folds it here too. The subtree is the same
- * `SchemaExplorer` the panel rendered before — it lost its panel-level title,
- * icon strip and scroll container, since the row above it now owns all three
- * (its right-click menu is [[ConnectionActionsMenu]], its neighbour here).
+ * open no longer folds it here too. Expanding one draws its schema subtree
+ * underneath — and since ADR #108 the whole panel, folders to columns, is one
+ * flat virtualised list (`buildFlatTree` → `FlatTreeRow`), so only the rows
+ * near the viewport are mounted however large a schema is. The connection
+ * row's right-click menu is [[ConnectionActionsMenu]], its neighbour here.
  *
  * Expansion defaults to "expanded when connected" and only the user's folds are
  * stored (`LaunchState.collapsedConnections`, per environment). Keeping the
@@ -43,6 +44,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useTranslation } from "react-i18next";
 import { DatabaseBackup, DatabaseZap, ListFilter, PlugZap } from "lucide-react";
 import { SearchField } from "@/components/ui/search-field";
@@ -61,9 +63,16 @@ import {
   useTreeMatchCounts,
 } from "@/lib/schema/useTreeMatchCounts";
 import { rowMatchState, totalMatches } from "@/lib/schema/treeMatches";
+import { buildFlatTree, type FlatRow } from "@/lib/schema/flatTree";
+import { useOpenTableKeys } from "@/lib/schema/useOpenTableKeys";
+import { useSchemaTreeNeeds } from "@/lib/schema/useSchemaTreeNeeds";
 import { warmForSearch } from "@/lib/schema/warmForSearch";
 import { scopeLabel } from "@/lib/schema/filterScope";
 import { useTreeSearch } from "@/stores/session/treeSearch";
+import { useSchema } from "@/stores/session/schema";
+import { useDatabaseViews } from "@/stores/session/databaseViews";
+import { useOriginSync } from "@/stores/sync/originSync";
+import { usePreferences } from "@/stores/preferences/preferences";
 import {
   connectAndWarm,
   disconnectAll,
@@ -95,7 +104,8 @@ import {
   ConnectionTreeRow,
   type ConnectionRowActions,
 } from "@/components/connection/ConnectionTreeRow";
-import { GroupHeader } from "@/components/connection/GroupHeader";
+import { FlatTreeRow } from "@/components/connection/FlatTreeRow";
+import { SchemaTreeDialogs } from "@/components/schema/dialogs/SchemaTreeDialogs";
 import type { TreeConnectionInput } from "@/lib/schema/treeMatches";
 import type { ConnectionProfile } from "@/types";
 
@@ -113,7 +123,11 @@ export function ConnectionsTree() {
   // this the tree's SECOND wide subscription to it (on top of
   // `useTreeMatchCounts`'s own), so any schema write anywhere re-rendered
   // every row regardless of whether its own loading state had changed.
-  const loadingConnectionIds = useLoadingConnectionIds();
+  // The tree's one wide subscription to the schema map: the match counts, the
+  // row spinner and the flattened rows all derive from this single read (see
+  // `useTreeMatchCounts`).
+  const byConnection = useSchema((s) => s.byConnection);
+  const loadingConnectionIds = useLoadingConnectionIds(byConnection);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);
   // The folded set (see `useUi`): a row follows its pool unless the user said
@@ -144,28 +158,56 @@ export function ConnectionsTree() {
    * Deliberately a local `onKeyDown` rather than three more catalogue actions:
    * these are a widget's internal navigation, like the arrows inside a
    * `<select>`, and putting them in Settings would invite someone to rebind
-   * "move down" globally. Rows are found in DOM order via `data-tree-row`, so
-   * folders and nesting need no bookkeeping here.
+   * "move down" globally.
+   *
+   * Walks the flat row list rather than the DOM. It used to collect
+   * `[data-tree-row]` with `querySelectorAll`, which only works while every
+   * row is mounted — and the tree is virtualised now (ADR #108), so the next
+   * connection can be ten thousand tables away and not in the DOM at all. The
+   * target is scrolled into the window first and focused once it renders.
    */
   function moveRowFocus(from: HTMLElement | null, delta: 1 | -1): boolean {
-    const rows = Array.from(
-      rowsRef.current?.querySelectorAll<HTMLElement>("[data-tree-row]") ?? [],
-    );
-    if (rows.length === 0) return false;
-    const index = from ? rows.indexOf(from) : -1;
-    const next = index + delta;
+    const rows = flatRef.current;
+    const item = from?.closest<HTMLElement>("[data-index]");
+    const current = item ? Number(item.dataset.index) : -1;
+    let next = -1;
+    if (delta === 1) {
+      next = rows.findIndex((r, i) => i > current && r.kind === "connection");
+    } else {
+      for (let i = Math.min(current, rows.length) - 1; i >= 0; i -= 1) {
+        if (rows[i].kind === "connection") {
+          next = i;
+          break;
+        }
+      }
+    }
     if (next < 0) {
+      if (delta === 1) return false;
       // Up from the first row goes back to where the search is typed.
       filterInputRef.current?.focus();
       return true;
     }
-    if (next >= rows.length) return false;
-    rows[next]?.focus();
+    focusRowAt(next);
     return true;
   }
 
+  /** Bring row `index` into the window and focus its `[data-tree-row]` once
+   *  the virtualiser has rendered it — a few frames at most. */
+  function focusRowAt(index: number) {
+    virtualizerRef.current?.scrollToIndex(index, { align: "auto" });
+    let attempts = 10;
+    const tryFocus = () => {
+      const el = rowsRef.current?.querySelector<HTMLElement>(
+        `[data-index="${index}"] [data-tree-row]`,
+      );
+      if (el) el.focus();
+      else if (attempts-- > 0) requestAnimationFrame(tryFocus);
+    };
+    tryFocus();
+  }
+
   // DataGrip-style subset of connections to show, one level up from the
-  // per-connection database subset (`useVisibleDatabases`, SchemaExplorer.tsx).
+  // per-connection database subset (`useVisibleDatabases`).
   // Lives in `useUi`, persisted per environment via
   // `LaunchState.visibleConnections` — not in prefs, so switching environments
   // doesn't drag one's filter into another's tree. The level below now resolves
@@ -212,7 +254,12 @@ export function ConnectionsTree() {
         })),
     [visibleProfiles, active, databaseVisibility],
   );
-  const matchCounts = useTreeMatchCounts(treeConnections, patterns, scope);
+  const matchCounts = useTreeMatchCounts(
+    treeConnections,
+    byConnection,
+    patterns,
+    scope,
+  );
   const totals = useMemo(
     () => totalMatches(matchCounts.values()),
     [matchCounts],
@@ -542,12 +589,93 @@ export function ConnectionsTree() {
         edited={!!editedConnections[p.id]}
         summary={summary}
         matchState={summary ? rowMatchState(summary) : null}
-        patterns={patterns}
         actionsRef={rowActionsRef}
       />
     );
   }
 
+  // Everything `buildFlatTree` reads besides the schema map, each read the way
+  // gotcha #1 requires: the stored reference, never a derived object.
+  const vanishedById = useOriginSync((s) => s.vanished);
+  const vanished = useMemo(
+    () => new Set(Object.keys(vanishedById)),
+    [vanishedById],
+  );
+  const views = useDatabaseViews((s) => s.byId);
+  const activeDatabaseByConnection = useUi(
+    (s) => s.activeDatabaseByConnection,
+  );
+  const isGroupCollapsed = groupCollapse.isCollapsed;
+
+  /**
+   * The whole tree as rows (ADR #108).
+   *
+   * Rebuilt whenever anything it shows changes — any schema write, any fold —
+   * which is cheap next to what it replaced: walking ten thousand table
+   * objects is a millisecond, mounting ten thousand `TableRow`s was the
+   * freeze. The grouping inside is memoised per `(tables, patterns)`, so a
+   * column load anywhere regroups nothing.
+   */
+  const flat = useMemo(
+    () =>
+      buildFlatTree({
+        buckets,
+        allHidden: profiles.length > 0 && visibleProfiles.length === 0,
+        isGroupCollapsed,
+        // `isExpanded` closes over this render's folds and match counts; every
+        // one of its inputs is in the dependency list below.
+        isConnectionExpanded: isExpanded,
+        active,
+        vanished,
+        byConnection,
+        patterns,
+        scope,
+        matchCounts,
+        visibleDatabases: (p) =>
+          resolveVisibleDatabases(databaseVisibility[p.id], p.visible_databases),
+        subsetIsLocal: (id) => databaseVisibility[id] !== undefined,
+        activeDatabaseByConnection,
+        views,
+      }),
+    [
+      buckets,
+      profiles.length,
+      visibleProfiles.length,
+      isGroupCollapsed,
+      active,
+      collapsed,
+      filtering,
+      foldOverrides,
+      matchCounts,
+      vanished,
+      byConnection,
+      patterns,
+      scope,
+      databaseVisibility,
+      activeDatabaseByConnection,
+      views,
+    ],
+  );
+  useSchemaTreeNeeds(flat.needs);
+  const flatRef = useRef<FlatRow[]>(flat.rows);
+  flatRef.current = flat.rows;
+
+  const virtualizer = useVirtualizer({
+    count: flat.rows.length,
+    getScrollElement: () => rowsRef.current,
+    estimateSize: (i) => estimateRowHeight(flat.rows[i]),
+    getItemKey: (i) => flat.rows[i].key,
+    // The `py-1.5` the scroll container used to carry, as the virtualiser's
+    // own padding so the first and last rows keep it.
+    paddingStart: 6,
+    paddingEnd: 6,
+    overscan: 12,
+  });
+  const virtualizerRef = useRef(virtualizer);
+  virtualizerRef.current = virtualizer;
+
+  const metric = usePreferences((s) => s.prefs.ui.schemaTableMetric);
+  const openKeys = useOpenTableKeys();
   if (profiles.length === 0) {
     return <EmptyState icon={DatabaseZap} title={t("connectionsTree.empty")} />;
   }
@@ -733,32 +861,35 @@ export function ConnectionsTree() {
           </div>
         )}
       </div>
-      <div ref={rowsRef} className="flex-1 overflow-y-auto py-1.5 pr-1">
-        {visibleProfiles.length === 0 && (
-          <div className="px-3 py-2 text-xs text-muted-foreground">
-            {t("connectionsTree.selectConnections.allHidden")}
-          </div>
-        )}
-        {buckets.ungrouped.map((p) => renderConnectionRow(p))}
-        {buckets.groups.map(({ name, items }) => (
-          <div key={name}>
-            <GroupHeader
-              name={name}
-              count={items.length}
-              collapsed={groupCollapse.isCollapsed(name)}
-              onToggle={groupCollapse.toggle}
-            />
-            {/* One guide per folder, nested the same way a connection's own
-                subtree line nests under it — indentation reads as depth
-                everywhere in this tree, not just here. */}
-            {!groupCollapse.isCollapsed(name) && (
-              <div className="ml-3 border-l border-border/35 pl-0.5">
-                {items.map((p) => renderConnectionRow(p))}
-              </div>
-            )}
-          </div>
-        ))}
+      {/* One virtualised list for the whole tree (ADR #108): only the rows
+          near the viewport are mounted, so a section with ten thousand tables
+          costs what its visible thirty cost. Rows are measured as they
+          render — most are a fixed ~24px, but notices and errors wrap. */}
+      <div ref={rowsRef} className="flex-1 overflow-y-auto pr-1">
+        <div
+          className="relative w-full"
+          style={{ height: virtualizer.getTotalSize() }}
+        >
+          {virtualizer.getVirtualItems().map((item) => (
+            <div
+              key={item.key}
+              data-index={item.index}
+              ref={virtualizer.measureElement}
+              className="absolute left-0 top-0 w-full"
+              style={{ transform: `translateY(${item.start}px)` }}
+            >
+              <FlatTreeRow
+                row={flat.rows[item.index]}
+                renderConnection={renderConnectionRow}
+                onToggleGroup={groupCollapse.toggle}
+                metric={metric}
+                openKeys={openKeys}
+              />
+            </div>
+          ))}
+        </div>
       </div>
+      <SchemaTreeDialogs />
       {visibilityPickerOpen && (
         <ConnectionVisibilityDialog
           profiles={profiles}
@@ -771,8 +902,47 @@ export function ConnectionsTree() {
 }
 
 /**
+ * A first guess at a row's height, before the virtualiser measures it.
+ *
+ * Only the guess: every rendered row is measured (`measureElement`), so a
+ * wrong number costs a scrollbar that adjusts, never a wrong layout. Close
+ * guesses matter for the rows that are never rendered — they are what the
+ * total height, and so the scrollbar, is made of — which is why the two that
+ * come in thousands (tables and columns) are the exact ~24px and ~22px they
+ * measure.
+ */
+function estimateRowHeight(row: FlatRow | undefined): number {
+  switch (row?.kind) {
+    case "connection":
+      return 32;
+    case "group":
+    case "database":
+    case "bound-database":
+    case "schema":
+      return 28;
+    case "section":
+    case "indexes":
+    case "table":
+      return 24;
+    case "column":
+    case "columns-error":
+      return 22;
+    case "skeleton":
+      return row.variant === "columns" ? 46 : 22 + row.rows * 12;
+    case "no-databases":
+      return 80;
+    case "load-error":
+      return 40;
+    case "origin-notice":
+      return 64;
+    default:
+      return 28;
+  }
+}
+
+/**
  * DataGrip-style "choose which connections to show" picker, one level up
- * from `DatabaseVisibilityDialog` (SchemaExplorer.tsx). Persisted per
+ * from `DatabaseVisibilityDialog`. Persisted per
  * environment via `LaunchState.visibleConnections` rather than on a profile,
  * since it spans every saved connection rather than one — and
  * rather than in global prefs, so the filter doesn't follow the user across

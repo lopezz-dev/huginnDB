@@ -1,5 +1,7 @@
 /**
- * One connection row of `ConnectionsTree`, plus the subtree it expands into.
+ * One connection row of `ConnectionsTree` — the row only. Its subtree is rows
+ * of their own in the tree's one virtualised list (ADR #108), so an expanded
+ * connection no longer mounts everything under it.
  *
  * Extracted out of `ConnectionsTree.renderConnection`, which returned this
  * exact JSX from a plain function CALLED per row (`renderConnection(p)`),
@@ -48,7 +50,6 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import { ConnectionActionsMenu } from "@/components/connection/ConnectionActionsMenu";
-import { SchemaExplorer } from "@/components/schema/SchemaExplorer";
 import { cn } from "@/lib/utils";
 import type {
   ConnectionMatchSummary,
@@ -78,7 +79,6 @@ interface ConnectionTreeRowProps {
   edited: boolean;
   summary: ConnectionMatchSummary | undefined;
   matchState: RowMatchState | null;
-  patterns: string[];
   actionsRef: MutableRefObject<ConnectionRowActions>;
 }
 
@@ -95,7 +95,6 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
   edited,
   summary,
   matchState,
-  patterns,
   actionsRef,
 }: ConnectionTreeRowProps) {
   const { t } = useTranslation();
@@ -116,210 +115,175 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
     (matchState === "none" || matchState === "out-of-scope");
 
   return (
-    <div>
-      <ConnectionActionsMenu
-        connectionId={p.id}
-        onConnect={() => actionsRef.current.onRowClick(p)}
-        onDisconnect={() => actionsRef.current.onDisconnect(p)}
-      >
-        <div
-          role="button"
-          tabIndex={0}
-          data-tree-row
-          onClick={() => actionsRef.current.onRowClick(p)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              actionsRef.current.onRowClick(p);
-              return;
-            }
-            if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-              if (
-                actionsRef.current.moveRowFocus(
-                  e.currentTarget,
-                  e.key === "ArrowDown" ? 1 : -1,
-                )
-              ) {
-                e.preventDefault();
-              }
-            }
-          }}
-          title={
-            isLost
-              ? t("connections.lost", { message: lostMessage })
-              : isEdited
-                ? t("connections.edited")
-                : p.name
+    <ConnectionActionsMenu
+      connectionId={p.id}
+      onConnect={() => actionsRef.current.onRowClick(p)}
+      onDisconnect={() => actionsRef.current.onDisconnect(p)}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        data-tree-row
+        onClick={() => actionsRef.current.onRowClick(p)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            actionsRef.current.onRowClick(p);
+            return;
           }
-          className={cn(
-            "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent focus-visible:ring-2 focus-visible:ring-brand/40",
-            isLost && "bg-destructive/10",
-            isEdited && "bg-warning/10",
-            dimmedByFilter && "opacity-55 hover:opacity-100",
-            // Selected connection: the same brand rail the active table row
-            // carries in `SchemaExplorer`, so "this is the one you're in"
-            // reads identically at both levels of the tree, plus a hairline
-            // blue edge as the card's quiet version of an active border.
-            !isLost &&
-              !isEdited &&
-              isSelected &&
-              "bg-brand/10 ring-1 ring-inset ring-brand/25 shadow-[inset_2px_0_0_var(--brand)]",
-          )}
-        >
-          {isBusy ? (
-            <Spinner size="sm" className="shrink-0 text-muted-foreground" />
-          ) : expanded ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          )}
-          {/* Identity glyph: the driver's brand mark now leads the row —
-              something recognisable at a glance beats a plain bullet — with
-              live/idle/lost folded into a small corner dot instead of a
-              separate one. Same brand/destructive vocabulary the status bar
-              uses, just relocated onto the icon. */}
-          <span className="relative inline-flex shrink-0">
-            <DriverBadge driver={p.driver} />
-            <span
-              className={cn(
-                "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-background",
-                isLost
-                  ? "bg-destructive"
-                  : isEdited
-                    ? "bg-warning"
-                    : isActive
-                      ? "bg-brand"
-                      : "bg-muted-foreground/40",
-              )}
-            />
-          </span>
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            if (
+              actionsRef.current.moveRowFocus(
+                e.currentTarget,
+                e.key === "ArrowDown" ? 1 : -1,
+              )
+            ) {
+              e.preventDefault();
+            }
+          }
+        }}
+        title={
+          isLost
+            ? t("connections.lost", { message: lostMessage })
+            : isEdited
+              ? t("connections.edited")
+              : p.name
+        }
+        className={cn(
+          "group flex cursor-pointer items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-150 hover:bg-accent focus-visible:ring-2 focus-visible:ring-brand/40",
+          isLost && "bg-destructive/10",
+          isEdited && "bg-warning/10",
+          dimmedByFilter && "opacity-55 hover:opacity-100",
+          // Selected connection: the same brand rail the active table row
+          // carries in `SchemaTableRow`, so "this is the one you're in"
+          // reads identically at both levels of the tree, plus a hairline
+          // blue edge as the card's quiet version of an active border.
+          !isLost &&
+            !isEdited &&
+            isSelected &&
+            "bg-brand/10 ring-1 ring-inset ring-brand/25 shadow-[inset_2px_0_0_var(--brand)]",
+        )}
+      >
+        {isBusy ? (
+          <Spinner size="sm" className="shrink-0 text-muted-foreground" />
+        ) : expanded ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        )}
+        {/* Identity glyph: the driver's brand mark now leads the row —
+            something recognisable at a glance beats a plain bullet — with
+            live/idle/lost folded into a small corner dot instead of a
+            separate one. Same brand/destructive vocabulary the status bar
+            uses, just relocated onto the icon. */}
+        <span className="relative inline-flex shrink-0">
+          <DriverBadge driver={p.driver} />
           <span
             className={cn(
-              "flex-1 truncate",
-              isSelected && "font-semibold",
-              !isActive && "text-muted-foreground",
+              "absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-background",
+              isLost
+                ? "bg-destructive"
+                : isEdited
+                  ? "bg-warning"
+                  : isActive
+                    ? "bg-brand"
+                    : "bg-muted-foreground/40",
             )}
-          >
-            {p.name}
-          </span>
-          {/* One of the three explicit ways into a scope (the others are this
-              row's context menu and a database row's). Offered only while
-              something is typed: narrowing an empty search would leave a chip
-              with nothing to modify. */}
-          {filtering && isActive && !isScopeTarget && (
-            <button
-              type="button"
-              title={t("connectionsTree.filter.scopeHere")}
-              aria-label={t("connectionsTree.filter.scopeHere")}
-              className="shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 transition-colors hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-              onClick={(e) => {
-                e.stopPropagation();
-                actionsRef.current.onNarrowToConnection(p.id);
-              }}
-            >
-              <ListFilter className="h-3 w-3" />
-            </button>
-          )}
-          {filtering && (
-            <MatchBadge
-              isActive={isActive}
-              count={summary?.count ?? 0}
-              cold={summary?.coldDatabases.length ?? 0}
-              failed={summary?.failedDatabases.length ?? 0}
-              failure={summary?.failed ?? null}
-              state={matchState}
-            />
-          )}
-          <VanishedOriginMark profileId={p.id} />
-          {isLost || isEdited ? (
-            <button
-              type="button"
-              title={t(
-                isLost
-                  ? "connections.reconnectTooltip"
-                  : "connections.editedTooltip",
-              )}
-              className={cn(
-                "flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium transition-colors",
-                isLost
-                  ? "text-destructive hover:bg-destructive/20"
-                  : "text-warning hover:bg-warning/20",
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                actionsRef.current.onReconnect(p);
-              }}
-            >
-              <RotateCw className="h-3 w-3" />
-              {t("connections.reconnect")}
-            </button>
-          ) : isActive ? (
-            <button
-              type="button"
-              title={t("statusBar.disconnect")}
-              disabled={isDisconnecting}
-              // Hidden until hover/focus so a long list of live connections
-              // isn't a wall of buttons, but always shown for the focused row
-              // — and for one that is mid-teardown, which is the whole point
-              // of showing that state at all.
-              className={cn(
-                "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100",
-                isSelected || isDisconnecting ? "opacity-100" : "opacity-0",
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                actionsRef.current.onDisconnect(p);
-              }}
-            >
-              {/* `PlugZap`, the same mark the header's "disconnect all"
-                  carries, not an ✕: an ✕ on a row reads as "remove this
-                  connection", which is a different and much worse action
-                  than closing its pool. */}
-              {isDisconnecting ? (
-                <Spinner size="sm" />
-              ) : (
-                <PlugZap className="h-3.5 w-3.5" />
-              )}
-            </button>
-          ) : (
-            <Plug className="h-3 w-3 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100" />
-          )}
-        </div>
-      </ConnectionActionsMenu>
-
-      {/* Only a live connection has a subtree to show. An expanded-but-idle row
-          can't happen (disconnecting drops the override), but the guard is what
-          makes that true rather than incidental. Nesting this the same way as
-          a folder's own guide (below) is what makes the line read as one
-          continuous tree rather than a per-row accent: a connection inside a
-          folder naturally sits one guide deeper than an ungrouped one. */}
-      {expanded && isActive && (
-        <div
-          className="ml-3 border-l border-border/35 pl-0.5"
-          // With the filter active there can be thousands of rows across
-          // every open connection; `content-visibility: auto` skips style
-          // recalc/layout/paint for whatever's outside the scroll viewport
-          // (`rowsRef`'s `overflow-y-auto` below). Unlike virtualizing,
-          // this does NOT remove nodes from the DOM, so `moveRowFocus`
-          // (which walks `[data-tree-row]` via `querySelectorAll`) keeps
-          // working unchanged — that's the whole reason this is CSS and
-          // not a virtualizer. `contain-intrinsic-size`'s guess only
-          // matters before this subtree has ever been measured once; the
-          // browser remembers the real size afterward and re-estimates
-          // only if it goes offscreen again before ever being painted.
-          style={{
-            contentVisibility: "auto",
-            containIntrinsicSize: "auto 300px",
-          }}
-        >
-          <SchemaExplorer
-            connectionId={p.id}
-            patterns={patterns}
-            summary={summary}
           />
-        </div>
-      )}
-    </div>
+        </span>
+        <span
+          className={cn(
+            "flex-1 truncate",
+            isSelected && "font-semibold",
+            !isActive && "text-muted-foreground",
+          )}
+        >
+          {p.name}
+        </span>
+        {/* One of the three explicit ways into a scope (the others are this
+            row's context menu and a database row's). Offered only while
+            something is typed: narrowing an empty search would leave a chip
+            with nothing to modify. */}
+        {filtering && isActive && !isScopeTarget && (
+          <button
+            type="button"
+            title={t("connectionsTree.filter.scopeHere")}
+            aria-label={t("connectionsTree.filter.scopeHere")}
+            className="shrink-0 rounded-sm p-0.5 text-muted-foreground opacity-0 transition-colors hover:bg-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+            onClick={(e) => {
+              e.stopPropagation();
+              actionsRef.current.onNarrowToConnection(p.id);
+            }}
+          >
+            <ListFilter className="h-3 w-3" />
+          </button>
+        )}
+        {filtering && (
+          <MatchBadge
+            isActive={isActive}
+            count={summary?.count ?? 0}
+            cold={summary?.coldDatabases.length ?? 0}
+            failed={summary?.failedDatabases.length ?? 0}
+            failure={summary?.failed ?? null}
+            state={matchState}
+          />
+        )}
+        <VanishedOriginMark profileId={p.id} />
+        {isLost || isEdited ? (
+          <button
+            type="button"
+            title={t(
+              isLost
+                ? "connections.reconnectTooltip"
+                : "connections.editedTooltip",
+            )}
+            className={cn(
+              "flex shrink-0 items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium transition-colors",
+              isLost
+                ? "text-destructive hover:bg-destructive/20"
+                : "text-warning hover:bg-warning/20",
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              actionsRef.current.onReconnect(p);
+            }}
+          >
+            <RotateCw className="h-3 w-3" />
+            {t("connections.reconnect")}
+          </button>
+        ) : isActive ? (
+          <button
+            type="button"
+            title={t("statusBar.disconnect")}
+            disabled={isDisconnecting}
+            // Hidden until hover/focus so a long list of live connections
+            // isn't a wall of buttons, but always shown for the focused row
+            // — and for one that is mid-teardown, which is the whole point
+            // of showing that state at all.
+            className={cn(
+              "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-destructive/15 hover:text-destructive group-hover:opacity-100",
+              isSelected || isDisconnecting ? "opacity-100" : "opacity-0",
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              actionsRef.current.onDisconnect(p);
+            }}
+          >
+            {/* `PlugZap`, the same mark the header's "disconnect all"
+                carries, not an ✕: an ✕ on a row reads as "remove this
+                connection", which is a different and much worse action
+                than closing its pool. */}
+            {isDisconnecting ? (
+              <Spinner size="sm" />
+            ) : (
+              <PlugZap className="h-3.5 w-3.5" />
+            )}
+          </button>
+        ) : (
+          <Plug className="h-3 w-3 shrink-0 text-muted-foreground/40 opacity-0 transition-opacity group-hover:opacity-100" />
+        )}
+      </div>
+    </ConnectionActionsMenu>
   );
 });
 

@@ -46,6 +46,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The Schema panel stays responsive however many tables a database has.**
+  Opening a section with 10,000 tables used to mount all 10,000 rows at
+  once, each with its own context menu, and the panel froze. The tree is now
+  one virtualised list from folders down to columns, and only the rows near
+  the viewport exist at any time. It looks and behaves as before:
+  - same guides, menus and filter;
+  - the arrow keys still move between connection rows, scrolling to one that
+    is far away;
+  - an expanded database far down the list still opens its pool on launch, so
+    its saved tabs come back.
 - **A database with thousands of tables shows its table list right away.**
   Row counts and sizes now arrive a moment after the names on every driver,
   instead of only on MongoDB. Reading them is the part that grows with the

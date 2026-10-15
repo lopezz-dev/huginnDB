@@ -61,7 +61,7 @@ input[type="password"]::-ms-clear {
     /* Data-semantic accent hues (text/icon only — no surface, so no
        foreground pair). `pk` = primary-key marker, `fk` = foreign-key marker,
        `numeric` = numeric cell values. These were hard-coded as
-       amber-400 / sky-400 across DataGrid + SchemaExplorer (a deliberate
+       amber-400 / sky-400 across DataGrid + the schema tree (a deliberate
        semantic pair from the earlier design pass, but theme-blind); tokenising
        them lets custom themes recolour type/key hints. Light defaults are
        darker so they stay legible on a white surface. Kept out of the

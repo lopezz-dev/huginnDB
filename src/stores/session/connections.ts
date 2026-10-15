@@ -25,6 +25,7 @@ import {
 } from "@/stores/session/persistedTabs";
 import { useConnectionHealth } from "@/stores/session/connectionHealth";
 import { useSchema } from "@/stores/session/schema";
+import { useDatabaseViews } from "@/stores/session/databaseViews";
 import { useTabs } from "@/stores/session/tabs";
 import { clearProtectedPanelsForConnection } from "@/lib/dockview";
 import type { ConnectionProfile, DeleteProfilesReport } from "@/types";
@@ -323,6 +324,10 @@ export const useConnections = create<ConnectionsState>((set, get) => ({
       tabsState.closeForConnection(childId);
       schemaState.drop(childId);
     }
+    // The tree's record of which views it opened goes with them: the backend
+    // swept those pools, and a stale "open" would let the next expand skip
+    // `open_database_view` and read from a child id that no longer exists.
+    useDatabaseViews.getState().forgetParent(id);
 
     // Release any panel `hydrateWorkspaceLayout` restored from a saved split
     // whose tab (this connection's own, or a `::db::` child's) hadn't shown up
