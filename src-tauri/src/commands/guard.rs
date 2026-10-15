@@ -82,6 +82,17 @@ pub(crate) fn free_sql(state: &AppState, connection_id: &str, text: &str) -> App
     )
 }
 
+/// A `mongosh` session signed in as the connection (`commands::terminal`).
+///
+/// Free text with every verb: inside `mongosh` any collection can be read and
+/// anything can be written or dropped, and nothing the app sees afterwards —
+/// keystrokes, not statements — could be checked against the policy. So it is
+/// asked for up front as the widest free text there is, and refused under any
+/// rule that limits relations (D3) or withholds a write or DDL.
+pub(crate) fn mongosh(state: &AppState, connection_id: &str) -> AppResult<()> {
+    require(state, connection_id, Need::FreeSql(Verbs::ALL))
+}
+
 /// Several statements run as one batch (the editor's "run all", a SQL file
 /// import): whatever any of them does.
 pub(crate) fn free_sql_batch(
@@ -252,6 +263,8 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("view::preview_view_change", "read"),
     ("query::execute_query", "free_sql"),
     ("query::execute_batch", "free_sql"),
+    // Signed in as the connection, and anything goes inside it.
+    ("terminal::terminal_open_mongosh", "free_sql"),
     ("query::insert_row", "insert"),
     ("query::insert_documents", "insert"),
     ("insert::insert_rows", "insert"),
@@ -416,6 +429,15 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("themes::read_vsix", "none"),
     ("themes::save_installed_theme", "none"),
     ("themes::search_registry_themes", "none"),
+    // The user's own shell, no credential handed to it, and the plumbing of a
+    // session already opened (`terminal_open_mongosh` above is the guarded
+    // way in).
+    ("terminal::terminal_environment", "none"),
+    ("terminal::terminal_open_shell", "none"),
+    ("terminal::terminal_write", "none"),
+    ("terminal::terminal_resize", "none"),
+    ("terminal::terminal_close", "none"),
+    ("terminal::terminal_close_window_sessions", "none"),
     ("updater::get_auto_update_status", "none"),
     ("updater::note_update_check", "none"),
 ];

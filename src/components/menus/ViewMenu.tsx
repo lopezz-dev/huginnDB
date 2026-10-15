@@ -1,7 +1,7 @@
 /**
  * Top-bar "View" dropdown — toggles UI display preferences (schema
  * metric) and exposes panel-level actions (show/hide Schema, Saved,
- * Console). Panel state lives in `panelLayout.ts`, a plain Zustand store
+ * Pulse, AI, Console, Terminal — the optional modules only when switched on). Panel state lives in `panelLayout.ts`, a plain Zustand store
  * — no dockview API involved for these three since the outer shell
  * redesign (see that store's header comment).
  */
@@ -23,6 +23,7 @@ import { ShortcutHint } from "@/components/menus/ShortcutHint";
 import type { SchemaTableMetric } from "@/types";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
+import { moduleEnabled } from "@/lib/panelModules";
 
 const METRIC_OPTIONS: { value: SchemaTableMetric; i18nKey: string }[] = [
   { value: "none", i18nKey: "menu.view.metricHide" },
@@ -45,6 +46,12 @@ export function ViewMenu() {
   const toggleSchema = useSessionPanelLayout((s) => s.toggleSchema);
   const selectRightPanel = useSessionPanelLayout((s) => s.selectRightPanel);
   const toggleConsole = useSessionPanelLayout((s) => s.toggleConsole);
+  const bottomTab = useSessionPanelLayout((s) => s.bottomTab);
+  const toggleTerminal = useSessionPanelLayout((s) => s.toggleTerminal);
+  // Switched-off modules are not offered here either — see `panelModules`.
+  const pulseOn = usePreferences((s) => moduleEnabled(s.prefs, "pulse"));
+  const aiOn = usePreferences((s) => moduleEnabled(s.prefs, "ai"));
+  const terminalOn = usePreferences((s) => moduleEnabled(s.prefs, "terminal"));
 
   return (
     <DropdownMenu>
@@ -77,28 +84,32 @@ export function ViewMenu() {
           {t("panels.saved")}
           <ShortcutHint action="togglePanelSaved" />
         </DropdownMenuCheckboxItem>
+        {pulseOn && (
+          <DropdownMenuCheckboxItem
+            checked={rightPanel === "pulse"}
+            onSelect={(e) => {
+              e.preventDefault();
+              selectRightPanel("pulse");
+            }}
+          >
+            {t("panels.pulse")}
+            <ShortcutHint action="togglePanelPulse" />
+          </DropdownMenuCheckboxItem>
+        )}
+        {aiOn && (
+          <DropdownMenuCheckboxItem
+            checked={rightPanel === "ai"}
+            onSelect={(e) => {
+              e.preventDefault();
+              selectRightPanel("ai");
+            }}
+          >
+            {t("panels.ai")}
+            <ShortcutHint action="togglePanelAi" />
+          </DropdownMenuCheckboxItem>
+        )}
         <DropdownMenuCheckboxItem
-          checked={rightPanel === "pulse"}
-          onSelect={(e) => {
-            e.preventDefault();
-            selectRightPanel("pulse");
-          }}
-        >
-          {t("panels.pulse")}
-          <ShortcutHint action="togglePanelPulse" />
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={rightPanel === "ai"}
-          onSelect={(e) => {
-            e.preventDefault();
-            selectRightPanel("ai");
-          }}
-        >
-          {t("panels.ai")}
-          <ShortcutHint action="togglePanelAi" />
-        </DropdownMenuCheckboxItem>
-        <DropdownMenuCheckboxItem
-          checked={consoleOpen}
+          checked={consoleOpen && bottomTab === "console"}
           onSelect={(e) => {
             e.preventDefault();
             toggleConsole();
@@ -107,6 +118,18 @@ export function ViewMenu() {
           {t("panels.console")}
           <ShortcutHint action="togglePanelConsole" />
         </DropdownMenuCheckboxItem>
+        {terminalOn && (
+          <DropdownMenuCheckboxItem
+            checked={consoleOpen && bottomTab === "terminal"}
+            onSelect={(e) => {
+              e.preventDefault();
+              toggleTerminal();
+            }}
+          >
+            {t("panels.terminal")}
+            <ShortcutHint action="togglePanelTerminal" />
+          </DropdownMenuCheckboxItem>
+        )}
 
         <DropdownMenuSeparator />
 

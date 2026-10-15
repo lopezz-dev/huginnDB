@@ -52,6 +52,10 @@ bindings clash only when their scopes overlap — a scope overlaps itself and
 When a key you are recording does clash, the dialog says which action holds it
 and offers to take it away from that one.
 
+**Inside a terminal**, the keyboard belongs to the terminal: a shell's
+`Ctrl+R`, `Ctrl+K` or `Ctrl+B` must not toggle a panel. Only the command
+palette, Preferences and the Console / Terminal toggles are heard there.
+
 ## Keys the app keeps
 
 `Mod+R` always refreshes, on top of whatever you bind to that action. It

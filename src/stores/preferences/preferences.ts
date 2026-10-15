@@ -37,6 +37,7 @@ import type {
   Preferences,
   PulsePrefs,
   SchemaTableMetric,
+  TerminalPrefs,
   ThemePrefs,
   UpdatePrefs,
   UiPrefs,
@@ -131,6 +132,7 @@ export const DEFAULT_PREFS: Preferences = {
   },
   // Mirrors `PulsePrefs::default()` in `src-tauri/src/prefs.rs`.
   pulse: {
+    enabled: true,
     liveIntervalSecs: 5,
     historyIntervalSecs: 60,
     retentionDays: 30,
@@ -169,6 +171,13 @@ export const DEFAULT_PREFS: Preferences = {
     // reason: see `UpdatePrefs`.
     autoInstall: true,
   },
+  // Mirrors `TerminalPrefs::default()` in `src-tauri/src/prefs.rs`. On by
+  // default, unlike `ai`: see the reasoning on `TerminalPrefs`.
+  terminal: {
+    enabled: true,
+    mongoshPath: "",
+    shellPath: "",
+  },
   keybindings: {},
 };
 
@@ -185,6 +194,7 @@ interface PreferencesState {
   updateAi: (patch: Partial<AiPrefs>) => void;
   updateThemes: (patch: Partial<ThemePrefs>) => void;
   updateUpdates: (patch: Partial<UpdatePrefs>) => void;
+  updateTerminal: (patch: Partial<TerminalPrefs>) => void;
   /**
    * Merge shortcut overrides. A key mapped to `undefined` is **deleted**,
    * which is how "reset this row to its default" is expressed — writing the
@@ -414,6 +424,17 @@ export const usePreferences = create<PreferencesState>()((set, get) => ({
     });
   },
 
+  updateTerminal(patch) {
+    set((s) => {
+      const next: Preferences = {
+        ...s.prefs,
+        terminal: { ...s.prefs.terminal, ...patch },
+      };
+      save.schedule(next);
+      return { prefs: next };
+    });
+  },
+
   updateKeybindings(patch) {
     set((s) => {
       const keybindings: Record<string, string[]> = { ...s.prefs.keybindings };
@@ -464,4 +485,5 @@ export const selectNotificationPrefs = (s: PreferencesState) => s.prefs.notifica
 export const selectConnectionPrefs = (s: PreferencesState) => s.prefs.connections;
 export const selectPulsePrefs = (s: PreferencesState) => s.prefs.pulse;
 export const selectAiPrefs = (s: PreferencesState) => s.prefs.ai;
+export const selectTerminalPrefs = (s: PreferencesState) => s.prefs.terminal;
 export const selectKeybindings = (s: PreferencesState) => s.prefs.keybindings;

@@ -101,6 +101,45 @@ JS expression — is refused with a clear error rather than half-parsed into
 something that runs. Still open on the roadmap: `explain`, `bulkWrite`,
 `findAndModify`, change streams, GridFS.
 
+For a script that needs all of that — the kind an AI tool writes when you ask it
+to check something in MongoDB — use the terminal below.
+
+## The terminal: `mongosh` as it is
+
+The **Terminal** icon in the right activity bar (or `` Mod+Shift+` ``) opens a
+terminal in the bottom dock, next to the Console. Its **+** menu starts either:
+
+- **`mongosh` on the current connection** — the MongoDB connection the
+  workspace is on, opened on the database of the tab you were looking at. It is
+  the real `mongosh`, so variables, loops, `printjson`, `use other_db` and
+  multi-line scripts pasted from an AI tool run exactly as written.
+- **Your shell** — PowerShell 7 if installed, else Windows PowerShell, on
+  Windows; your `$SHELL`, else `bash`, elsewhere.
+
+Each session is a tab; switching tabs or collapsing the dock keeps them
+running, and closing a tab ends it. Disconnecting a connection closes the
+`mongosh` sessions signed in to it.
+
+**`mongosh` is not bundled.** HuginnDB uses the one you installed (from
+<https://www.mongodb.com/try/download/shell>), found on `PATH` or where the
+official installers put it; Settings → **Terminal** shows which one it found
+and its version, and takes a path if it guessed wrong.
+
+**How it signs in.** With the connection's own credentials — the same user,
+password and SSH tunnel its pool uses, a personal database user included — so
+the connection has to be open first. The password is handed to `mongosh` in
+its environment, never on its command line, where other users of the machine
+could read it, and it is removed from `process.env` before the prompt appears.
+
+**Keys.** With the focus in a terminal, the keyboard belongs to it: `Ctrl+R`,
+`Ctrl+K` or `Ctrl+B` do what they do in a shell. The command palette,
+Preferences and the Console / Terminal toggles still work. Copy and paste with
+`Ctrl+Shift+C` / `Ctrl+Shift+V`, since `Ctrl+C` interrupts.
+
+Under a managed policy, `mongosh` is offered only on connections where you may
+run free-form queries that read and write anything; see `POLICY.md`. To hide
+the terminal altogether, turn it off in Settings → **Terminal**.
+
 ## Editing documents
 
 The grid's **List view** turns into a document editor for MongoDB: nested values

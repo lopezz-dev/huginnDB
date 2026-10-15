@@ -52,6 +52,7 @@ mod state;
 mod state_file;
 mod store;
 mod tab_state;
+mod terminal;
 #[cfg(test)]
 mod testkit;
 mod themes;
@@ -310,6 +311,8 @@ pub fn run() {
         // grants only the two text commands.
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::new_with_args(parse_startup_args()))
+        // The terminal panel's PTY sessions, across every window.
+        .manage(terminal::TerminalRegistry::default())
         // Background eviction of idle per-database pools. Started here rather
         // than lazily on first connect so the sweep also covers pools left
         // behind by a connection that was opened and closed again.
@@ -376,6 +379,10 @@ pub fn run() {
                 // And the connections only this window was using go with it —
                 // see `ActivePool::holders`. Spawned: closing awaits the
                 // server, and this handler runs on the event loop.
+                // Its terminals too: no other window can show them.
+                window
+                    .state::<terminal::TerminalRegistry>()
+                    .close_window(window.label());
                 let app = window.app_handle().clone();
                 let label = window.label().to_string();
                 tauri::async_runtime::spawn(async move {
@@ -572,6 +579,13 @@ pub fn run() {
             commands::app::get_app_flavor,
             commands::updater::get_auto_update_status,
             commands::updater::note_update_check,
+            commands::terminal::terminal_environment,
+            commands::terminal::terminal_open_shell,
+            commands::terminal::terminal_open_mongosh,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_close,
+            commands::terminal::terminal_close_window_sessions,
         ])
         .build(context())
         .expect("error while building HuginnDB")
@@ -582,6 +596,9 @@ pub fn run() {
                 // the process exit drop them — see `close_all_pools`. Three
                 // seconds at most: a quit that hangs on a dead server is worse
                 // than the sessions that server will reap on its own.
+                // Every shell and `mongosh` the panel started ends with the
+                // app, rather than being orphaned to the OS.
+                app.state::<terminal::TerminalRegistry>().close_all();
                 let state = app.state::<state::AppState>();
                 tauri::async_runtime::block_on(commands::connection::close_all_pools(
                     state.inner(),

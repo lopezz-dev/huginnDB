@@ -37,6 +37,7 @@ import {
   usePreferences,
 } from "@/stores/preferences/preferences";
 import { useKeybindingDispatcher } from "@/lib/keybindings";
+import { moduleEnabled } from "@/lib/panelModules";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
@@ -502,11 +503,21 @@ export default function App() {
       togglePanelSchema: () => useSessionPanelLayout.getState().toggleSchema(),
       togglePanelSaved: () =>
         useSessionPanelLayout.getState().selectRightPanel("saved"),
-      togglePanelPulse: () =>
-        useSessionPanelLayout.getState().selectRightPanel("pulse"),
-      togglePanelAi: () =>
-        useSessionPanelLayout.getState().selectRightPanel("ai"),
+      // A switched-off module's shortcut does nothing — and says so to the
+      // dispatcher, so the keystroke falls through rather than being eaten.
+      togglePanelPulse: () => {
+        if (!moduleEnabled(usePreferences.getState().prefs, "pulse")) return false;
+        useSessionPanelLayout.getState().selectRightPanel("pulse");
+      },
+      togglePanelAi: () => {
+        if (!moduleEnabled(usePreferences.getState().prefs, "ai")) return false;
+        useSessionPanelLayout.getState().selectRightPanel("ai");
+      },
       togglePanelConsole: () => useSessionPanelLayout.getState().toggleConsole(),
+      togglePanelTerminal: () => {
+        if (!moduleEnabled(usePreferences.getState().prefs, "terminal")) return false;
+        useSessionPanelLayout.getState().toggleTerminal();
+      },
       newWindow: () => {
         void api.openNewWindow().catch((e) => notify.error(String(e)));
       },

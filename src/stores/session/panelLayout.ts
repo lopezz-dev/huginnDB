@@ -51,6 +51,10 @@ const SIDE_EDITOR_WIDTH_DEFAULT = 420;
 /** The panels that can occupy the right dock. One at a time. */
 export type RightPanelId = "saved" | "pulse" | "ai" | "extensions";
 
+/** The tabs of the bottom dock. One shows at a time; the dock's height is
+ *  shared, since both want "as many lines as you can spare". */
+export type BottomTabId = "console" | "terminal";
+
 export const PANEL_CLAMPS = {
   schemaWidth: { min: 200, max: 600 },
   savedWidth: { min: 200, max: 600 },
@@ -160,8 +164,12 @@ interface PanelLayoutState {
   pulseWidth: number;
   aiWidth: number;
   extensionsWidth: number;
+  /** Whether the bottom dock is open — whichever tab it shows. Kept under
+   *  its pre-terminal name so a persisted layout reads unchanged. */
   consoleOpen: boolean;
   consoleHeight: number;
+  /** Which tab the bottom dock shows. */
+  bottomTab: BottomTabId;
   sideEditorOpen: boolean;
   sideEditorWidth: number;
 
@@ -173,7 +181,17 @@ interface PanelLayoutState {
   /** Edge-toggle behaviour (`LayoutToggles`): collapse, or reopen whichever
    *  panel was last shown. */
   toggleRightDock: () => void;
+  /** Status bar / Mod+Backquote: show the Console tab, or close the dock when it
+   *  already is showing. */
   toggleConsole: () => void;
+  /** The rail's terminal button: same, for the Terminal tab. */
+  toggleTerminal: () => void;
+  /** Open the dock on `tab` whatever it showed — a tab header click, or "open
+   *  a new terminal" from somewhere that must not toggle it shut. */
+  showBottomTab: (tab: BottomTabId) => void;
+  /** A module was switched off in Settings: take its panel off screen (and out
+   *  of what the edge toggle would bring back) without touching the others. */
+  retirePanel: (id: RightPanelId | BottomTabId) => void;
   /** Adjust one panel's size by a delta, reading the CURRENT value from
    *  inside the store update rather than from whatever the caller's render
    *  closed over. `Sash`'s `onResize` fires many times per drag — a caller
@@ -195,6 +213,9 @@ type PanelLayoutData = Omit<
   | "selectRightPanel"
   | "toggleRightDock"
   | "toggleConsole"
+  | "toggleTerminal"
+  | "showBottomTab"
+  | "retirePanel"
   | "nudgePanel"
   | "openSideEditor"
   | "closeSideEditor"
@@ -212,6 +233,7 @@ const DEFAULTS: PanelLayoutData = {
   extensionsWidth: EXTENSIONS_WIDTH_DEFAULT,
   consoleOpen: false,
   consoleHeight: CONSOLE_HEIGHT_DEFAULT,
+  bottomTab: "console",
   sideEditorOpen: false,
   sideEditorWidth: SIDE_EDITOR_WIDTH_DEFAULT,
 };
@@ -251,6 +273,42 @@ function migrateV1(v1: PanelLayoutV1): PanelLayoutData {
   };
 }
 
+/**
+ * A bottom-dock toggle for one tab: the tab that is showing closes the dock;
+ * any other state — closed, or open on the other tab — shows this one. So the
+ * status bar's console button never closes a terminal the user was looking at
+ * to "toggle the console", it switches to the console instead.
+ */
+export function toggleBottom(
+  s: Pick<PanelLayoutData, "consoleOpen" | "bottomTab">,
+  tab: BottomTabId,
+): Pick<PanelLayoutData, "consoleOpen" | "bottomTab"> {
+  return s.consoleOpen && s.bottomTab === tab
+    ? { consoleOpen: false, bottomTab: tab }
+    : { consoleOpen: true, bottomTab: tab };
+}
+
+/**
+ * Take a switched-off module's panel off screen. A right-dock occupant closes
+ * the dock if it was showing and stops being what the edge toggle reopens
+ * (Saved is always there to fall back on); the terminal hands the bottom dock
+ * back to the console, closing it if the terminal was what showed.
+ */
+export function retire(
+  s: Pick<PanelLayoutData, "rightPanel" | "lastRightPanel" | "consoleOpen" | "bottomTab">,
+  id: RightPanelId | BottomTabId,
+): Partial<PanelLayoutData> {
+  if (id === "terminal") {
+    if (s.bottomTab !== "terminal") return {};
+    return { bottomTab: "console", consoleOpen: false };
+  }
+  if (id === "console") return {};
+  const patch: Partial<PanelLayoutData> = {};
+  if (s.rightPanel === id) patch.rightPanel = null;
+  if (s.lastRightPanel === id) patch.lastRightPanel = "saved";
+  return patch;
+}
+
 export const useSessionPanelLayout = create<PanelLayoutState>()(
   persist(
     (set) => ({
@@ -269,7 +327,10 @@ export const useSessionPanelLayout = create<PanelLayoutState>()(
             ? { rightPanel: s.lastRightPanel }
             : { rightPanel: null },
         ),
-      toggleConsole: () => set((s) => ({ consoleOpen: !s.consoleOpen })),
+      toggleConsole: () => set((s) => toggleBottom(s, "console")),
+      toggleTerminal: () => set((s) => toggleBottom(s, "terminal")),
+      showBottomTab: (tab) => set({ consoleOpen: true, bottomTab: tab }),
+      retirePanel: (id) => set((s) => retire(s, id)),
       nudgePanel: (key, delta) =>
         set((s) => ({ [key]: clamp(s[key] + delta, PANEL_CLAMPS[key]) })),
       openSideEditor: () => set({ sideEditorOpen: true }),

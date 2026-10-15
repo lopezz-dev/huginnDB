@@ -150,6 +150,13 @@ pub enum AppError {
     #[error("registry error: {0}")]
     Registry(String),
 
+    /// A pseudo-terminal could not be opened, written to or resized, or the
+    /// program it was asked to run (`mongosh`, a shell) could not be found or
+    /// started. `portable-pty` reports through `anyhow`, so the cause arrives
+    /// already rendered.
+    #[error("terminal error: {0}")]
+    Terminal(String),
+
     /// Tauri window-management failure (e.g. creating a new window).
     #[error("window error: {0}")]
     Window(#[from] tauri::Error),

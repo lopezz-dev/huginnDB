@@ -78,7 +78,8 @@
     "console": "Consola",
     "cell": "Celda",
     "ai": "Asistente",
-    "extensions": "Extensiones"
+    "extensions": "Extensiones",
+    "terminal": "Terminal"
   },
   "menu": {
     "file": {
@@ -1221,7 +1222,8 @@
       "maximize": "Maximizar",
       "restore": "Restaurar",
       "close": "Cerrar"
-    }
+    },
+    "bottomDock": "Panel inferior"
   },
   "commandPalette": {
     "title": "Paleta de comandos",
@@ -1329,7 +1331,9 @@
       "mcpBridge": "Conector MCP",
       "sampling": "Muestreo",
       "endpoint": "Endpoint",
-      "behaviour": "Comportamiento"
+      "behaviour": "Comportamiento",
+      "module": "Módulo",
+      "programs": "Programas"
     },
     "sections": {
       "general": {
@@ -1387,6 +1391,10 @@
       "policy": {
         "label": "Política",
         "desc": "Gestionada por tu organización"
+      },
+      "terminal": {
+        "label": "Terminal",
+        "desc": "mongosh y tu shell"
       }
     },
     "general": {
@@ -1668,7 +1676,8 @@
       "focusFilterHint": "Pone el foco en el filtro de la tabla activa, o en el del árbol de esquemas si no hay ninguna pestaña de tabla activa. En Preferencias va al buscador de ajustes; dentro de un editor se abre la búsqueda del propio editor.",
       "clearTreeFilter": "Limpiar la búsqueda del esquema",
       "clearTreeFilterHint": "Por capas: primero el texto, luego el ámbito nivel a nivel y por último el foco pasa al árbol.",
-      "scopeFilterToConnection": "Buscar solo en la conexión seleccionada"
+      "scopeFilterToConnection": "Buscar solo en la conexión seleccionada",
+      "togglePanelTerminal": "Mostrar u ocultar el panel Terminal"
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",
@@ -1750,7 +1759,11 @@
       "noConnections": "Aún no hay conexiones guardadas — añade una primero.",
       "enableAll": "Activar todas",
       "disableAll": "Desactivar todas",
-      "enableAllInSection": "Alternar todas las conexiones de {{section}}"
+      "enableAllInSection": "Alternar todas las conexiones de {{section}}",
+      "enabled": {
+        "label": "Activar Pulse",
+        "desc": "Muestra Pulse en la barra de actividad, el menú Ver y la paleta de comandos. Desactivado, lo oculta en todas partes y detiene el muestreo en segundo plano; las conexiones que activaste abajo se conservan para cuando lo vuelvas a encender."
+      }
     },
     "about": {
       "tagline": "Explora y gestiona PostgreSQL, MySQL, SQLite, MongoDB y SQL Server desde una sola aplicación.",
@@ -1874,7 +1887,7 @@
       "intro": "Dónde corre el modelo del asistente, cuánto se confía en ese endpoint con tus datos y qué conexiones puede leer. Desactivado por defecto, y nada de aquí llega a una base de datos hasta que habilites una conexión abajo.",
       "enabled": {
         "label": "Activar el panel de IA",
-        "desc": "Desactivado en toda instalación existente. Mientras esté apagado, HuginnDB no hace ninguna petición a ningún endpoint de inferencia."
+        "desc": "Desactivado en toda instalación existente. Mientras esté apagado, HuginnDB no hace ninguna petición a ningún endpoint de inferencia, y el panel no aparece en la barra de actividad."
       },
       "baseUrl": {
         "label": "Endpoint",
@@ -2012,6 +2025,26 @@
       "freeSqlShortOn": "sí",
       "freeSqlShortOff": "no",
       "summaryTitle": "Estado"
+    },
+    "terminal": {
+      "intro": "Un terminal en el panel inferior: mongosh con la sesión iniciada en la conexión MongoDB en la que estás trabajando — para ejecutar los scripts que escriben las herramientas de IA, que el editor de consultas solo acepta de sentencia en sentencia — o tu propio shell.",
+      "enabled": {
+        "label": "Activar el terminal",
+        "desc": "Muestra el terminal en la barra de actividad, el menú Ver y la paleta de comandos. Desactivado, lo oculta en todas partes y cierra todas las sesiones abiertas."
+      },
+      "mongoshPath": {
+        "label": "mongosh",
+        "desc": "Ruta completa al ejecutable de mongosh. Déjalo vacío para buscarlo en el PATH o donde lo instalan los instaladores oficiales. HuginnDB no incluye mongosh."
+      },
+      "shellPath": {
+        "label": "Shell",
+        "desc": "Ruta completa al shell que abre un terminal normal. Déjalo vacío para usar PowerShell 7 (o Windows PowerShell) en Windows, y tu $SHELL en el resto."
+      },
+      "auto": "Detectar automáticamente",
+      "found": "mongosh {{version}} — {{path}}",
+      "shellFound": "Abre {{path}}",
+      "detect": "Volver a detectar",
+      "security": "mongosh inicia sesión con las credenciales de la propia conexión y, por SSH, a través de su túnel. La contraseña se le pasa en su entorno, nunca en la línea de comandos, donde otros usuarios podrían leerla. Con una política gestionada, mongosh solo se ofrece en conexiones donde puedes ejecutar consultas libres que lean y escriban cualquier cosa."
     }
   },
   "notifications": {
@@ -3896,6 +3929,25 @@
       "dbUser": "Entra como",
       "unmanaged": "(sin gobernar)",
       "noConnections": "No hay conexiones guardadas en este equipo para previsualizar."
+    }
+  },
+  "terminal": {
+    "exited": "[el proceso terminó con código {{code}}]",
+    "detecting": "Buscando mongosh y tu shell…",
+    "newMongosh": "Nueva sesión de mongosh",
+    "newMongoshOn": "mongosh en {{name}}",
+    "newShell": "Nuevo terminal {{shell}}",
+    "newSession": "Nuevo terminal",
+    "closeTab": "Cerrar terminal",
+    "openSettings": "Ajustes del terminal",
+    "empty": {
+      "title": "Ningún terminal abierto",
+      "hint": "Abre mongosh en la conexión MongoDB actual, o un shell."
+    },
+    "mongosh": {
+      "noConnection": "Selecciona una conexión MongoDB para abrir mongosh en ella.",
+      "notMongo": "mongosh es para conexiones MongoDB y la actual no lo es.",
+      "notConnected": "Conéctate a esta conexión MongoDB para abrir mongosh en ella."
     }
   }
 }

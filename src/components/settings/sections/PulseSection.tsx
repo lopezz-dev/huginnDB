@@ -8,7 +8,11 @@
  * connection rail itself reads, so this panel and that rail can't drift on
  * labels or ordering.
  *
- * Every field here composes with `ConnectionProfile.pulse_enabled`: a
+ * `pulse.enabled` is the module switch: off hides Pulse from the activity bar,
+ * the View menu, the palette and the shortcuts, and idles the sampler — the
+ * per-connection opt-ins below are kept for when it comes back on.
+ *
+ * Every other field composes with `ConnectionProfile.pulse_enabled`: a
  * connection with the sampler off costs nothing here no matter how the
  * intervals below are tuned, and none of these intervals do anything until
  * at least one connection opts in.
@@ -127,6 +131,20 @@ export function PulseSection() {
       <p className="text-xs text-muted-foreground">
         {t("settings.pulse.intro")}
       </p>
+
+      <PrefGroup title={t("settings.rowGroups.module")}>
+        <PrefRow
+          label={t("settings.pulse.enabled.label")}
+          prefId="pulse.enabled"
+          description={t("settings.pulse.enabled.desc")}
+        >
+          <Switch
+            checked={pulse.enabled}
+            onCheckedChange={(v) => updatePulse({ enabled: v })}
+            aria-label={t("settings.pulse.enabled.label")}
+          />
+        </PrefRow>
+      </PrefGroup>
 
       <PrefGroup title={t("settings.rowGroups.sampling")}>
         <PrefRow

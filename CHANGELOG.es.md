@@ -8,6 +8,51 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Un terminal en el panel inferior, con `mongosh` iniciado en tu conexión
+  MongoDB.**
+  - Cuando le pides a una herramienta de IA que compruebe algo en MongoDB,
+    suele responder con un script de `mongosh` (variables, bucles,
+    `printjson`) que el editor de consultas rechaza: admite una sentencia
+    cada vez y nada de JavaScript. Ahora esos scripts se pueden pegar en
+    `mongosh` dentro de HuginnDB y se ejecutan tal cual.
+  - El icono de **Terminal** de la barra de actividad derecha (o
+    `` Mod+Shift+` ``) lo abre junto a la Consola. Su menú **+** abre `mongosh`
+    en la conexión MongoDB actual, en la base de datos de la pestaña en la que
+    estabas, o tu propio shell: PowerShell 7 (si no, Windows PowerShell) en
+    Windows, y tu `$SHELL` (si no, `bash`) en el resto. Cada sesión es una
+    pestaña, y siguen en marcha con el panel plegado.
+  - `mongosh` inicia sesión con el usuario, la contraseña y el túnel SSH de la
+    propia conexión, así que la conexión tiene que estar abierta antes. La
+    contraseña se le pasa en el entorno de `mongosh`, nunca en su línea de
+    comandos, y se borra antes de que aparezca el prompt. Al desconectar se
+    cierran las sesiones de `mongosh` de esa conexión.
+  - `mongosh` no viene incluido. HuginnDB usa el que tengas instalado, que
+    busca en el `PATH` o donde lo dejan los instaladores oficiales; Ajustes →
+    **Terminal** muestra cuál ha encontrado y su versión, y admite una ruta.
+  - Con el foco en el terminal, teclas de shell como `Ctrl+R` o `Ctrl+B`
+    llegan al shell en vez de a la app. Copiar y pegar son
+    `Ctrl+Shift+C` / `Ctrl+Shift+V`.
+  - Con una política gestionada, `mongosh` solo está disponible en conexiones
+    donde puedes lanzar consultas libres que lean y escriban cualquier cosa.
+    El shell normal no se ve afectado.
+- **Pulse y el panel de IA se pueden ocultar.**
+  - Ajustes → Pulse tiene un nuevo interruptor **Activar Pulse**, encendido
+    por defecto. Apagado, quita Pulse de la barra de actividad, el menú Ver,
+    la paleta de comandos y su atajo, y detiene el muestreo en segundo plano.
+    Las conexiones que habías activado se conservan para cuando lo vuelvas a
+    encender.
+  - El interruptor que ya tenía el panel de IA ahora también oculta su icono
+    mientras está apagado.
+  - El terminal tiene el mismo interruptor, en Ajustes → Terminal; apagado,
+    además cierra todas las sesiones abiertas.
+
+### Cambiado
+
+- **El botón de la consola de la barra de estado cambia a la Consola cuando
+  se está mostrando el Terminal**, en vez de cerrar el panel.
+
 ## [1.33.0] — 2026-10-14
 
 ### Corregido

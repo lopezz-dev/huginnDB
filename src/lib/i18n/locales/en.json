@@ -78,7 +78,8 @@
     "console": "Console",
     "cell": "Cell",
     "ai": "Assistant",
-    "extensions": "Extensions"
+    "extensions": "Extensions",
+    "terminal": "Terminal"
   },
   "menu": {
     "file": {
@@ -1221,7 +1222,8 @@
       "maximize": "Maximize",
       "restore": "Restore down",
       "close": "Close"
-    }
+    },
+    "bottomDock": "Bottom dock"
   },
   "commandPalette": {
     "title": "Command palette",
@@ -1329,7 +1331,9 @@
       "mcpBridge": "MCP connector",
       "sampling": "Sampling",
       "endpoint": "Endpoint",
-      "behaviour": "Behaviour"
+      "behaviour": "Behaviour",
+      "module": "Module",
+      "programs": "Programs"
     },
     "sections": {
       "general": {
@@ -1387,6 +1391,10 @@
       "policy": {
         "label": "Policy",
         "desc": "Managed by your organization"
+      },
+      "terminal": {
+        "label": "Terminal",
+        "desc": "mongosh and your shell"
       }
     },
     "general": {
@@ -1668,7 +1676,8 @@
       "focusFilterHint": "Focuses the active table's filter box, or the schema tree's filter when no table tab is active. In Preferences it focuses the settings search; inside an editor the editor's own find opens instead.",
       "clearTreeFilter": "Clear the schema search",
       "clearTreeFilterHint": "In layers: first the text, then the scope one level at a time, then focus moves to the tree.",
-      "scopeFilterToConnection": "Search only the selected connection"
+      "scopeFilterToConnection": "Search only the selected connection",
+      "togglePanelTerminal": "Toggle the Terminal panel"
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",
@@ -1750,7 +1759,11 @@
       "noConnections": "No saved connections yet — add one first.",
       "enableAll": "Enable all",
       "disableAll": "Disable all",
-      "enableAllInSection": "Toggle every connection in {{section}}"
+      "enableAllInSection": "Toggle every connection in {{section}}",
+      "enabled": {
+        "label": "Enable Pulse",
+        "desc": "Shows Pulse in the activity bar, the View menu and the command palette. Off hides it everywhere and stops the background sampler; the connections you opted in below are kept for when you turn it back on."
+      }
     },
     "about": {
       "tagline": "Minimal desktop database manager for PostgreSQL, MySQL and SQLite.",
@@ -1874,7 +1887,7 @@
       "intro": "Where the assistant's model runs, how much that endpoint is trusted with your data, and which connections it may read. Off by default, and nothing here reaches a database until a connection is enabled below.",
       "enabled": {
         "label": "Enable the AI panel",
-        "desc": "Off on every existing install. While it is off, HuginnDB makes no request to any inference endpoint."
+        "desc": "Off on every existing install. While it is off, HuginnDB makes no request to any inference endpoint, and the panel is not shown in the activity bar."
       },
       "baseUrl": {
         "label": "Endpoint",
@@ -2012,6 +2025,26 @@
       "freeSqlShortOn": "yes",
       "freeSqlShortOff": "no",
       "summaryTitle": "Status"
+    },
+    "terminal": {
+      "intro": "A terminal in the bottom dock: mongosh signed in as the MongoDB connection you are working on — to run the scripts AI tools write, which the query editor only accepts one statement at a time — or your own shell.",
+      "enabled": {
+        "label": "Enable the terminal",
+        "desc": "Shows the terminal in the activity bar, the View menu and the command palette. Off hides it everywhere and closes every open session."
+      },
+      "mongoshPath": {
+        "label": "mongosh",
+        "desc": "Full path to the mongosh executable. Leave empty to find it on PATH or where the official installers put it. HuginnDB does not ship mongosh."
+      },
+      "shellPath": {
+        "label": "Shell",
+        "desc": "Full path to the shell a plain terminal starts. Leave empty for PowerShell 7 (or Windows PowerShell) on Windows, and your $SHELL elsewhere."
+      },
+      "auto": "Detect automatically",
+      "found": "mongosh {{version}} — {{path}}",
+      "shellFound": "Starts {{path}}",
+      "detect": "Detect again",
+      "security": "mongosh signs in with the connection's own credentials and, over SSH, through its tunnel. The password is handed to it in its environment, never on the command line where other users could read it. Under a managed policy, mongosh is only offered on connections where you may run free queries that read and write anything."
     }
   },
   "notifications": {
@@ -3896,6 +3929,25 @@
       "dbUser": "Signs in as",
       "unmanaged": "(not governed)",
       "noConnections": "There are no saved connections on this computer to preview."
+    }
+  },
+  "terminal": {
+    "exited": "[process exited with code {{code}}]",
+    "detecting": "Looking for mongosh and your shell…",
+    "newMongosh": "New mongosh session",
+    "newMongoshOn": "mongosh on {{name}}",
+    "newShell": "New {{shell}} terminal",
+    "newSession": "New terminal",
+    "closeTab": "Close terminal",
+    "openSettings": "Terminal settings",
+    "empty": {
+      "title": "No terminal open",
+      "hint": "Open mongosh on the current MongoDB connection, or a shell."
+    },
+    "mongosh": {
+      "noConnection": "Select a MongoDB connection to open mongosh on it.",
+      "notMongo": "mongosh is for MongoDB connections; the current one is not.",
+      "notConnected": "Connect to this MongoDB connection to open mongosh on it."
     }
   }
 }

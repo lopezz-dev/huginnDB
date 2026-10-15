@@ -201,6 +201,14 @@ A rule over a whole server keeps free-form queries, bounded by its permissions.
 Discovery is filtered too: the AI's list of databases and tables only contains
 what the role can reach, so it does not learn the names of the rest.
 
+**The `mongosh` terminal** (see `MONGODB.md`) is free-form text with every
+verb: once it is open, any collection can be read and anything can be written
+or dropped, and nothing typed into it can be checked against the policy. So it
+is offered to a person only on a connection where their role allows free-form
+queries with `select`, `insert`, `update`, `delete` and `ddl` — and HuginnDB
+refuses to start it otherwise, whatever the interface shows. A plain shell in
+the same panel carries no credential and is not affected.
+
 ### Connections the policy does not name
 
 `unmanagedConnections` decides what happens on a connection no rule of the

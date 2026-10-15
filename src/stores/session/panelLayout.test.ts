@@ -217,3 +217,73 @@ describe("migration v1 → v2", () => {
     expect(s.pulseWidth).toBe(400);
   });
 });
+
+describe("bottom dock tabs", () => {
+  it("a v2 blob from before the terminal opens on the console", async () => {
+    const { useSessionPanelLayout } = await loadWith(
+      { consoleOpen: true, consoleHeight: 240 },
+      2,
+    );
+    const s = useSessionPanelLayout.getState();
+    expect(s.bottomTab).toBe("console");
+    expect(s.consoleOpen).toBe(true);
+    expect(s.consoleHeight).toBe(240);
+  });
+
+  it("each toggle closes its own tab and switches away from the other", async () => {
+    const { useSessionPanelLayout } = await loadWith(undefined);
+    const store = useSessionPanelLayout;
+
+    store.getState().toggleTerminal();
+    expect(store.getState()).toMatchObject({ consoleOpen: true, bottomTab: "terminal" });
+
+    // The console's toggle with the terminal showing switches, never closes:
+    // it must not hide a terminal the user was looking at.
+    store.getState().toggleConsole();
+    expect(store.getState()).toMatchObject({ consoleOpen: true, bottomTab: "console" });
+
+    store.getState().toggleConsole();
+    expect(store.getState().consoleOpen).toBe(false);
+
+    store.getState().showBottomTab("terminal");
+    store.getState().showBottomTab("terminal");
+    expect(store.getState()).toMatchObject({ consoleOpen: true, bottomTab: "terminal" });
+  });
+});
+
+describe("retiring a switched-off module", () => {
+  it("closes the right dock only if that module was showing", async () => {
+    const { retire } = await loadWith(undefined);
+    const base = { consoleOpen: false, bottomTab: "console" as const };
+    expect(
+      retire({ ...base, rightPanel: "pulse", lastRightPanel: "pulse" }, "pulse"),
+    ).toEqual({ rightPanel: null, lastRightPanel: "saved" });
+    expect(
+      retire({ ...base, rightPanel: "saved", lastRightPanel: "saved" }, "ai"),
+    ).toEqual({});
+    // Not on screen, but what the edge toggle would bring back.
+    expect(retire({ ...base, rightPanel: null, lastRightPanel: "ai" }, "ai")).toEqual({
+      lastRightPanel: "saved",
+    });
+  });
+
+  it("hands the bottom dock back to the console, closed", async () => {
+    const { retire } = await loadWith(undefined);
+    const right = { rightPanel: null, lastRightPanel: "saved" as const };
+    expect(
+      retire({ ...right, consoleOpen: true, bottomTab: "terminal" }, "terminal"),
+    ).toEqual({ consoleOpen: false, bottomTab: "console" });
+    // The console was what showed: the terminal going away changes nothing.
+    expect(retire({ ...right, consoleOpen: true, bottomTab: "console" }, "terminal")).toEqual(
+      {},
+    );
+  });
+
+  it("is reachable through the store", async () => {
+    const { useSessionPanelLayout } = await loadWith(undefined);
+    useSessionPanelLayout.getState().selectRightPanel("ai");
+    useSessionPanelLayout.getState().retirePanel("ai");
+    expect(useSessionPanelLayout.getState().rightPanel).toBeNull();
+    expect(useSessionPanelLayout.getState().lastRightPanel).toBe("saved");
+  });
+});

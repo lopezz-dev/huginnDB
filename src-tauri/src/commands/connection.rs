@@ -1267,6 +1267,12 @@ pub(crate) async fn close_connection(
     // Drop the session-cached secret for this profile (children reuse the
     // parent's entry, so a single remove covers them).
     state.session_secrets.write().remove(id);
+    // A `mongosh` signed in as this connection goes with it: it may be riding
+    // the SSH tunnel that is about to close, and a person who disconnects
+    // expects every session on that server to end, not one terminal to linger.
+    if let Some(terminals) = app.try_state::<crate::terminal::TerminalRegistry>() {
+        terminals.close_connection(id);
+    }
     let removed = state.connections.write().remove(id);
     let prefix = crate::state::database_view_prefix(id);
     let had_views = state

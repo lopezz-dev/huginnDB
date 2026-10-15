@@ -52,11 +52,18 @@ async fn tick(app: &AppHandle) {
     let (enabled, sample_when_minimized, retention_days, max_disk_mb) = {
         let profiles = state.profiles.read();
         let prefs = state.prefs.read();
-        let enabled: Vec<String> = profiles
-            .iter()
-            .filter(|p| p.pulse_enabled)
-            .map(|p| p.id.clone())
-            .collect();
+        // The module switch wins over every per-connection opt-in: Pulse
+        // turned off in Settings samples nothing, and the opt-ins are left
+        // alone so turning it back on resumes the same set.
+        let enabled: Vec<String> = if prefs.pulse.enabled {
+            profiles
+                .iter()
+                .filter(|p| p.pulse_enabled)
+                .map(|p| p.id.clone())
+                .collect()
+        } else {
+            Vec::new()
+        };
         (
             enabled,
             prefs.pulse.sample_when_minimized,

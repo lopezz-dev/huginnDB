@@ -27,6 +27,7 @@ pub mod pulse;
 pub mod query;
 pub mod schema;
 pub mod structure;
+pub mod terminal;
 pub mod themes;
 pub mod updater;
 pub mod view;

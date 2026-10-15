@@ -51,6 +51,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  SquareTerminal,
   Table2,
   Info,
 } from "lucide-react";
@@ -87,6 +88,7 @@ import { ShortcutsSection } from "@/components/settings/sections/ShortcutsSectio
 import { McpSection } from "@/components/settings/sections/McpSection";
 import { PulseSection } from "@/components/settings/sections/PulseSection";
 import { AiSection } from "@/components/settings/sections/AiSection";
+import { TerminalSection } from "@/components/settings/sections/TerminalSection";
 import { PolicySection } from "@/components/settings/sections/PolicySection";
 import { JsonSchemasSection } from "@/components/settings/sections/JsonSchemasSection";
 import { OriginsSection } from "@/components/settings/sections/OriginsSection";
@@ -151,6 +153,7 @@ const NAV: { group: string; items: { id: SettingsSection; icon: SectionIcon }[] 
       { id: "mcp", icon: Cable },
       { id: "pulse", icon: Activity },
       { id: "ai", icon: Bot },
+      { id: "terminal", icon: SquareTerminal },
     ],
   },
   {
@@ -488,6 +491,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                   {section === "mcp" && <McpSection />}
                   {section === "pulse" && <PulseSection />}
                   {section === "ai" && <AiSection />}
+                  {section === "terminal" && <TerminalSection />}
                   {section === "policy" && <PolicySection />}
                   {section === "about" && <AboutSection />}
                 </>

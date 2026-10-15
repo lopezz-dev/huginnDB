@@ -215,6 +215,15 @@ El descubrimiento también se filtra: la lista de bases de datos y tablas que ve
 la IA solo contiene lo que el rol alcanza, así que no llega a saber los nombres
 del resto.
 
+**El terminal de `mongosh`** (consulta `MONGODB.es.md`) es texto libre con
+todos los verbos: una vez abierto, se puede leer cualquier colección y escribir
+o borrar cualquier cosa, y nada de lo que se teclee en él puede comprobarse
+contra la política. Por eso a una persona solo se le ofrece en una conexión
+donde su rol permite consultas libres con `select`, `insert`, `update`,
+`delete` y `ddl` — y HuginnDB se niega a abrirlo en otro caso, muestre lo que
+muestre la interfaz. Un shell normal en el mismo panel no lleva ninguna
+credencial y no se ve afectado.
+
 ### Conexiones que la política no nombra
 
 `unmanagedConnections` decide qué pasa con una conexión que no casa con ninguna

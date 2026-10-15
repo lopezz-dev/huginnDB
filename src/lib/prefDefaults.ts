@@ -9,7 +9,7 @@
  * answer it:
  *
  * - **Only the groups that are taste, not configuration.** `editor`, `grid`,
- *   `ui`, `notifications`, `connections` and `pulse` hold knobs with a
+ *   `ui`, `notifications`, `connections`, `pulse` and `terminal` hold knobs with a
  *   meaningful stock value. `ai` does not: its endpoint, model and trust
  *   describe the user's own infrastructure, and a "reset" that blanks the
  *   model or re-points the panel at Ollama's default port would be a way to
@@ -34,7 +34,8 @@ type ResettableGroup =
   | "ui"
   | "notifications"
   | "connections"
-  | "pulse";
+  | "pulse"
+  | "terminal";
 
 const RESETTABLE_GROUPS: ReadonlySet<string> = new Set<ResettableGroup>([
   "editor",
@@ -43,6 +44,7 @@ const RESETTABLE_GROUPS: ReadonlySet<string> = new Set<ResettableGroup>([
   "notifications",
   "connections",
   "pulse",
+  "terminal",
 ]);
 
 const NOT_RESETTABLE: ReadonlySet<string> = new Set<PrefId>(["ui.language"]);
