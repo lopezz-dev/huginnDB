@@ -5,7 +5,7 @@
 //! ordered SQL statements. The same function drives both the preview pane and
 //! the apply step, so what the user sees is exactly what runs.
 //!
-//! Identifier safety (SECURITY.md, gotcha #4): table / column / index /
+//! Identifier safety (SECURITY.md, convention #4): table / column / index /
 //! constraint names are *user input* here, but identifiers cannot be bound
 //! parameters in DDL. Every name therefore goes through [`validate_ident`]
 //! before it is quoted, and `data_type` / `default` go through narrower

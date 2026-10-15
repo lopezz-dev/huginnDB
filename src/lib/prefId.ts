@@ -7,7 +7,7 @@
  * setting's `PrefRow`. `openAtPref` puts the string in the store, the matching
  * row scrolls itself into view and flashes — and a typo on either side degrades
  * to "the section opens, nothing is highlighted", which no test and no reviewer
- * reliably catches (CLAUDE.md gotcha #32).
+ * reliably catches (ADR #32).
  *
  * Deriving the union from `Preferences` makes that failure a compile error
  * instead: only a real `<group>.<key>` path type-checks, so renaming a

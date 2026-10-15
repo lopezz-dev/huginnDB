@@ -6,7 +6,7 @@
  * affordances call `useTabs.close`, never `panel.api.close()`** — the store is
  * the source of truth and the reconciler in `TabbedArea` flows store → dockview
  * only, so closing through the panel API would feed removal back on itself
- * (CLAUDE.md gotcha #10).
+ * (ADR #10).
  */
 
 import { useEffect, useMemo, useRef } from "react";

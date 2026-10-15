@@ -925,7 +925,7 @@ export const api = {
    * column set is sampled from a page of documents, so it cannot describe a
    * field that page did not contain. The text is parsed in Rust by the same
    * parser the query editor and the aggregation builder use — the frontend
-   * never parses a pipeline or a document (gotcha #33).
+   * never parses a pipeline or a document (ADR #33).
    *
    * Returns the inserted `_id`, or an array of them for a bulk insert.
    */
@@ -945,7 +945,7 @@ export const api = {
    *
    * `source` crosses as text and is parsed in Rust, which is where the
    * catalogue is — and the catalogue is what maps a pasted key onto a real
-   * column safely (gotcha #4) and what decides whether a JSON `true` binds as
+   * column safely (convention #4) and what decides whether a JSON `true` binds as
    * `1` or as the word. Refused on MongoDB, which has `insertDocuments`.
    */
   insertRows: (args: {
@@ -1017,7 +1017,7 @@ export const api = {
   // Environments -----------------------------------------------------------
   // Every call above resolves against whichever environment is active, so
   // these are what decide the scope of the six calls above. Main-window-only,
-  // for the same reason tab state is (gotcha #8).
+  // for the same reason tab state is (ADR #8).
 
   /** All environments in display order, plus which one is active. */
   listEnvironments: () => invoke<EnvironmentList>("list_environments"),
@@ -1080,7 +1080,7 @@ export const api = {
   //
   // The cascade that decides which schema applies to a column lives only in
   // Rust (see `src-tauri/src/json_schemas/mod.rs`): a second implementation
-  // here would be the same one-grammar-two-parsers trap gotchas #30/#33 exist
+  // here would be the same one-grammar-two-parsers trap ADRs #30/#33 exist
   // to prevent, and a resolution bug is not an error, it is "the autocompletion
   // did not appear" — which nobody reports. The frontend therefore caches
   // *results*, never re-derives them.
@@ -1434,7 +1434,7 @@ export const api = {
   // An environment's *portable* identity: its cosmetics, the connection
   // profiles it groups, and its shared origins (name + path, never a
   // passphrase). Tabs and dockview geometry never leave the machine that
-  // produced them (CLAUDE.md gotcha #10) — see the module doc in
+  // produced them (ADR #10) — see the module doc in
   // `src-tauri/src/transfer.rs`. Importing always creates a brand-new
   // environment; it never merges into one that already exists.
 
@@ -1545,7 +1545,7 @@ export const api = {
    * The registry URL is **not** a parameter on purpose: it is read from
    * preferences inside the command, so the kill-switch cannot be bypassed by a
    * caller naming its own destination. Same rule as the AI panel's endpoint
-   * (gotcha #71).
+   * (ADR #71).
    */
   searchRegistryThemes: (query: string, offset: number, size: number) =>
     invoke<RegistrySearchPage>("search_registry_themes", { query, offset, size }),

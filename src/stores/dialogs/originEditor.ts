@@ -15,7 +15,7 @@
  *
  * `open` puts aside the workbench it was opened from (`suspend`), because the
  * overlay is a full-screen sibling of it, not a dialog stacked on one, and
- * `close` gives that same surface back (`resume`), saved or not (gotcha #101).
+ * `close` gives that same surface back (`resume`), saved or not (ADR #101).
  * The surface is remembered by name rather than by asking every one to resume:
  * which one to reopen is a fact about how the editor was entered, and keeping
  * it here is what makes "only the one that was set aside" hold by construction.

@@ -755,7 +755,7 @@ pub fn is_database_view(id: &str) -> bool {
 /// The *profile* id behind a connection id: `id` itself for a plain one, the
 /// parent for a synthetic `<parent>::db::<database>` child.
 ///
-/// Rust twin of `lib/connectionLabel.ts`'s `parentConnectionId` (gotcha #36).
+/// Rust twin of `lib/connectionLabel.ts`'s `parentConnectionId` (ADR #36).
 pub fn parent_connection_id(id: &str) -> &str {
     match split_database_view(id) {
         Some((parent, _)) => parent,
@@ -791,7 +791,7 @@ pub fn now_millis() -> u64 {
 /// `src/lib/bridges/connection-sync-bridge.ts`), nobody will ever disconnect
 /// it, and `release_idle_pools` skips top-level pools by contract. Until this
 /// marker existed, restarting the app was the only thing that released one.
-/// See gotcha #67.
+/// See ADR #67.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PoolOrigin {
     /// A connection a human opened. Lives until an explicit `disconnect`.
@@ -852,7 +852,7 @@ pub struct ActivePool {
     /// did not open itself), unreapable (top-level pools a person opened are
     /// never reaped) and kept awake by its keepalive — one socket and possibly
     /// an SSH tunnel per connection, until the app exited. The same shape as
-    /// gotcha #67, for windows instead of the MCP bridge.
+    /// ADR #67, for windows instead of the MCP bridge.
     ///
     /// A window joins when it connects or reuses the connection, and a
     /// detached tab or Pulse window joins when it is created for one. When the
@@ -1027,7 +1027,7 @@ impl ActiveConnections {
     /// narrower: the sidecar has no UI contract at all, so origin buys it
     /// nothing and it reaps every idle pool it owns. The app does have one, so
     /// it may only reap the pools no window is showing — the ones opened for a
-    /// connector rather than for a person. See [`PoolOrigin`] and gotcha #67.
+    /// connector rather than for a person. See [`PoolOrigin`] and ADR #67.
     ///
     /// Reads `inner` directly rather than going through [`Self::get`], which
     /// would stamp the very `last_used` the decision is based on.
@@ -1330,7 +1330,7 @@ pub struct AppState {
     /// (the "pop out to a real OS window" action), keyed by its Tauri window
     /// label. Kept as an opaque `serde_json::Value` — the shape is owned by
     /// the frontend's `AppTab` type and this state never inspects it (see
-    /// CLAUDE.md gotcha #14 on why a typed intermediate would silently drop
+    /// gotcha #14 on why a typed intermediate would silently drop
     /// fields). Populated by `open_tab_window` and drained exactly once by
     /// `take_detached_tab_intent` when that window's frontend boots.
     pub detached_tab_intents: Arc<RwLock<HashMap<String, serde_json::Value>>>,
@@ -1577,7 +1577,7 @@ mod tests {
 
     /// Pulse samples every minute through `peek`. If that counted as use, a
     /// bridge pool for a Pulse-enabled profile would never go idle and never be
-    /// reaped — gotcha #67's permanent pool, by another route.
+    /// reaped — ADR #67's permanent pool, by another route.
     #[tokio::test]
     async fn a_background_peek_is_not_use() {
         let mut conns = ActiveConnections::default();

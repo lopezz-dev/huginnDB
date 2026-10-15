@@ -25,7 +25,7 @@ import type { ColumnInfo, DatabaseInfo, IndexInfo, TableInfo } from "@/types";
  *
  * `id` is whatever the caller renders for: a profile id in the single-database
  * explorer, the *parent* id in the multi-database one (its own tables live in
- * the `::db::` child slices, gotcha #36).
+ * the `::db::` child slices, ADR #36).
  */
 export function useEnsureSchemaLoaded(id: string): void {
   const cs = useSchema((s) => s.byConnection[id]);
@@ -103,7 +103,7 @@ export interface SchemaLoadOptions {
  * bare red line inside the tree that is not even mounted unless the row is
  * expanded and active, and the per-table index error was rendered by nothing
  * at all — so a MongoDB server that had gone away could report itself only by
- * the keepalive noticing, three minutes later. See gotcha #68.
+ * the keepalive noticing, three minutes later. See ADR #68.
  *
  * Grouped per connection, not per call: expanding a database with forty tables
  * against a dead server must be one card counting to forty, not forty cards.

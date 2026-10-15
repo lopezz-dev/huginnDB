@@ -295,7 +295,7 @@ pub async fn get_database_sizes(
 
 /// Borrowed-state core of [`get_database_sizes`].
 ///
-/// Five explicit arms and no `_ =>` (gotcha #30): a new driver must state what
+/// Five explicit arms and no `_ =>` (ADR #30): a new driver must state what
 /// its size means rather than silently inheriting Postgres's.
 pub async fn get_database_sizes_inner(
     state: &AppState,
@@ -330,7 +330,7 @@ pub async fn get_database_sizes_inner(
 /// about what it was about to do.
 ///
 /// `name` goes through the same [`crate::db::ddl::validate_ident`] allowlist
-/// used by the structure editor (gotcha #16) — `CREATE DATABASE` cannot bind
+/// used by the structure editor (ADR #16) — `CREATE DATABASE` cannot bind
 /// the name as a parameter, so validating before quoting is the only
 /// injection defense available. MongoDB adds
 /// [`crate::db::mongo::schema::validate_database_name`] on top, which is about
@@ -580,7 +580,7 @@ pub async fn drop_database(
 ///
 /// MongoDB-only by design: the SQL drivers have their table-creation path
 /// through the structure editor (`preview_structure_change`/`apply_structure_change`,
-/// gotcha #16), so a non-Mongo pool is rejected here rather than silently doing
+/// ADR #16), so a non-Mongo pool is rejected here rather than silently doing
 /// nothing. `connection_id` may be a synthetic `<parent>::db::<db>` view id —
 /// `resolve_db` reads the database the Mongo pool is bound to either way.
 ///
@@ -679,7 +679,7 @@ pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResu
 /// nearly the whole of the wait before a database's collections appeared. The
 /// tree asks for them afterwards through [`get_table_stats`].
 ///
-/// Explicit arms, no `_ =>` (gotcha #30): a new driver states which half it
+/// Explicit arms, no `_ =>` (ADR #30): a new driver states which half it
 /// belongs to.
 pub async fn list_table_names_inner(
     state: &AppState,
@@ -726,7 +726,7 @@ pub async fn get_table_stats(
     ))
 }
 
-/// Borrowed-state core of [`get_table_stats`]. Explicit arms (gotcha #30).
+/// Borrowed-state core of [`get_table_stats`]. Explicit arms (ADR #30).
 pub async fn get_table_stats_inner(
     state: &AppState,
     connection_id: &str,
@@ -1234,7 +1234,7 @@ mod tests {
     /// `DatabaseSize` is a wire contract, and the difference between an absent
     /// key and a `null` one has already cost this codebase a crash once — the
     /// note on `TableInfo::size_bytes` records it. These pin the serialised
-    /// shape without touching a database or the disk (gotcha #52).
+    /// shape without touching a database or the disk (convention #52).
     #[test]
     fn an_unknown_size_omits_the_key_rather_than_emitting_null() {
         let json = serde_json::to_value(DatabaseSize {

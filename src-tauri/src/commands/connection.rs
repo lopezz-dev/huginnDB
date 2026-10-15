@@ -974,7 +974,7 @@ pub async fn connect(
 /// ([`top_level_request_for`]), whether it gets a keepalive, and whether
 /// [`crate::pool_reaper`] may ever close it. A bridge-opened pool that arrived
 /// here as [`PoolOrigin::User`] would be immortal, which is exactly the bug in
-/// gotcha #67.
+/// ADR #67.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn connect_inner(
     app: &AppHandle,
@@ -1164,7 +1164,7 @@ pub(crate) async fn connect_inner(
             // lost-connection UX in a window — neither of which exists here —
             // and it is the thing that pins one physical socket open past
             // `IDLE_TIMEOUT` forever, which is half of why such a pool used to
-            // be a permanent cost (gotcha #67). It starts if a person later
+            // be a permanent cost (ADR #67). It starts if a person later
             // adopts the connection, at the top of this function.
             let keepalive = match origin {
                 PoolOrigin::User => crate::keepalive::spawn(
@@ -1804,7 +1804,7 @@ pub fn connection_pool_stats(state: State<'_, AppState>) -> AppResult<PoolStats>
 ///
 /// Connector-opened connections are included because this is the *remedy*
 /// offered on a limit error, and it was refusing to touch a whole class of
-/// connections the user cannot see or close by any other means (gotcha #67).
+/// connections the user cannot see or close by any other means (ADR #67).
 /// The same reopen-transparently argument covers them: the sidecar re-asks the
 /// app on its next tool call. The exposure is one tool call in flight failing
 /// once — the same exposure as the user pressing Disconnect, and the bridge's
@@ -1980,7 +1980,7 @@ pub async fn export_profiles(
 ///
 /// `window` is only used to scope [`IMPORT_PROGRESS_EVENT`] to the caller —
 /// see the event's own doc comment for why a plain `app.emit` would leak
-/// progress into every open window (CLAUDE.md gotcha #25).
+/// progress into every open window (gotcha #25).
 #[tauri::command]
 pub async fn import_profiles(
     app: AppHandle,
@@ -2074,15 +2074,15 @@ pub(crate) type ProfileImportOutcome = (
 /// `apply_profile_imports` works through the exported profile list. Each
 /// encrypted secret costs one 600 000-iteration PBKDF2 derivation
 /// (`transfer::decrypt_secret`) — deliberately slow — so a file bundling many
-/// profiles (an environment export in particular, see CLAUDE.md gotcha #35)
+/// profiles (an environment export in particular, see ADR #35)
 /// can take long enough that a bare spinner isn't enough feedback. Snake_case
 /// on the wire, matching `ImportResult` and every other DTO in this module
 /// (no `rename_all`).
 ///
 /// Emitted with `emit_to(window_label, ...)`, not a broadcast `emit` — each
 /// import is triggered from one window's dialog, so a second ("New window")
-/// window has no business rendering someone else's import progress (CLAUDE.md
-/// gotcha #25). The frontend bridge (`lib/bridges/import-progress-bridge.ts`)
+/// window has no business rendering someone else's import progress (gotcha #25).
+/// The frontend bridge (`lib/bridges/import-progress-bridge.ts`)
 /// scopes its `listen` the same way, which is the half that actually matters:
 /// an unscoped `listen()` defaults to `EventTarget::Any` and receives every
 /// `emit_to(...)` regardless of the emitter's target.
@@ -2177,7 +2177,7 @@ pub(crate) fn apply_profile_imports(
             //     the very connections it was exported to describe.
             //   * JSON-Schema bindings are repointed through the same map, and
             //     an id absent from it is taken to name a connection unknown
-            //     locally, so the binding is *disabled* (gotcha #39). It was
+            //     locally, so the binding is *disabled* (ADR #39). It was
             //     disabling bindings for profiles that were sitting right
             //     there under the same id.
             //
@@ -2317,7 +2317,7 @@ pub fn take_pending_cli_connect(state: State<'_, AppState>) -> AppResult<Option<
 /// `list_environments` and ignores one that no longer exists, so an environment
 /// deleted between the click and the window's boot degrades to a plain blank
 /// window rather than an error. Nothing about it is persisted — the window
-/// holds the environment purely in memory (gotcha #8).
+/// holds the environment purely in memory (ADR #8).
 ///
 /// Secondary windows are intentionally ephemeral: they never touch
 /// `tab_state.json` (see `commands::prefs::get_tab_state`), so nothing about
@@ -2585,7 +2585,7 @@ mod tests {
     /// The first connect of a session against a server that turns out to be
     /// full: nothing else is open, so there is no footprint of ours to
     /// disclose. Quoting "0 connection pool(s) and 0 per-database pool(s)"
-    /// there read as though the zero were the finding — see gotcha #66, where
+    /// there read as though the zero were the finding — see ADR #66, where
     /// this sentence was what made a misdiagnosis convincing.
     #[test]
     fn a_limit_error_with_no_pools_open_does_not_quote_an_empty_footprint() {

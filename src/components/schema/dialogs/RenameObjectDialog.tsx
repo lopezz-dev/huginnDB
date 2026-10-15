@@ -8,7 +8,7 @@
  *
  * The MongoDB-only "move to another database" affordance rides along on
  * `kind: "table"`: `renameCollection` qualifies both sides with a database, so
- * moving between them *is* the rename call (gotcha #38). No other driver gets
+ * moving between them *is* the rename call (ADR #38). No other driver gets
  * it — a cross-schema move is a separate statement there, and doesn't exist at
  * all on SQLite.
  */

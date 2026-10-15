@@ -18,7 +18,7 @@
  * request and the render simply falls back to a new draft.
  *
  * **A full-screen editor opened from the manager puts it aside, then gives it
- * back** — the same rule as Settings (`useSettingsDialog`, gotcha #101). The
+ * back** — the same rule as Settings (`useSettingsDialog`, ADR #101). The
  * manager is a workbench dialog and so is the shared-origin editor its "edit
  * at origin" link opens; stacking one on the other traps focus in whichever
  * mounted last.

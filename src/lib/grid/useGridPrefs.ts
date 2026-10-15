@@ -29,7 +29,7 @@ export interface DataGridPrefs extends StoredGridPrefs {
   expandCellCombo: string;
   /**
    * Writer for the grid preference slice. Both the Ctrl+wheel row zoom
-   * (gotcha #13) and the persisted column widths go through it, so it travels
+   * (ADR #13) and the persisted column widths go through it, so it travels
    * with the values it writes.
    */
   updateGrid: ReturnType<typeof usePreferences.getState>["updateGrid"];

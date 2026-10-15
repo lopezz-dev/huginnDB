@@ -64,7 +64,7 @@ src-tauri/             Rust backend
     commands/          Tauri command handlers (the public API surface)
     db/                Database abstraction layer:
       sql.rs           Dialect — the per-engine SQL *text*
-      exec.rs          the per-engine *execution* (see CLAUDE.md gotcha #42)
+      exec.rs          the per-engine *execution* (see ADR #42)
       postgres/ mysql/ sqlite/ mssql/ mongo/   catalog SQL, per driver
     keychain.rs        OS keychain integration
     state.rs           Active pools + saved profiles
@@ -74,6 +74,10 @@ src-tauri/             Rust backend
 ```
 
 When in doubt, read `src-tauri/src/lib.rs` and `src/App.tsx` first — they're the entry points and reference the rest of the codebase.
+
+### Engineering notes
+
+Code comments cite entries like `ADR #54`, `gotcha #19` or `convention #28`. They live in [`engineering/`](engineering/README.md). An **ADR** records a decision and the alternatives it beat, a **gotcha** a trap in something outside our design (a library, a platform, CI), and a **convention** a rule for how code is written here. All three kinds share one number sequence, so `#N` always names exactly one entry. Older text says "gotcha #N" for entries that are now ADRs, and the number still resolves. Read the relevant entry before changing code it covers. If a change overturns a decision, add a new ADR that supersedes the old one (templates in `engineering/templates/`) and regenerate the indexes with `node scripts/engineering-index.mjs`.
 
 ## Coding standards
 
@@ -139,7 +143,7 @@ preference was never a blanket "never ask me anything", and reading it as one
 turns one stale toggle into silent data loss. Both helpers return
 `Promise<boolean>`, awaiting `ConfirmHost` — a `tier="prompt"` dialog over
 `stores/dialogs/confirmRequest.ts` — rather than blocking on `window.confirm`
-(see gotcha #82); `await` them like any other async call, and don't read state
+(see convention #82); `await` them like any other async call, and don't read state
 you captured before the `await` afterward without checking it is still current.
 
 **Busy belongs to the control.** *Can this be a round trip?* Then pass `loading`

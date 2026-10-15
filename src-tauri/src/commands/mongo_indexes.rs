@@ -10,7 +10,7 @@
 //!
 //! * **Documents cross as source text.** Index keys, partial filters,
 //!   collations and text weights arrive exactly as the user typed them and are
-//!   parsed in Rust (gotcha #33). The frontend never parses BSON.
+//!   parsed in Rust (ADR #33). The frontend never parses BSON.
 //! * **Every command rejects a non-MongoDB connection up front**, so a
 //!   mis-routed call fails with a sentence rather than a type error deep in a
 //!   driver.
@@ -23,7 +23,7 @@
 //! MCP-reachable verbs go through the `_inner` cores below so a write is logged
 //! whether it arrived from the UI, the bridge, or the connector's own pool —
 //! a write core that does not take a [`LogSink`] is invisible in
-//! `mcp-audit.log` (gotcha #49).
+//! `mcp-audit.log` (convention #49).
 
 use crate::db::mongo::indexes::{self, MongoIndexInfo, NewMongoIndexSpec};
 use crate::error::AppResult;

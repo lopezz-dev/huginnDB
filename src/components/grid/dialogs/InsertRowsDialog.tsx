@@ -13,10 +13,10 @@
  * and it becomes one multi-row statement inside one transaction.
  *
  * **The frontend does not parse what is typed here**, the same rule the Mongo
- * dialog follows (gotcha #33): the text crosses IPC as source and Rust decides
+ * dialog follows (ADR #33): the text crosses IPC as source and Rust decides
  * what it means. That is not merely symmetry — the backend is where the
  * catalogue is, and the catalogue is what turns a pasted key into a column name
- * safely (gotcha #4) and what decides whether a JSON `true` is `1` or the word.
+ * safely (convention #4) and what decides whether a JSON `true` is `1` or the word.
  * A `JSON.parse` here could report a syntax error slightly sooner and would
  * still have to defer every question that matters.
  *

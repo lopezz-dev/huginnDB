@@ -9,7 +9,7 @@
  * not modules — they are always offered.
  *
  * - **AI** — `ai.enabled`, off by default (and every existing install): the
- *   panel reaches an endpoint, so it is opt-in (gotcha #71).
+ *   panel reaches an endpoint, so it is opt-in (ADR #71).
  * - **Pulse** — `pulse.enabled`, on by default: it shipped visible, and the
  *   switch also idles the background sampler.
  * - **Terminal** — `terminal.enabled`, on by default: `mongosh` is the

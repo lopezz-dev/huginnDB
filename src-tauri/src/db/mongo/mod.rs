@@ -239,7 +239,7 @@ pub async fn open_pool(
     // both for exactly this reason. What made it more than a latency
     // difference is that `useSchema.refresh` swallows its error onto the slice
     // rather than rethrowing, so `connectAndWarm` went on to report
-    // "Connected" for a server that had never answered. See gotcha #68.
+    // "Connected" for a server that had never answered. See ADR #68.
     //
     // Bounded by the `server_selection_timeout` set above, and it is the same
     // `ping` "Test connection" has always run through `db::pool::smoke_test` —

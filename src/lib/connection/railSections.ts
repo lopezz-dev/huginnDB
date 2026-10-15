@@ -18,7 +18,7 @@
  *
  * Pure on purpose: the i18n strings arrive as parameters, so the whole layout is
  * testable without a `t`. Same criterion as "the backend never writes display
- * copy" (gotcha #27).
+ * copy" (ADR #27).
  */
 
 import { bucketByGroup } from "@/lib/utils";

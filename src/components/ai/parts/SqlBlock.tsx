@@ -25,7 +25,7 @@
  * selection and the lens gutter for free. The providers it needs are **global
  * to the language** and installed once (`ensureSqlProviders`); this component
  * registers only its own model's data in the shared registry, which is the
- * pattern gotcha #9 and gotcha #57 both exist to enforce — a
+ * pattern gotcha #9 and ADR #57 both exist to enforce — a
  * `registerCodeLensProvider` per block would put one duplicate lens on every
  * statement for every block on screen.
  */

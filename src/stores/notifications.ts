@@ -25,7 +25,7 @@
  * `entries` is a plain array on the state; derive anything else (the unread
  * count, per-day sections) with `useMemo` in the component — a selector that
  * filtered or grouped here would return a fresh array on every call and trip
- * the infinite-re-render trap in CLAUDE.md gotcha #1.
+ * the infinite-re-render trap in gotcha #1.
  */
 
 import { create } from "zustand";

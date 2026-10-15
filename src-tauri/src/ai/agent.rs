@@ -158,7 +158,7 @@ pub const SYSTEM_PROMPT: &str = concat!(
 ///
 /// Because prompting had already been tried. The instruction to run reads is
 /// first in [`SYSTEM_PROMPT`], the tool descriptions say it (gotcha #74), the
-/// refusals no longer contradict it (gotcha #77), the connection's dialect is
+/// refusals no longer contradict it (ADR #77), the connection's dialect is
 /// supplied so a statement stands a chance of working — and a 12B still ends
 /// some turns by printing a `SELECT` and waiting. At that point the honest
 /// reading is that the model's instruction-following is the limit, and the

@@ -15,7 +15,7 @@
  *
  * The field is snake_case because `ConnectionProfile` mirrors a Rust struct with
  * no `rename_all`, while `Origin` and `Environment` do carry one (`originId`).
- * Both conventions coexist on purpose (CLAUDE.md gotcha #14's neighbourhood).
+ * Both conventions coexist on purpose (gotcha #14's neighbourhood).
  */
 
 /** Anything that carries a profile's provenance field. */

@@ -7,8 +7,8 @@
  * exists — see the comment on `GridRow` itself. Two rules survive the move and
  * must survive the next one:
  *
- * - **Identity comes from `rowValues`, never a display index** (CLAUDE.md
- *   gotcha #7). TanStack's `row.index` is the *filtered* index while the parent
+ * - **Identity comes from `rowValues`, never a display index** (ADR #7).
+ *   TanStack's `row.index` is the *filtered* index while the parent
  *   resolves primary keys against the unfiltered backend page, and the two
  *   diverge the moment a client filter is non-trivial.
  * - **`callbacksRef` is a ref on purpose.** `DataGrid`'s local helpers are

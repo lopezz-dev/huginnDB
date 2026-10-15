@@ -1,6 +1,6 @@
 # Releasing HuginnDB
 
-Cutting a release is a matter of bumping the version, pushing a tag, reviewing the draft release that the CI workflow produces, and clicking **Publish**. The actual installer is built by GitHub Actions, not on the maintainer's machine — a Windows `-setup.exe` (NSIS; see CLAUDE.md gotcha #21 for why not MSI/WiX), plus a Linux `.deb`/`.AppImage` if that leg of the build matrix is enabled.
+Cutting a release is a matter of bumping the version, pushing a tag, reviewing the draft release that the CI workflow produces, and clicking **Publish**. The actual installer is built by GitHub Actions, not on the maintainer's machine — a Windows `-setup.exe` (NSIS; see ADR #21 for why not MSI/WiX), plus a Linux `.deb`/`.AppImage` if that leg of the build matrix is enabled.
 
 ## One-time setup — signing keys
 

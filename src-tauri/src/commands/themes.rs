@@ -4,7 +4,7 @@
 //! persist. Nothing in this file looks at a colour — the palette derivation
 //! and the Monaco translation are the frontend's (`src/lib/vscodeTheme/`), and
 //! keeping that boundary is what makes the interesting half testable without
-//! an app. See gotcha #87.
+//! an app. See ADR #87.
 
 use std::io::Cursor;
 
@@ -25,7 +25,7 @@ pub async fn read_vsix(path: String) -> AppResult<vsix::VsixPayload> {
 /// browser off.
 ///
 /// **The registry URL is read here, never passed in from the frontend.** Same
-/// rule as the AI panel's endpoint (gotcha #71): a caller that can name the
+/// rule as the AI panel's endpoint (ADR #71): a caller that can name the
 /// destination is a caller that can bypass the kill-switch, and a preference
 /// that only the UI honours is not a preference, it is a suggestion. The
 /// frontend's job is to ask for a search; where that search goes is settled on

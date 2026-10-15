@@ -25,7 +25,7 @@
  * rows they can. `selectableIds` / `RailSection.ids` are collapse-blind, because
  * they are the domain of select-all, where skipping what is folded would
  * silently miss rows the user believes they just selected. Same family as
- * gotcha #45: the divergence is the point.
+ * convention #45: the divergence is the point.
  *
  * ## Selection is not navigation
  *

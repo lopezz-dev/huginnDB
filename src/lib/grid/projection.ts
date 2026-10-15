@@ -3,7 +3,7 @@
  * the wire.
  *
  * The two differ by the key. The grid addresses every edit by the row's
- * primary key (a document by its `_id` — gotcha #7), so a browse that dropped
+ * primary key (a document by its `_id` — ADR #7), so a browse that dropped
  * it would render rows nobody could write to, and would do it silently. The
  * user's choice is stored as they made it; the key columns are added here, at
  * the last moment, so the panel can show them as locked instead of pretending

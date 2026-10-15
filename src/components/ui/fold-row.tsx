@@ -5,7 +5,7 @@
  * Settings' three connection pickers (`AiConnectionTree`, `McpConnectionTree`,
  * `PulseConnectionTree`) each wrote this out twice — once for a provenance
  * section, once for a group folder inside it — as six copies of the same
- * `<button>`. Three consumers is what gotcha #60 asks for before a primitive
+ * `<button>`. Three consumers is what convention #60 asks for before a primitive
  * exists, and six copies of a markup nobody would think to keep in sync is the
  * reason it should.
  *

@@ -38,7 +38,7 @@ pub enum Need {
 
 /// Why a request was refused — worded for the person who reads it in the
 /// Console, in a locked control, or in the AI's answer, so it names the role
-/// and says who can change it (gotcha #77).
+/// and says who can change it (ADR #77).
 pub type Refusal = String;
 
 /// The context a need is judged in.
@@ -696,7 +696,7 @@ mod tests {
             &pattern(r#"{"driver":"postgres","host":"erp.local"}"#),
             &erp
         ));
-        // A blank port is the driver's default (gotcha #89).
+        // A blank port is the driver's default (ADR #89).
         let blank_port = ConnectionProfile {
             port: 0,
             ..erp.clone()

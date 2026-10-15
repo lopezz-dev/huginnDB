@@ -3,7 +3,7 @@
  *
  * These render and assemble a `key` document's *source text* — they do not
  * parse BSON. That distinction is the same one `lib/mongo/pipeline.ts` draws
- * for stage bodies (gotcha #33): Rust owns the only grammar, and anything
+ * for stage bodies (ADR #33): Rust owns the only grammar, and anything
  * here that looked like a parser would eventually disagree with it in
  * silence. What this module does is narrower and safe: recognise the handful
  * of key values MongoDB actually accepts (`1`, `-1`, and the type strings)

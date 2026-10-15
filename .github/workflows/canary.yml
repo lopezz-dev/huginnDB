@@ -127,7 +127,7 @@ jobs:
       # Stage the huginndb-mcp sidecar exactly as the stable release does — the
       # canary bundle inherits `bundle.externalBin`, and tauri-build's build.rs
       # hard-fails without the sidecar file present for the target triple. See
-      # release.yml + CLAUDE.md gotcha #22 for why the touch/rm/cp dance is
+      # release.yml + ADR #22 for why the touch/rm/cp dance is
       # load-bearing. The sidecar itself is built stable (its only APP_DIR use
       # is the MCP audit-log path); isolating it too isn't worth the feature
       # passthrough, see docs/CANARY.md.

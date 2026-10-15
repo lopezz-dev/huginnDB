@@ -2,7 +2,7 @@
  * The two-layer "databases to show" resolution, as one pure function.
  *
  * A connection's visible-database subset lives in two places on purpose (see
- * CLAUDE.md gotcha #27): `LaunchState.databaseVisibility[connectionId]`, which
+ * ADR #27): `LaunchState.databaseVisibility[connectionId]`, which
  * is per environment, overrides `ConnectionProfile.visible_databases`, which is
  * global and travels through export / shared origins. The override's value is
  * itself nullable — a stored `null` means "show all *here*", the only way an

@@ -18,7 +18,7 @@
  *
  * The Environments tab only renders in the main window: switching tears down
  * and rebuilds the whole session (`useEnvironments.switchTo`), which is guarded
- * to the main window there too (gotcha #8) — showing a control that quietly
+ * to the main window there too (ADR #8) — showing a control that quietly
  * no-ops elsewhere would be worse than not showing it.
  */
 

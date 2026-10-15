@@ -22,7 +22,7 @@
 //!    poison-on-transport-error decision in one place instead of at every call
 //!    site, and keeps `tiberius` types out of `commands/`.
 //!
-//! Every value is bound as a nullable string, matching gotcha #5: the cell
+//! Every value is bound as a nullable string, matching ADR #5: the cell
 //! editor only ever produces text and the server coerces it to the column
 //! type. That coercion is right for numbers, dates, `bit` and even
 //! `uniqueidentifier`, but wrong for the binary family — see
@@ -539,7 +539,7 @@ pub fn is_output_clause_conflict(e: &AppError) -> bool {
 /// `OperationTimedOut`. It has to do that explicitly — `.acquire_timeout(...)`
 /// on the `PoolOptions` is *not* enough, because `sqlx`'s eager `connect()`
 /// spends that budget retrying and then reports `PoolTimedOut`, which used to
-/// be classified as a connection-limit refusal (gotcha #66). `tiberius` has no
+/// be classified as a connection-limit refusal (ADR #66). `tiberius` has no
 /// pool at all, and this function's own two network calls — a plain TCP
 /// connect, and the SQL Browser's UDP round trip in [`Reach::Browser`] — have
 /// no OS-level timeout of their own; a host that silently drops packets (a

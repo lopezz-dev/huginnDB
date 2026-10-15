@@ -133,7 +133,7 @@ jobs:
       # Stages the `huginndb-mcp` sidecar so tauri-action's build below finds
       # it at the `bundle.externalBin` path in tauri.conf.json and ships it
       # inside the installer, next to the main executable. Built from a
-      # separate workspace crate (mcp-server/) on purpose — see gotcha #20 in
+      # separate workspace crate (mcp-server/) on purpose — see ADR #20 in
       # CLAUDE.md for why it isn't a second `[[bin]]` in the app's own
       # Cargo.toml. Tauri's sidecar convention needs the binary named
       # `<name>-<target-triple>[.exe]`; `rustc -Vv`'s `host:` line gives the

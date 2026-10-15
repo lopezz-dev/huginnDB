@@ -9,7 +9,7 @@
  * reconnecting does — the trigger reflects `switching` (spinner, disabled)
  * rather than looking instantaneous and leaving the user clicking again
  * mid-teardown. In a secondary "New window" instance, `switchTo` resolves to a
- * purely local filter change instead (gotcha #8 — it never touches
+ * purely local filter change instead (ADR #8 — it never touches
  * `tab_state.json`), so create/rename/delete are hidden there: those are the
  * actions that do write it.
  */

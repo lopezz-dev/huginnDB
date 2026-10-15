@@ -16,7 +16,7 @@
  * branch before binding the rest, so this control mirrors the real model.
  *
  * Lives here rather than in `components/ui/` because it needs `react-i18next`
- * for its placeholder and labels, which gotcha #60 puts outside that
+ * for its placeholder and labels, which convention #60 puts outside that
  * directory's dependency rule. Fully controlled — it holds no state of its own.
  */
 

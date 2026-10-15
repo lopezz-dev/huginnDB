@@ -41,7 +41,7 @@ Verified against the 1.8.0 tree; grouped by the version that shipped it.
   — so until this landed MongoDB was the only one of the five drivers whose
   `connect` could not fail, and a broken profile reported itself as connected
   while the real error surfaced eight seconds later in the schema tree. See
-  gotcha #68 for the whole chain, including why the frontend then announced
+  ADR #68 for the whole chain, including why the frontend then announced
   success.
 - `AppError::Mongo` renders the error's `kind` alone. The driver's own `Display`
   appends `labels`, `source` and a `Debug` of the server reply, and that last
@@ -148,7 +148,7 @@ a Mongo index also has a direction or type per key, a TTL, a partial filter, a
 collation, text weights and a hidden flag. Widening the shared struct to hold
 all of that would have made it wrong for the SQL drivers too, and rebuilding
 `{ createdAt: -1 }` from a bare field-name list would have silently recreated
-it ascending — gotcha #29's failure mode again.
+it ascending — ADR #29's failure mode again.
 
 The parallel path is `db/mongo/indexes.rs` + `commands/mongo_indexes.rs`, with
 the UI in `src/components/indexes/`:
@@ -278,7 +278,7 @@ schema-variance analysis (type distribution across a sample).
   additive.
 - Arbitrary JavaScript (variables, loops, `printjson`) is deliberately **not**
   on this path: the terminal panel runs the user's own `mongosh` signed in as
-  the connection (gotcha #107), which is where a script an AI tool wrote
+  the connection (ADR #107), which is where a script an AI tool wrote
   belongs. What stays here is what the editor should do *natively* — grid
   results, `explain`, per-statement tabs.
 - The **visual aggregation builder** that used to be listed here is ✅ **done** —
@@ -307,7 +307,7 @@ with the UI in `src/components/aggregation/`:
   `values::bson_to_shell_text`, which writes typed values as the constructors
   that parser reads. That round trip is what stops "open a view, save it
   unchanged" from rewriting an `ObjectId` as a string or a `Long` as an `Int`
-  — gotcha #29's failure mode, one level up. The frontend never parses a
+  — ADR #29's failure mode, one level up. The frontend never parses a
   pipeline; even the stages ⇄ text mode switch is a backend call
   (`format_mongo_pipeline`).
 - `$out`/`$merge` are refused before dispatch (`reject_write_stages`): the

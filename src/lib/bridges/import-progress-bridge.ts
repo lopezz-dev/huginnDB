@@ -30,7 +30,7 @@ export interface ImportProgress {
  *
  * Scoped to this window's label: the backend now emits with `emit_to`, but a
  * bare `listen()` defaults to `EventTarget::Any` and would still receive a
- * *different* window's import (CLAUDE.md gotcha #25) — see `log-bridge.ts`
+ * *different* window's import (gotcha #25) — see `log-bridge.ts`
  * for the identical pattern.
  */
 export async function withImportProgress<T>(

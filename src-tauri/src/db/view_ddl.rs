@@ -10,7 +10,7 @@
 //! A view has no ALTER-column machinery to diff — the entire body is a
 //! single opaque SQL string — so unlike [`crate::db::ddl`] there is no
 //! per-column comparison here, only "did the name change" / "did the body
-//! change". Identifier safety (SECURITY.md, gotcha #4): the view/schema name
+//! change". Identifier safety (SECURITY.md, convention #4): the view/schema name
 //! goes through [`crate::db::ddl::validate_ident`] before being quoted. The
 //! query body itself is arbitrary user SQL — it cannot be bound as a
 //! parameter in DDL, so it is only checked for non-emptiness. This is the

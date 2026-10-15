@@ -18,7 +18,7 @@
  * **Keyed by row key, never by the values array or a display index.** The mark
  * is set *after* the save resolves, and every save path refetches on the way
  * through, so by the time this runs the row's values array has been replaced by
- * a new object from the fresh page (gotcha #7's concern, one step further on).
+ * a new object from the fresh page (ADR #7's concern, one step further on).
  * The primary-key tuple is the only identity that survives that. A grid with no
  * key — a query result with no identity — simply does not flash, which is
  * correct rather than a gap: it is not editable either.

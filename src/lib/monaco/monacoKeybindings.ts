@@ -1,6 +1,6 @@
 /**
  * Shared redispatch for the customizable actions Monaco would otherwise
- * swallow inside its own focus area (gotcha #9 in CLAUDE.md).
+ * swallow inside its own focus area (gotcha #9).
  *
  * `editor.addCommand` can't work here: it resolves a fixed keybinding
  * bitmask once, inside Monaco's own keybinding service, before the handler

@@ -72,7 +72,7 @@ mod tests {
 
     /// Only the account derivation is tested. The four functions above reach
     /// the real OS keychain, and a test that writes to it pollutes the
-    /// developer's own credential manager for the same reason gotcha #52's
+    /// developer's own credential manager for the same reason convention #52's
     /// tests overwrote a real `profiles.json` — a global side effect with no
     /// override seam.
     fn account(base: &str) -> String {

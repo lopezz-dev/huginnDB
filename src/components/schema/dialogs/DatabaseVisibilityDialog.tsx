@@ -18,7 +18,7 @@
  * the environment scope is offered for it: a profile-scoped save would be
  * silently undone by the next sync.
  *
- * See CLAUDE.md gotcha #27 for why `undefined` (no override) and `null`
+ * See ADR #27 for why `undefined` (no override) and `null`
  * (override to "show all") must stay distinct all the way down.
  */
 

@@ -27,14 +27,14 @@
  *
  * Two constraints this has to respect, both of which cost a bug when ignored:
  *
- * - **Always fold through `parentConnectionId`** (gotcha #032).
+ * - **Always fold through `parentConnectionId`** (ADR #032).
  *   `selectedConnectionId` must name a real profile: `useConnections.active`
  *   only ever holds top-level ids, and `App.tsx` clears any selection outside
  *   that set and re-selects an arbitrary pool one render later. A tab on a
  *   `<parent>::db::<db>` child would therefore be undone immediately.
  * - **Subscribe to the store, not to dockview.** `onDidActivePanelChange`
  *   already flows into `useTabs.setActive`; hanging this off it as well would be
- *   the second dockview↔store path gotcha #010 exists to forbid.
+ *   the second dockview↔store path ADR #010 exists to forbid.
  */
 
 import { useConnections } from "@/stores/session/connections";

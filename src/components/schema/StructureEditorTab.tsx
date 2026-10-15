@@ -241,7 +241,7 @@ export function StructureEditorTab({
   // would ride into the `preview_structure_change` payload unless someone
   // remembered to strip it — and would re-trigger the debounced DDL preview on
   // every pick. Keeping it in a separate map makes that impossible by
-  // construction (gotcha #16).
+  // construction (ADR #16).
   // Only the warm-up call lives here; each badge reads the cache itself.
   const ensureResolvedSchemas = useJsonSchemas((s) => s.ensureResolved);
   const schemaRevision = useJsonSchemas((s) => s.revision);

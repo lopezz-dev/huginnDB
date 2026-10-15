@@ -403,7 +403,7 @@ pub fn bson_type_tree(b: &Bson) -> Value {
 /// `Int64` is always written as `NumberLong(…)` even when it would fit in an
 /// `i32`: a bare integer literal parses back as `Int32`, and a `$match` against
 /// a `Long` field written as an `Int` silently stops matching — the same
-/// invisible-in-testing, permanent-in-data failure gotcha #29 describes.
+/// invisible-in-testing, permanent-in-data failure ADR #29 describes.
 ///
 /// **Lossy fallback:** types with no constructor in the grammar (`Binary`,
 /// `Timestamp`, `MinKey`/`MaxKey`, regexes outside a `$regex` position, …) are

@@ -21,7 +21,7 @@
  * 2. **A field is addressed by its path, never by a display index.** The path
  *    doubles as the MongoDB update path (`customData.format`, `tags.2`), which
  *    is exactly what `update_cell` / `unset_field` want — same reasoning as
- *    CLAUDE.md gotcha #7 one level down.
+ *    ADR #7 one level down.
  */
 
 import type { BsonTypeTree, CellValue } from "@/types";
@@ -268,7 +268,7 @@ export function flattenDocument(
     });
     if (container && open) {
       if (Array.isArray(value)) {
-        // Array keys are the `$set`/`$unset` path segment (gotcha #29), so
+        // Array keys are the `$set`/`$unset` path segment (ADR #29), so
         // they stay `String(i)` — an indexed loop just skips building the
         // `[key, value]` tuple array `.map` would allocate.
         for (let i = 0; i < value.length; i++) {
@@ -376,7 +376,7 @@ export function draftTypeFor(dataType?: string): string {
  * Anything else — a `dbPointer`, a `mixed` column — shows its own label through
  * [`typeLabel`] but maps onto `string` here so the Radix trigger has a valid
  * value. Those are the same types [`isOpaqueType`] refuses to edit inline
- * (gotcha #29): committing the text `Binary(Generic, 12 bytes)` would store
+ * (ADR #29): committing the text `Binary(Generic, 12 bytes)` would store
  * exactly that string.
  */
 export function typeValue(type: string): string {

@@ -173,7 +173,7 @@ export function CellEditorBody({
   }, [modelPath, resolved, language]);
   // Ctrl+S / Ctrl+Enter must be bound through Monaco's addCommand: Monaco
   // swallows them inside its focus area, so a window keydown listener never
-  // sees them (CLAUDE.md gotcha #9). The command reads a ref so the handler
+  // sees them (gotcha #9). The command reads a ref so the handler
   // never freezes to the first render's `onSubmit`.
   const onSubmitRef = useRef(onSubmit);
   onSubmitRef.current = onSubmit;

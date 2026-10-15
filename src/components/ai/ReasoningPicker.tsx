@@ -14,7 +14,7 @@
  * the single accent, the `xs` density, mono for the value. A control that
  * introduced its own typeface or palette inside a 360px dock panel would read
  * as a widget bolted on rather than part of the tool — and `components/ui/`'s
- * rules (gotcha #60) exist precisely to stop that. What is spent here is
+ * rules (convention #60) exist precisely to stop that. What is spent here is
  * precision: the fill and the knob share one easing, the stops light up in
  * order, and the trigger carries a five-bar meter so the level is legible
  * without opening anything.
@@ -61,7 +61,7 @@ type Level = (typeof LEVELS)[number];
  * Bar heights, as literal classes rather than an interpolated `h-[${n}px]`.
  *
  * Tailwind's JIT scans source as *text*, so a class assembled at runtime is
- * never generated — no error, just a bar with no height. Gotcha #60 records the
+ * never generated — no error, just a bar with no height. Convention #60 records the
  * same trap for `fieldFocus`.
  */
 const BAR_HEIGHTS = ["h-1", "h-1.5", "h-2", "h-2.5", "h-3"] as const;

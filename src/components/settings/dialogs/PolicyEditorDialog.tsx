@@ -1,7 +1,7 @@
 /**
  * Settings → Policy → "Edit policy" / "Create policy": the managed policy,
  * edited as a form and as JSON — phase 4 of managed policy
- * (`policy::editor`, gotcha #99).
+ * (`policy::editor`, ADR #99).
  *
  * Who may save is decided by the share: the backend saves only where a real
  * write to the file's folder succeeds, and says why when it does not. There

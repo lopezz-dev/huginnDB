@@ -307,7 +307,7 @@ pub fn run() {
         // reporter relies on this: `window.open` is a no-op in the WebView.
         .plugin(tauri_plugin_opener::init())
         // The OS clipboard, read and written natively rather than through the
-        // WebView's Clipboard API — see gotcha #63 and the capability, which
+        // WebView's Clipboard API — see ADR #63 and the capability, which
         // grants only the two text commands.
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::new_with_args(parse_startup_args()))

@@ -5,7 +5,7 @@
  * `SchemaTableRow` used to call `useTabs((s) => s.tabs.find(...))` and
  * `useTabs((s) => s.tabs.some(...))` itself — each one an O(tabs) scan.
  * Both selectors return a primitive (a string key / a boolean), so neither
- * one breaks CLAUDE.md gotcha #1 on its own, and neither one re-renders a
+ * one breaks gotcha #1 on its own, and neither one re-renders a
  * row that isn't affected. What they don't avoid is *running*: 500 rows ×
  * two O(tabs) scans is 1,000 iterations on every `useTabs` write — and
  * `updateQuery` (typing in the SQL editor) is exactly such a write, once per
@@ -20,7 +20,7 @@
  * (`openTableKeys.has(tableTabKey(...))`) is what actually feeds each row's
  * `memo()` — as long as that key's membership hasn't flipped, the row's own
  * `isOpen`/`isActive` props stay the same primitive booleans they were,
- * which is what lets `TableRow`'s memo (CLAUDE.md gotcha #28) keep bailing
+ * which is what lets `TableRow`'s memo (convention #28) keep bailing
  * out for every row except the one that actually changed.
  */
 

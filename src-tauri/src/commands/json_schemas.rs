@@ -20,11 +20,11 @@
 //! call — the caller makes it once per data tab, not once per cell — and
 //! [`resolve_json_schema`] answers for a single column, which is what the
 //! MongoDB document view needs, since a nested field path is not known until the
-//! user expands it (gotcha #29).
+//! user expands it (ADR #29).
 //!
 //! # Why the resolver is not mirrored in TypeScript
 //!
-//! It would be the second implementation of one grammar, which gotchas #30/#33
+//! It would be the second implementation of one grammar, which ADRs #30/#33
 //! exist to prevent — and here the drift would be especially nasty, because a
 //! resolution bug is not an error, it is "the autocompletion did not appear",
 //! which nobody reports. Rust is also where it can be tested (`cargo test`);
@@ -72,7 +72,7 @@ fn commit(app: &AppHandle, snapshot: &JsonSchemaLibrary) -> AppResult<()> {
 /// Every resolution command routes through here so the fold happens in exactly
 /// one place. Forgetting it means a binding never matches on a server-wide
 /// connection — silently, and precisely on the "one shared configuration server"
-/// setup this feature exists for (gotchas #32/#36).
+/// setup this feature exists for (ADRs #32/#36).
 fn target<'a>(
     connection_id: Option<&'a String>,
     db_schema: Option<&'a String>,

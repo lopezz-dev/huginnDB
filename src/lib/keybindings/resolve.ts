@@ -6,7 +6,7 @@
  * ⚠️ **Everything here returns fresh objects.** `resolveBindings` builds a new
  * `Map` on every call, so it must only ever be invoked inside a `useMemo` (or
  * imperatively via `getState()`), never from a Zustand selector — a selector
- * returning a fresh reference re-renders forever. See CLAUDE.md gotcha #1.
+ * returning a fresh reference re-renders forever. See gotcha #1.
  * `getBinding` is the exception: it returns a `string`, which Zustand compares
  * by value, which is why the existing selectors are safe.
  */

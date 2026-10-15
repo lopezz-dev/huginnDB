@@ -4,7 +4,7 @@
  * enough context to answer "what is the user about to type here?".
  *
  * Same rule as its sibling `completionContext.ts`: this is **not** a parser
- * (gotcha #33). It never validates, never builds an AST, and gives up with
+ * (ADR #33). It never validates, never builds an AST, and gives up with
  * the most conservative answer on anything it doesn't recognise — the text
  * that reaches the backend is untouched and still parsed exactly once, in
  * Rust. All it tracks is which lexical context the cursor sits in (string,

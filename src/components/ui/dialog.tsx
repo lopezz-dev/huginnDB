@@ -39,7 +39,7 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
  *
  * A prop, not a `surfaceFor` derived from `children`: the tier a dialog
  * wants is known statically by whoever writes it, not derivable at runtime
- * from its content (gotcha #64 is about the latter kind of decision, not
+ * from its content (ADR #64 is about the latter kind of decision, not
  * this one) — and inspecting `React.Children` to guess it would break the
  * moment someone wraps the body in a fragment, silently, as a wrong
  * anatomy rather than a build error.

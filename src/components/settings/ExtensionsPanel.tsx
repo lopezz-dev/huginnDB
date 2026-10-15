@@ -25,7 +25,7 @@
  * same dialog a local `.vsix` goes through. One path, one set of rules.
  *
  * **An update never silently rewrites a palette the user has edited.** The
- * backend tracks that per theme (`paletteEdited`, see gotcha #88); this panel
+ * backend tracks that per theme (`paletteEdited`, see ADR #88); this panel
  * turns it into two visibly different outcomes rather than one button that
  * quietly behaves differently.
  */

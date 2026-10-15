@@ -34,7 +34,7 @@ pub enum AppError {
     /// Mongo *command* error used to end with a hex encoding of the entire
     /// server reply, in a string the user reads. `labels` and `source` are
     /// empty in almost every case the user sees; the `kind` is the whole
-    /// sentence. See gotcha #68.
+    /// sentence. See ADR #68.
     ///
     /// Only the *rendering* narrows: `From<mongodb::error::Error>` below still
     /// scans the full `to_string()` for the connection-limit needles, because
@@ -252,7 +252,7 @@ fn message_signals_connection_limit(message: &str) -> bool {
 /// While a pool is being *created* `sqlx` also reports `PoolTimedOut` for a
 /// server it never reached, having retried and discarded the real error — so
 /// `crate::db::pool::open_pool` classifies its own failures through
-/// `pool::open_time_error` instead of reaching here. See gotcha #66.
+/// `pool::open_time_error` instead of reaching here. See ADR #66.
 fn sqlx_connection_limit_detail(error: &sqlx::Error) -> Option<String> {
     if let sqlx::Error::Database(db) = error {
         if matches!(db.code().as_deref(), Some("53300") | Some("53400")) {
@@ -343,7 +343,7 @@ pub type AppResult<T> = Result<T, AppError>;
 /// The message names the fix, not just the failure. A bare "took longer than
 /// 20s" reads as a broken connection — which is exactly the wrong conclusion
 /// when the connection is fine and the server is merely large — and leaves the
-/// user with nothing to do about it. Same rule as gotcha #77: text a person
+/// user with nothing to do about it. Same rule as ADR #77: text a person
 /// acts on has to say what the action is.
 pub async fn with_timeout_secs<T>(
     limit: std::time::Duration,
@@ -439,7 +439,7 @@ mod tests {
     /// The `acquire()` contract: waiting past `ACQUIRE_TIMEOUT` for a slot in a
     /// pool that already exists *is* a connection-limit problem, and the
     /// blanket conversion must keep saying so. `db::pool::open_time_error`
-    /// covers the other producer of this variant — see gotcha #66 and the test
+    /// covers the other producer of this variant — see ADR #66 and the test
     /// beside it.
     #[test]
     fn a_pool_acquire_timeout_stays_classified_as_a_connection_limit() {
@@ -451,7 +451,7 @@ mod tests {
     /// The message the user actually reads. `mongodb::error::Error`'s own
     /// `Display` appends `labels`, `source` and a `Debug` of the server reply —
     /// and that last one is hex-encoded, so a Mongo command error used to drag
-    /// a dump of the whole reply into a tree row. See gotcha #68.
+    /// a dump of the whole reply into a tree row. See ADR #68.
     #[test]
     fn a_mongo_error_renders_its_kind_and_nothing_else() {
         // The one `ErrorKind` constructible from outside the driver crate:

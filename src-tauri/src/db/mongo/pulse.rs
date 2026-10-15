@@ -411,7 +411,7 @@ pub async fn top_queries(conn: &MongoConn, limit: usize) -> AppResult<Vec<TopQue
 /// only ever writes a `find`), the same grammar the query editor speaks.
 /// Routing it back through [`shell::parse`] here is what keeps that the
 /// *only* Mongo statement parser in the tree rather than growing a second,
-/// subtly different one for this one caller (the rule gotcha #33 documents).
+/// subtly different one for this one caller (the rule ADR #33 documents).
 ///
 /// Only the read-shaped operations carry enough of a query for `explain` to
 /// mean anything; anything else is refused rather than silently no-op'd.

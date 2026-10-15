@@ -117,6 +117,6 @@ have graduated, `uiAdoption.test.ts` is deleted.
 
 `ui/` has no barrel `index.ts`, deliberately. Call sites import by path
 (`@/components/ui/button`), which is what lets a file move inside this directory
-without touching its own imports — the invariant gotcha #28 asks to keep. A
+without touching its own imports — the invariant convention #28 asks to keep. A
 barrel would also add a second import path to diverge, for no gain across the
 200-plus `Button` call sites.

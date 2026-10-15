@@ -624,7 +624,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     // database, matching the schema tree; a connection scoped to one database
     // has nothing to switch between. The user's "databases to show" subset is
     // honoured here too, so a database hidden in the tree can't reappear in the
-    // palette (gotcha #27 — resolved through the shared two-layer helper).
+    // palette (ADR #27 — resolved through the shared two-layer helper).
     for (const p of profiles) {
       if (!active.has(p.id)) continue;
       if (!isServerWide(p)) continue;

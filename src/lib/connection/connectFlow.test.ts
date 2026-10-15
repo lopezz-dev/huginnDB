@@ -7,7 +7,7 @@
  * for anything that failed *after* the pool opened — and the app announced
  * "Connected" for a server that had never answered. MongoDB hit it on every
  * connection, because its client is lazy and `connect` could not fail at all.
- * See gotcha #68.
+ * See ADR #68.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";

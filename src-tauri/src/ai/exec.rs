@@ -23,7 +23,7 @@
 //! [`execute`] itself has none, and that is deliberate rather than an
 //! omission: it needs an [`AppState`], whose construction reads the real
 //! `profiles.json` / `tab_state.json`, and [`crate::bridge::server::check_policy`]
-//! reads `profiles.json` from disk on every call — gotcha #52 is explicit that
+//! reads `profiles.json` from disk on every call — convention #52 is explicit that
 //! a test which reaches either is a test whose answer depends on the
 //! developer's own saved connections. So every *decision* [`execute`] makes is
 //! a free function over plain arguments ([`resolve_connection`],
@@ -323,7 +323,7 @@ pub fn resolve_connection(reference: &str, profiles: &[ConnectionProfile]) -> Ap
     // A synthetic per-database view (`<parent>::db::<name>`) has no profile of
     // its own, and the panel hands us whichever connection the user has
     // selected — including one of those. Resolving the parent is what the
-    // frontend already does for the same reason (gotcha #36); without it, every
+    // frontend already does for the same reason (ADR #36); without it, every
     // tool call on a MongoDB connection opened *at a database* failed with "no
     // connection named …::db::…", which is to say agent mode did not work at
     // all there. The database half is not lost: `execute` carries it into

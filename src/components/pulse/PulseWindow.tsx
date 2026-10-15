@@ -9,7 +9,7 @@
  * `open_pulse_window` stashes and this drains on boot — the pool it measures
  * is already open in the shared backend `AppState`, so nothing reconnects here.
  *
- * Ephemeral by design, the same secondary-window pattern gotcha #8 describes:
+ * Ephemeral by design, the same secondary-window pattern ADR #8 describes:
  * nothing here writes shared state, and closing the window is the whole story.
  * The dock panel keeps working while this is open, and the two share one clock
  * because the live series lives in a store rather than in either component.

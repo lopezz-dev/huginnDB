@@ -437,7 +437,7 @@ export interface MongoIndexInfo {
 }
 
 /** The index the editor wants to exist. Documents are source text, parsed in
- *  Rust — the frontend never parses BSON (gotcha #33). */
+ *  Rust — the frontend never parses BSON (ADR #33). */
 export interface NewMongoIndexSpec {
   keys: string;
   /** Blank/omitted falls back to the `field_1_other_-1` convention, computed
@@ -900,7 +900,7 @@ export interface CollectionScan extends TableFilter {
 
 /** One page of a table browse — the payload of `fetchTableData`. Mirrors Rust
  *  `TableQuery`. A field declared here but not there is dropped by serde
- *  without a word (CLAUDE.md gotcha #14), so the two must move together. */
+ *  without a word (gotcha #14), so the two must move together. */
 export interface TableQuery extends TableScan {
   limit: number;
   offset: number;
@@ -938,7 +938,7 @@ export interface DraftCell {
    * has no schema, so the type a new field is stored with is a *choice*, not a
    * property of the column. Inferring it from the text would write an `Int32`
    * into a field the collection holds as a `Long` — the same fidelity trap
-   * gotcha #29 documents for edits. Absent → the catalog type is used, which is
+   * ADR #29 documents for edits. Absent → the catalog type is used, which is
    * what every SQL insert wants (it is what tells the backend a MySQL `BIT`
    * needs its `CAST`, gotcha #15).
    */
@@ -1630,7 +1630,7 @@ export interface GridPrefs {
  * (`prefs.rs`), so widening the union needs no backend migration and an older
  * `prefs.json` still reads. In the other direction an older build reading
  * `"both"` falls through both branches of `tableMetricLabel` and renders no
- * badge — a clean degradation, unlike the keybindings trade in gotcha #53
+ * badge — a clean degradation, unlike the keybindings trade in ADR #53
  * where a downgrade loses every preference.
  */
 export type SchemaTableMetric = "none" | "row-count" | "size" | "both";
@@ -1708,7 +1708,7 @@ export type NotificationDensity = "comfortable" | "compact";
  *
  * Mirrors `NotificationPrefs` in `src-tauri/src/prefs.rs` — a field missing on
  * either side is silently dropped by serde on the way through
- * `update_preferences` (CLAUDE.md gotcha #14), so both declarations change
+ * `update_preferences` (gotcha #14), so both declarations change
  * together. `notifications_use_the_camel_case_keys_the_frontend_sends` in
  * `prefs.rs` pins the exact JSON.
  */
@@ -1808,7 +1808,7 @@ export interface Environment {
    *
    * Secondary "New window" instances use this to apply a chosen environment's
    * connection/database filters to their own, purely in-memory view without
-   * ever touching `tab_state.json` (gotcha #8) — see
+   * ever touching `tab_state.json` (ADR #8) — see
    * `stores/session/environments.ts`'s `applyLocalView`.
    */
   launch?: LaunchState;

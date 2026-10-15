@@ -95,7 +95,7 @@ const DEFAULT_MAX_CONNECTIONS: u32 = 2;
 ///
 /// Derived from [`crate::db::pool::MCP_IDLE_TTL`] rather than stated, so that a
 /// connector-driven connection is released on the same schedule whichever
-/// process is holding it — see gotcha #67 for what their divergence cost.
+/// process is holding it — see ADR #67 for what their divergence cost.
 const POOL_IDLE_TTL: Duration = crate::db::pool::MCP_IDLE_TTL;
 
 /// How often the idle-pool sweep runs.
@@ -755,7 +755,7 @@ const WRITE_TOOLS: [&str; 8] = [
 /// is the only input allowed to vary it.** A client fetches `tools/list` once,
 /// at startup, and caches it for the session — while exposure and per-connection
 /// write policy are deliberately re-read on every call so they can change under
-/// a running client (gotcha #58). Deriving the surface, or a tool's annotations,
+/// a running client (ADR #58). Deriving the surface, or a tool's annotations,
 /// from those would go stale in the unsafe direction the moment a connection was
 /// raised to `data`: the client would keep believing no write was possible and
 /// an auto-approving mode would skip the confirmation the user thought they had.
@@ -1307,7 +1307,7 @@ impl Huginn {
     ///
     /// Thin wrapper: the rules live in the free [`resolve_connection`] so they
     /// can be tested without an [`AppState`] and without reading the real
-    /// `profiles.json` (gotcha #52 — a test that reaches this function's own
+    /// `profiles.json` (convention #52 — a test that reaches this function's own
     /// disk read is a test whose answer depends on the developer's saved
     /// connections).
     fn canonical_connection(&self, reference: &str) -> Result<String, ErrorData> {
@@ -1327,7 +1327,7 @@ impl Huginn {
     /// Splitting by tier makes both annotations honest **constants**:
     /// `run_query` is `readOnlyHint`, `run_write` is `destructiveHint`, and
     /// neither can go stale the way a policy-derived hint would (that trap is
-    /// documented in the `Unreleased` CHANGELOG entry and gotcha #59).
+    /// documented in the `Unreleased` CHANGELOG entry and ADR #59).
     ///
     /// Enforcement runs in **both** directions. Refusing writes on `run_query`
     /// is the obvious half; refusing *reads* on `run_write` is what stops a
@@ -2813,7 +2813,7 @@ mod tests {
     /// `ensure_connected` goes on to open a local pool.
     ///
     /// Aimed at `ensure_via_bridge` rather than `ensure_connected` because the
-    /// latter checks exposure against the real `profiles.json` (gotcha #52).
+    /// latter checks exposure against the real `profiles.json` (convention #52).
     #[tokio::test]
     async fn an_app_that_quit_hands_the_open_back_to_this_process() {
         use crate::bridge::client::test_support::{fake_app, AfterHello};
@@ -3497,7 +3497,7 @@ mod tests {
     /// auto-approval mode and its permission rules read these hints, so an
     /// unannotated read gets treated with the same suspicion as a DELETE, and
     /// an unannotated write gets no more friction than a SELECT. Same family as
-    /// the unenforced steps gotcha #49 records — the test is the enforcement.
+    /// the unenforced steps convention #49 records — the test is the enforcement.
     #[test]
     fn every_tool_declares_a_title_and_a_read_only_hint() {
         for tool in Huginn::tool_router().list_all() {

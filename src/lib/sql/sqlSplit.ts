@@ -39,7 +39,7 @@
  * `.modifier(`. Without it a script of one call per line was one statement, the
  * tab took the single-statement path and only the first call ever ran (#220).
  *
- * This stays a **lexer**, not a parser (gotcha #33): it recognises the spans
+ * This stays a **lexer**, not a parser (ADR #33): it recognises the spans
  * a `;` may not be read inside, and nothing about what the statements mean.
  */
 

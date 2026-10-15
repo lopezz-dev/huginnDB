@@ -242,7 +242,7 @@ export function splitBlocks(text: string): TextBlock[] {
  * something unreadable no matter how correct it is. The prompt asks for a fence
  * (`ai::agent::SYSTEM_PROMPT`), and a small model complies some of the time;
  * this is the half that does not depend on compliance, the same argument as
- * gotcha #78's backstop.
+ * ADR #78's backstop.
  *
  * # What counts, and what deliberately does not
  *

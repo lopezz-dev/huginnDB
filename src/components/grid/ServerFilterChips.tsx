@@ -173,7 +173,7 @@ export function ServerFilterChip({
         )}
       </SimpleTooltip>
       {onRemove && (
-        // `quiet`: dropping a filter destroys no data, and gotcha #61 says red
+        // `quiet`: dropping a filter destroys no data, and convention #61 says red
         // at rest is read as decoration.
         <IconButton
           flat

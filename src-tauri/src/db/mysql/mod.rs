@@ -15,7 +15,7 @@ pub fn is_bit_type(type_name: &str) -> bool {
 
 /// Wrap a bound placeholder so MySQL reads the literal as a number.
 ///
-/// Cell values travel as text end-to-end (gotcha #5) and drivers coerce them
+/// Cell values travel as text end-to-end (ADR #5) and drivers coerce them
 /// server-side, which is wrong for `BIT`: binding the string `"1"` stores the
 /// ASCII byte `0x31`, not the integer 1, so editing a BIT cell silently wrote
 /// garbage. `CAST(? AS UNSIGNED)` forces the numeric reading, and

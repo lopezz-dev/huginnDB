@@ -28,13 +28,13 @@
 //!
 //!   This is a multi-bucket top-level shape again, which v3 removed on purpose —
 //!   see [`Environment`] for why an environment is a different thing from a v2
-//!   workspace, and CLAUDE.md gotchas #8 and #10.
+//!   workspace, and ADRs #8 and #10.
 //! - **v5** (current): [`Origin`]s move to a top-level, global
 //!   [`PersistedTabState::origins`] — an origin describes a shared file on a
 //!   server, not a Producción/Staging axis, and `profiles.json` (what an origin
 //!   actually populates) is already global. Keeping the registration itself
 //!   scoped to one environment was the same class of bug `visible_databases`
-//!   had before it moved onto `LaunchState` (CLAUDE.md gotcha #27): the same
+//!   had before it moved onto `LaunchState` (ADR #27): the same
 //!   physical file needed a second, independent registration — a second id — to
 //!   be seen from a second environment, and deleting the environment that
 //!   happened to hold the registration silently orphaned every connection it had
@@ -104,7 +104,7 @@ pub struct PersistedTabState {
 /// redundant. An environment is not that: it is an *identity* — which subset of
 /// the user's connections is in play, and (from the next phase) where those
 /// connections came from — so switching one swaps the whole working set rather
-/// than just re-arranging tabs. See CLAUDE.md gotchas #8 and #10.
+/// than just re-arranging tabs. See ADRs #8 and #10.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Environment {
@@ -196,7 +196,7 @@ pub struct Environment {
     /// Only meaningful when `origin_id` is set — an ordinary local environment
     /// has no synced value to override, its `name`/`color`/`icon`/`theme_id`
     /// already *are* the local truth. Not enforced here (same call as
-    /// `LaunchState::database_visibility`, gotcha #27): the backend stores
+    /// `LaunchState::database_visibility`, ADR #27): the backend stores
     /// whatever it's given, applicability is the frontend's job.
     ///
     /// Never touched by `sync_environment_bundles` and never exported —
@@ -323,7 +323,7 @@ pub struct Origin {
 /// **Every field defaults to `true`, deliberately against the house rule.**
 /// Every other per-resource opt-in in this codebase defaults to off (a profile
 /// is not MCP-exposed, not Pulse-sampled, not AI-reachable until the user says
-/// so — gotcha #58), because those are permissions and a closed default is the
+/// so — ADR #58), because those are permissions and a closed default is the
 /// safe one. This is not a permission: it describes what an origin *was already
 /// pulling* before the field existed. A closed default would make installing an
 /// update silently narrow every registered origin to nothing, and the next sync
@@ -426,7 +426,7 @@ pub struct LaunchState {
     pub collapsed_connections: Vec<String>,
     /// DataGrip-style subset of saved connections to show in the connections
     /// tree. Scoped to the environment, not global: `Environment` is
-    /// already "which subset of connections is in play" (gotcha #27), and a
+    /// already "which subset of connections is in play" (ADR #27), and a
     /// filter tuned for one environment being visible in another — e.g. after
     /// switching from a curated "Pruebas" set back to "Predeterminado" — was
     /// the reported bug. `None`/absent means "show all", same convention as
@@ -498,7 +498,7 @@ pub struct PersistedTab {
     pub title: Option<String>,
     /// User-assigned cosmetic tab colour (hex string). Stored opaquely; the
     /// backend never interprets it. Must live here or serde drops it on the
-    /// typed IPC boundary (see CLAUDE.md gotcha #14).
+    /// typed IPC boundary (see gotcha #14).
     pub color: Option<String>,
     /// Whether the tab was pinned. Same IPC-boundary rule as `color` — the
     /// field must exist on the struct or serde drops it on save.
@@ -880,7 +880,7 @@ impl Environment {
     /// there is no longer a synced value to shadow, keeping both set would
     /// only drift out of sync with whatever the (now ignored) public field
     /// says. A pure `Environment` method, not inlined in the command, so it's
-    /// testable without an `AppState` (see CLAUDE.md gotcha #52).
+    /// testable without an `AppState` (see convention #52).
     pub(crate) fn adopt_local_overrides(&mut self) {
         if let Some(name) = self.local_name.take() {
             self.name = name;

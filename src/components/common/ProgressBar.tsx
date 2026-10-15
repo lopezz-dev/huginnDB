@@ -3,7 +3,7 @@
  *
  * Was `connection/dialogs/ImportProgressBar`, private to the two import
  * wizards. It moved here the moment a third surface needed it — publishing a
- * shared origin's document (#155) — which is exactly the criterion gotcha #28
+ * shared origin's document (#155) — which is exactly the criterion convention #28
  * sets for `common/`: cross-domain, and a leaf.
  *
  * The reason a determinate bar exists at all, rather than a spinner, is the same

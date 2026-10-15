@@ -13,7 +13,7 @@
 //! from it. The I/O — reading the path, resolving keychain secrets, writing
 //! atomically — lives in [`crate::commands::origin_doc`]. Nothing here touches a
 //! disk or a keychain, which is the whole reason the rules below are testable at
-//! all (CLAUDE.md gotcha #52: the first tests written against
+//! all (convention #52: the first tests written against
 //! `merge_profiles_bundle` overwrote the developer's own `profiles.json`,
 //! because the only entry point insisted on saving first).
 //!
@@ -31,7 +31,7 @@
 //!
 //! [`crate::transfer::EnvironmentExportFile`] **already is** the format, so this
 //! module invents nothing: [`build_origin_file`] assembles that exact type and
-//! reuses [`crate::transfer::metadata`]. Mirrors gotcha #16 (the DDL is built in
+//! reuses [`crate::transfer::metadata`]. Mirrors ADR #16 (the DDL is built in
 //! Rust, never in the component) and #33 (one grammar, one parser): a second
 //! writer would drift, and the drift would be silent, because a consumer's sync
 //! reports "read cleanly" either way.

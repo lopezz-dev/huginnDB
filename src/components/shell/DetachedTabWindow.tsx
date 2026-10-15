@@ -15,7 +15,7 @@
  * `ViewEditorTab`), so this "just works" the same way opening that tab fresh
  * in the main window would — same cold, empty schema cache and all.
  *
- * Ephemeral by design (CLAUDE.md gotcha #8's secondary-window pattern):
+ * Ephemeral by design (ADR #8's secondary-window pattern):
  * nothing here touches `tab_state.json`, and closing the OS window is the
  * whole story — the tab was already removed from the main window's
  * `useTabs` at the moment it was popped out (see `TabbedArea`'s

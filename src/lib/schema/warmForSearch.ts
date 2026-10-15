@@ -16,7 +16,7 @@
  * `DB_VIEW_WARM_CONCURRENCY` and already opens each view through
  * `openTrackedDatabaseView` (the tracked path — the explorer's own prefetch
  * used the bare `api` wrapper, so a database warmed by searching never got its
- * persistence subscription, gotcha #27).
+ * persistence subscription, ADR #27).
  *
  * Connections are walked **sequentially**, not in parallel: five connections at
  * once would be fifteen simultaneous pool opens, which is the exact burst the

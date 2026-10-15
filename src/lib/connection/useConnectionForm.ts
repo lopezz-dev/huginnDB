@@ -33,7 +33,7 @@
  *   could never be edited as a form again, whatever the user wanted.
  * - **`normalizeServerName`** splits SSMS's single-box `HOST\INSTANCE` on blur.
  *   `splitSqlServerName` is the UI twin of the authoritative Rust
- *   `split_instance` (gotcha #37).
+ *   `split_instance` (ADR #37).
  * - **`isMongoSrv`** disables the SSH tunnel: an SRV URI resolves to several
  *   hosts, which a single-port tunnel cannot serve.
  *

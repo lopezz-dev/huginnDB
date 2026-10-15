@@ -11,7 +11,7 @@
  * overlay inside the existing window, mounted at the top of the app tree.
  *
  * It is also intentionally decoupled from the launch sequence (reconnect →
- * layout → focus, gotchas #8 and #10): it neither waits for it nor blocks it.
+ * layout → focus, ADRs #8 and #10): it neither waits for it nor blocks it.
  * Gating a purely decorative overlay on session restore would mean a slow
  * reconnect keeps the user staring at a logo, and a failure could leave the
  * overlay up forever. It runs on its own timer and gets out of the way.

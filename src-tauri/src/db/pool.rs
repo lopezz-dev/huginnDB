@@ -96,7 +96,7 @@ pub const MAX_LIFETIME: Duration = Duration::from_secs(1800);
 /// * Opening a pool is bounded by the same value in [`connect_probed`], and
 ///   there a timeout means the endpoint never answered — reported as
 ///   [`crate::error::AppError::OperationTimedOut`], because a server we never
-///   reached is not a server that is full. See gotcha #66.
+///   reached is not a server that is full. See ADR #66.
 pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// How long a connection held **for the MCP connector** may sit idle before it
@@ -107,7 +107,7 @@ pub const ACQUIRE_TIMEOUT: Duration = Duration::from_secs(30);
 /// the pool itself, and the desktop app's [`crate::pool_reaper`] (through
 /// `connections.bridgeIdleTtlSecs`, which defaults to this) when the bridge
 /// opened it on the sidecar's behalf. Those two diverging — five minutes in one
-/// mode, forever in the other — *was* gotcha #67, so the default is derived
+/// mode, forever in the other — *was* ADR #67, so the default is derived
 /// here rather than written down twice.
 pub const MCP_IDLE_TTL: Duration = Duration::from_secs(300);
 
@@ -746,7 +746,7 @@ mod tests {
         );
     }
 
-    /// The half of gotcha #66 that is unit-testable without a server: a host
+    /// The half of ADR #66 that is unit-testable without a server: a host
     /// that never answers must not be reported as a server that is full, and
     /// must not carry the marker the frontend keys "release idle pools" off.
     ///

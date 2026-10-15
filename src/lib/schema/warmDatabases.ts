@@ -99,7 +99,7 @@ export async function warmDatabases(
       try {
         // `openTrackedDatabaseView`, not the bare `api` wrapper: it is what
         // attaches the child's persistence subscription, so a tab opened
-        // against this view afterwards is actually remembered (gotcha #27).
+        // against this view afterwards is actually remembered (ADR #27).
         const childId = await openTrackedDatabaseView(parentId, name);
         // `quiet`: this loop is the one place a failure per database would mean
         // a card per database, and the caller reports one summary instead.
@@ -107,7 +107,7 @@ export async function warmDatabases(
         // The returned message is the point: `refresh` records its failure on
         // the slice rather than throwing, so `loaded += 1` used to count a
         // database whose table list had failed — nineteen loaded, nineteen
-        // broken, reported as a clean success. See gotcha #68.
+        // broken, reported as a clean success. See ADR #68.
         const failure = await useSchema
           .getState()
           .refresh(childId, { quiet: true });

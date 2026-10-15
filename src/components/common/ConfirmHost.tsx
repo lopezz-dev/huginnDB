@@ -13,7 +13,7 @@
  * so the temptation is to `await` inside here and disable the buttons while
  * that runs. Don't — the caller does its own work *after* this resolves
  * (see the ten call sites this replaces), which is exactly the shape
- * `useAsyncSubmit`'s deliberate "stay busy after success" (gotcha #44)
+ * `useAsyncSubmit`'s deliberate "stay busy after success" (ADR #44)
  * depends on; a host that manages its own busy state would race it instead.
  */
 

@@ -105,7 +105,7 @@ async fn tick(app: &AppHandle) {
         // `peek`, not `pool_for`: a background sample is not use. `pool_for`
         // stamps `last_used`, and this runs every minute — so a connection the
         // MCP bridge opened, for a profile with Pulse on, never went idle and
-        // the reaper never closed it: gotcha #67's permanent pool, reached by
+        // the reaper never closed it: ADR #67's permanent pool, reached by
         // another route.
         let Some(pool) = state.connections.read().peek(id) else {
             continue;

@@ -1,7 +1,7 @@
 /**
  * The last thing between a draft and everyone who pulls from the origin.
  *
- * A `ConfirmDialog` rather than a toast-and-hope, for the reason gotcha #44
+ * A `ConfirmDialog` rather than a toast-and-hope, for the reason ADR #44
  * gives: a failure has to say why *in* the dialog, which stays open, so the user
  * can fix it and try again without losing the draft. The impact report is
  * rendered inside it rather than only in the pane behind it — a preview the user

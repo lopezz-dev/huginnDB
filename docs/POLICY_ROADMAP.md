@@ -217,7 +217,7 @@ The subject is always the AI, so no caller parameter is needed.
     mode already removes the row tools (`ai::tools::catalogue`);
   - over **MCP** they are refused at call time. The MCP tool list cannot vary
     per connection: clients cache `tools/list` for the session, which is why
-    only `--read-only` ever changes it (gotchas #58, #59).
+    only `--read-only` ever changes it (ADRs #58, #59).
 - `pulse_*`, `list_users` and `list_privileges` require `monitor`.
 - The per-variant mapping is an exhaustive `match` with no `_` arm (gotchas
   #49, #71), so a new `BridgeRequest` variant cannot be added without deciding
@@ -235,7 +235,7 @@ Three things do **not** pass through `execute` and are checked where they are:
   `ai_enabled` are still required.
 
 The AI's exposure map in `ai/tools.rs` stays exhaustive with no `_` arm
-(gotcha #71); policy adds a check, it does not add an escape hatch. Gotcha #49's
+(ADR #71); policy adds a check, it does not add an escape hatch. Convention #49's
 three unenforced `_ => None` arms are a hazard here: phase 1 must make at least
 `policy_id_of` exhaustive before policy depends on it.
 
@@ -257,7 +257,7 @@ To allow free SQL under a relation scope, HuginnDB would have to name every
 relation a statement touches: through views, CTEs, functions, synonyms,
 cross-database names, dynamic SQL (`EXEC`, `PREPARE`, `sp_executesql`) and the
 system catalogs. `classify` was already caught out by a far easier question
-(gotcha #76). A best-effort extractor can come later as a *warning*; it must
+(ADR #76). A best-effort extractor can come later as a *warning*; it must
 never be the thing a customer's restriction depends on. Where free SQL is
 needed under a scope, the answer is a restricted database user (§7), and a
 later version may allow free SQL on a rule that declares it is backed by one.
@@ -265,9 +265,9 @@ later version may allow free SQL on a rule that declares it is backed by one.
 ### 6.4 Splitting the write tier
 
 Classification gains a **set** of verbs (`db::classify::verbs_of`, still the
-union over every statement in the batch, gotcha #76) that `DataWrite` is split
+union over every statement in the batch, ADR #76) that `DataWrite` is split
 into. `StmtClass` stays, *derived* from the set, so the existing `== Read`
-checks and gotcha #54's single-source rule keep holding without touching every
+checks and ADR #54's single-source rule keep holding without touching every
 caller. Mixed statements claim every verb they can perform, and a statement
 nothing recognises claims all three write verbs — the same conservative side
 today's `DataWrite` default takes:
@@ -289,7 +289,7 @@ delete}, `Full` = + ddl). On a managed endpoint it can only narrow (§4).
 ## 7. Making it real for people: per-user credentials and `GRANT` generation (D2)
 
 - An origin can already publish a connection whose consumers keep their own
-  password (`ConnectionProfile::secret_override`, gotcha #69). Per-user
+  password (`ConnectionProfile::secret_override`, ADR #69). Per-user
   credentials need the same for the **user name**.
 - From a role's rules HuginnDB generates a script for a database role —
   PostgreSQL / MySQL / SQL Server `GRANT`s, MongoDB `createRole` privileges —
@@ -332,8 +332,8 @@ edit the managed source — which holds here too.
    carrying DML, `EXPLAIN ANALYZE`, and a MongoDB `aggregate` ending in
    `$out`/`$merge` — which a `read-only` MCP connection and the AI panel let
    run. Fixed in the classifier, plus a read-only transaction around every read
-   an AI sends (gotcha #93). The verb split builds on it, so it lands first.
-1. **Core, AI enforcement** — *shipped* (PRs #188, #189; gotcha #94). Verb split in `classify` (§6.4) with tests; a
+   an AI sends (ADR #93). The verb split builds on it, so it lands first.
+1. **Core, AI enforcement** — *shipped* (PRs #188, #189; ADR #94). Verb split in `classify` (§6.4) with tests; a
    pure resolver *(policy, user, endpoint, relation, verb) → allow/deny* with
    exhaustive tests; anchor loading (§5.2) and fail-closed (§5.4); enforcement
    in `bridge::exec::execute` plus the three paths outside it (§6.1); a
@@ -341,16 +341,16 @@ edit the managed source — which holds here too.
    permissions per connection.
    *Done:* a managed user's AI cannot list, read or write outside its rule,
    proven by tests at the bridge.
-2. **People** — *shipped* (gotchas #95–#96). Command-level enforcement
+2. **People** — *shipped* (ADRs #95–#96). Command-level enforcement
    (every command guarded, a test holds the list complete) and UI mirroring
    (§6.2): locked controls with the reason, locked tabs, a window bar while
    the policy is loading or broken, `unmanagedConnections`.
-3. **Real enforcement for people** — *shipped* (gotchas #97–#98). A
+3. **Real enforcement for people** — *shipped* (ADRs #97–#98). A
    person's own database user (a rule's `dbUser`, or their own choice on an
    origin connection, with the shared secret no longer landed), and the
    `GRANT` / `createRole` script generated from a role against the live
    catalog (§7), which HuginnDB never runs.
-4. **Authoring.** The in-app editor — *shipped* (gotchas #99–#100): form and
+4. **Authoring.** The in-app editor — *shipped* (ADRs #99–#100): form and
    JSON over one draft, validated by the parser that applies it, "view as"
    under the draft, saved only where the share accepts a write, and a "create
    policy" wizard. ADMX/ADML templates for GPO — *open*.

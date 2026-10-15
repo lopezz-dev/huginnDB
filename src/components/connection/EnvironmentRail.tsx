@@ -21,7 +21,7 @@
  *
  * Rendered in every window, but only the main window gets the management
  * affordances (create, rename, delete, reorder): those write `tab_state.json`
- * (gotcha #8), which secondary "New window" instances never touch. A
+ * (ADR #8), which secondary "New window" instances never touch. A
  * secondary window still renders one plain, non-draggable button per
  * environment — clicking one calls `useEnvironments.switchTo`, which for a
  * non-main window resolves to a purely local, in-memory filter change (see
@@ -120,7 +120,7 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
   );
 
   // Only the main window may create/rename/delete/reorder — those write
-  // `tab_state.json` (gotcha #8). A secondary window still gets the rail
+  // `tab_state.json` (ADR #8). A secondary window still gets the rail
   // itself, in a read-only, non-draggable form (see the render below).
   const isMain = isMainWindow();
 

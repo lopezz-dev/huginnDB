@@ -123,7 +123,7 @@ jobs:
       # fails ANY compile of huginndb_lib — a bare `cargo check` included — when
       # the `bundle.externalBin` resource for the current target triple is not
       # already on disk. It checks existence only; content is irrelevant at
-      # compile time. See CLAUDE.md gotcha #22.
+      # compile time. See ADR #22.
       #
       # Unlike release.yml, this workflow does NOT build the real sidecar: CI
       # bundles no installer, so an empty placeholder is all `cargo clippy` and

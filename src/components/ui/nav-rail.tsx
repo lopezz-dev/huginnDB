@@ -14,7 +14,7 @@ import { CONTROL_FOCUS_TIGHT } from "@/components/ui/styles";
  * running into the rail's edge reads as clipped.
  *
  * The active state is `brand`, not `primary`: `--primary` is near-white on a
- * dark theme and near-black on a light one (gotcha #60), which is how the old
+ * dark theme and near-black on a light one (convention #60), which is how the old
  * 2px edge read as a grey line rather than as "you are here".
  */
 export interface NavRailItemProps
