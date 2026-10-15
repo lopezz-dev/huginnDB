@@ -1,6 +1,6 @@
 # This package is also the workspace root: `mcp-server/` is a sibling crate
 # for the `huginndb-mcp` binary, kept out of this package's own `[[bin]]`
-# list on purpose (see mcp-server/Cargo.toml and CLAUDE.md gotcha #19) so
+# list on purpose (see mcp-server/Cargo.toml and gotcha #19) so
 # tauri-bundler's Windows bundling never enumerates it.
 [workspace]
 members = ["mcp-server"]
@@ -42,7 +42,7 @@ tauri-plugin-single-instance = "2.0"
 # your clipboard" prompt, which the app cannot style, suppress or even
 # reword, and its `writeText()` lands in the webview's own channel rather
 # than the system clipboard, so a copied cell was gone the moment anything
-# else was copied. See gotcha #63.
+# else was copied. See ADR #63.
 tauri-plugin-clipboard-manager = "2.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

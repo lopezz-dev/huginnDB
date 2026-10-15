@@ -10,7 +10,7 @@
 //! path and creates the parent directory, it never assumes the file's format,
 //! so `state_file::path("pulse.db")` is exactly as valid a call as
 //! `state_file::path("prefs.json")`. That is what keeps the canary build's
-//! isolation (gotcha #26) working here for free — the same `APP_DIR` split
+//! isolation (ADR #26) working here for free — the same `APP_DIR` split
 //! applies to this file as to every other one.
 //!
 //! Schema is a single flat table: `samples(connection_id, ts_ms, metric,
@@ -216,7 +216,7 @@ mod tests {
     use super::*;
 
     /// A store backed by a private in-memory database — never
-    /// `state_file::path` in a test (gotcha #52): that resolves into the
+    /// `state_file::path` in a test (convention #52): that resolves into the
     /// developer's real `%APPDATA%/HuginnDB/`, and `cargo test` must never
     /// touch it. `sqlite::memory:` with a *named* connection would be shared
     /// across the pool's connections and dropped once any of them closes, so

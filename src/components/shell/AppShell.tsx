@@ -17,7 +17,7 @@
  * identity; it selects which panel occupies the single right dock rather
  * than toggling each one independently (see `panelLayout.ts`).
  *
- * `TabbedArea` (nested dockview, gotcha #10) lives untouched inside
+ * `TabbedArea` (nested dockview, ADR #10) lives untouched inside
  * `IslandShell`; nothing in this file talks to dockview at all.
  */
 

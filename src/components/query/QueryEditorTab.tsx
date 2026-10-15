@@ -15,7 +15,7 @@
  * Editor features:
  *  - `Ctrl+Enter` runs the entire buffer. Bound through Monaco's command
  *    system (not a `window` listener) because Monaco swallows the
- *    keypress inside the editor focus area — see gotcha #9 in CLAUDE.md.
+ *    keypress inside the editor focus area — see gotcha #9.
  *  - A CodeLens "▶ Run" appears on the first line of every `;`-delimited
  *    statement and runs just that fragment. Useful when the editor
  *    holds a scratch pad of multiple queries.
@@ -379,7 +379,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   // `useEnsureSchemaLoaded` above, and `columns` (first-level field names,
   // `infer_columns`'s 100-document sample) is the same lazy, session-cached
   // slice the explorer populates on expand. A collection is sampled at most
-  // once per session (gotcha #57) — `useSchema` tracks no in-flight state of
+  // once per session (ADR #57) — `useSchema` tracks no in-flight state of
   // its own, so `pendingFieldsRef` is what stops one `loadColumns` per
   // keystroke while the first is still in the air.
   // ---------------------------------------------------------------------

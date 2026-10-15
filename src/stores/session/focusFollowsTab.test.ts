@@ -32,7 +32,7 @@ describe("focusFollowsTab", () => {
   });
 
   it("selects the owning profile, not the synthetic database-view id", () => {
-    // The whole reason gotcha #32 exists: `useConnections.active` only holds
+    // The whole reason ADR #32 exists: `useConnections.active` only holds
     // top-level ids, so a `<parent>::db::<db>` selection is cleared a render
     // later by App's active-set sync.
     useTabs

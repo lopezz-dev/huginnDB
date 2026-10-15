@@ -27,8 +27,8 @@
 //! different API that cannot be compiled or tested from a Unix CI box. Shipping
 //! the strong path only where it can be tested, and an untested `#[cfg(windows)]`
 //! branch on the platform most users are on, is the wrong trade: this project
-//! has already been burnt twice by Windows-only build paths (see CLAUDE.md
-//! gotchas #20 and #21). One transport, identical everywhere, testable
+//! has already been burnt twice by Windows-only build paths (see ADRs #20 and #21).
+//! One transport, identical everywhere, testable
 //! everywhere.
 //!
 //! # Security posture
@@ -69,7 +69,7 @@ use std::path::PathBuf;
 /// sidecar needs to reach a running app.
 ///
 /// Named per [`crate::app_identity::APP_DIR`]'s directory, so a canary build's
-/// bridge and a stable build's bridge never collide (gotcha #26).
+/// bridge and a stable build's bridge never collide (ADR #26).
 const DISCOVERY_FILE: &str = "mcp-bridge.json";
 
 /// What the desktop app publishes so a sidecar can find it.

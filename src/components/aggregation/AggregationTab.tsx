@@ -146,7 +146,7 @@ export function AggregationTab({
   /** Previews keyed by **stage id**, never by index. A preview run is aligned
    *  to the stage list as it was when the request left; reorder or delete a
    *  stage while one is in flight and an index-keyed map would paint the wrong
-   *  card's output for a beat (CLAUDE.md gotcha #7, one surface over). Keying
+   *  card's output for a beat (ADR #7, one surface over). Keying
    *  by identity means a stale entry simply doesn't match. */
   const [stagePreviews, setStagePreviews] = useState<Map<string, StagePreview>>(
     () => new Map(),

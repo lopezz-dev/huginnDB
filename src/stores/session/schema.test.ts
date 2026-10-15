@@ -7,7 +7,7 @@
  * mounted unless the row is expanded *and* active, and `indexErrors` was
  * rendered by nothing at all. What made that more than a polish problem is that
  * `refresh` does not rethrow — so `connectAndWarm` reported "Connected" for a
- * server that had never answered. See gotcha #68.
+ * server that had never answered. See ADR #68.
  *
  * These pin the reporting contract and the two things it must *not* do: report
  * a stale failure, and report at all when the caller said it would.

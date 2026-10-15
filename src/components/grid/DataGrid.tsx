@@ -263,7 +263,7 @@ interface Props {
    * parent (`JSON.stringify(pkValues)`). Returns `null` when the row has no
    * resolvable PK, which disables selection — consistent with the existing
    * editable/delete gate. Identity is data-derived (not the display index)
-   * so a selection survives refetch / sort / client filtering (gotcha #7).
+   * so a selection survives refetch / sort / client filtering (ADR #7).
    */
   getRowKey?: (rowValues: CellValue[]) => string | null;
 
@@ -491,7 +491,7 @@ export function DataGrid({
   /**
    * Multi-row selection. Keyed by the parent-supplied stable row key
    * (PK-derived) rather than display index or array reference, so a selection
-   * survives refetch / sort / client filtering (gotcha #7). Only meaningful
+   * survives refetch / sort / client filtering (ADR #7). Only meaningful
    * when `getRowKey` is wired; otherwise the checkbox column is hidden and
    * bulk actions never appear — which is still the case for ad-hoc query
    * result grids. A *table* grid always wires it: `TableDataTab` derives the
@@ -630,7 +630,7 @@ export function DataGrid({
    * editor stays open across the save). Without this, a cell selected before
    * the save keeps pointing at a now-detached array once the fresh result
    * lands: the selected-cell "expand" affordance and the `cellPreview` panel
-   * both key off `rowValues` identity (gotcha #7), so they'd silently go
+   * both key off `rowValues` identity (ADR #7), so they'd silently go
    * stale — the button vanishes from the grid and, if `cellPreview` is on,
    * the floating panel keeps showing the pre-save value forever, even though
    * the side editor is still open and "focused" on that same logical cell.
@@ -742,7 +742,7 @@ export function DataGrid({
     };
   }, [rowHeight]);
 
-  // Ctrl+wheel row zoom (non-passive listener — gotcha #13). Also the ref the
+  // Ctrl+wheel row zoom (non-passive listener — ADR #13). Also the ref the
   // grid attaches to its scroll container.
   const scrollRef = useCtrlWheelZoom(rowHeight, updateGrid);
 
@@ -763,7 +763,7 @@ export function DataGrid({
 
   /**
    * Which editor is open on which cell, and the four entry points that decide
-   * between them (gotcha #12's routing lives in `openCellEdit`). Owns the
+   * between them (ADR #12's routing lives in `openCellEdit`). Owns the
    * modal / inline-FK / inline-text state, so none of it is here any more.
    */
   const {
@@ -1013,7 +1013,7 @@ export function DataGrid({
    *
    * Only used to *signal* — the expand buttons swap their icon and tooltip so the
    * feature is discoverable without opening Settings. Double-click still goes to
-   * the inline `CellInput` (gotcha #12 stands); only the icon changed.
+   * the inline `CellInput` (ADR #12 stands); only the icon changed.
    */
   const boundSchemaNames = useMemo(() => {
     if (!tableName) return new Map<string, string>();
@@ -1084,7 +1084,7 @@ export function DataGrid({
    * never true, every row was a real DOM node.
    *
    * `estimateSize` returns the *exact* row height (`rowHeight` is one
-   * persisted px value applied uniformly via `cellStyle`, gotcha #13 — not an
+   * persisted px value applied uniformly via `cellStyle`, ADR #13 — not an
    * estimate to refine later), so no `measureElement`/dynamic measurement is
    * needed; the padding-row technique below is exact from the first paint.
    */
@@ -1252,7 +1252,7 @@ export function DataGrid({
               emptyLabel={t("dataGrid.noRows")}
               // Resolved here, against the very array passed as `rows` above
               // and in the same render, so the index cannot be carried across
-              // two different arrays — which is the failure gotcha #7 is about,
+              // two different arrays — which is the failure ADR #7 is about,
               // not indices as such.
               flashedRowIndex={flashedRowIndex}
               flashedPath={flashed ? flashed.path.join(".") : null}

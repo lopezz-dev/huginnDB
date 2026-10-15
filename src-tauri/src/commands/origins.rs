@@ -16,7 +16,7 @@
 //! Producción/Staging axis, and what it produces (`profiles.json` entries,
 //! and whole mirrored environments) is already global. Scoping the
 //! registration itself to one environment reproduced the `visible_databases`
-//! bug (CLAUDE.md gotcha #27) one level up: the same physical file needed a
+//! bug (ADR #27) one level up: the same physical file needed a
 //! second, independent registration to be seen from a second environment, and
 //! deleting whichever environment happened to hold the registration silently
 //! orphaned every connection it had ever imported, with no notice raised at
@@ -2011,7 +2011,7 @@ mod tests {
 
     #[test]
     fn a_peek_counts_every_slice_of_an_environment_file() {
-        // Writes to the OS temp dir, never the config dir: gotcha #52 is the
+        // Writes to the OS temp dir, never the config dir: convention #52 is the
         // record of a test suite that reached into real state and destroyed a
         // developer's saved connections.
         let path =

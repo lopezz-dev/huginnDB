@@ -25,7 +25,7 @@
 //! `editor_themes` is stored as opaque JSON. This module does not know what an
 //! `IStandaloneThemeData` is and must not learn: the conversion lives in
 //! `src/lib/vscodeTheme/`, and a second interpretation here would be the
-//! divergence gotchas #30/#33 exist to prevent.
+//! divergence ADRs #30/#33 exist to prevent.
 
 use serde::{Deserialize, Serialize};
 

@@ -759,7 +759,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * one value per `pkColumns` entry — composite PKs ship every value to
    * the backend so the WHERE clause stays unambiguous. Using
    * `row.original` rather than a row index sidesteps the client-side
-   * filter / sort reshuffle problem documented in CLAUDE.md gotcha #7.
+   * filter / sort reshuffle problem documented in ADR #7.
    */
   function pkValuesFromRow(rowValues: CellValue[]): CellValue[] {
     if (pkColumns.length === 0) throw new Error("Table has no primary key");
@@ -785,7 +785,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    *   `QueryResult.row_types`, never a guess at the display JSON: `Int32`,
    *   `Int64` and `Double` all arrive as a plain JSON number, so inferring
    *   would silently rewrite a `Long` as an `Int` the first time someone fixed
-   *   a typo in it (gotcha #29). A dotted path (`customData.format`, `tags.2`)
+   *   a typo in it (ADR #29). A dotted path (`customData.format`, `tags.2`)
    *   is what `$set` takes natively.
    * - On the SQL drivers the hint is deliberately IGNORED and the catalog type
    *   wins. `update_cell` reads `columnType` to decide whether a MySQL `BIT`
@@ -1172,7 +1172,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
 
   /**
    * Stable identity for a grid row, derived from its payload rather than a
-   * display index (gotcha #7). Drives the grid's multi-row selection.
+   * display index (ADR #7). Drives the grid's multi-row selection.
    *
    * With a usable PK the key is the PK tuple. Without one it falls back to the
    * full values array: a no-PK table used to get no `getRowKey` at all, which
@@ -1823,7 +1823,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             // `result.rows` — that's `appliedFilter`, not the
             // uncommitted toolbar draft. Mixing the two caused
             // cell saves under a typed-but-not-Enter search to look
-            // like they applied to the row above (see gotcha #7 in
+            // like they applied to the row above (see ADR #7 in
             // CLAUDE.md). The toolbar input still reflects the live
             // draft via `filterInput`.
             globalFilter={appliedFilter}

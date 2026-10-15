@@ -39,7 +39,7 @@ export async function connectAndWarm(id: string): Promise<boolean> {
     // below was unreachable for any failure that happened *after* the pool
     // opened, and the app reported "Connected" for a server that had never
     // answered. MongoDB hit that on every connection, because its client is
-    // lazy and `connect` therefore could not fail at all. See gotcha #68.
+    // lazy and `connect` therefore could not fail at all. See ADR #68.
     const failure = await useSchema.getState().refresh(id, { quiet: true });
     if (failure) return report(id, failure);
     // Connecting is the one gesture in the app that reliably takes seconds —

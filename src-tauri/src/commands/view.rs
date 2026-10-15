@@ -4,7 +4,7 @@
 //! introspect → preview → apply shape, but for views instead of tables.
 //!
 //! The per-driver catalog SQL that reads a stored definition lives with its
-//! driver (`db::<driver>::schema::view_definition`), per CLAUDE.md gotcha #43;
+//! driver (`db::<driver>::schema::view_definition`), per ADR #43;
 //! this module only dispatches to it.
 //!
 //! MongoDB has no `CREATE VIEW` equivalent (its "views" are read-only
@@ -129,7 +129,7 @@ pub struct ViewBody {
     /// `mongosh` syntax that would create it — `ObjectId(...)` constructors
     /// included. Rendered through `bson_to_shell_text`, never the display
     /// converter, so it can be handed straight back to `save_view`
-    /// (CLAUDE.md gotcha #33).
+    /// (ADR #33).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pipeline: Option<String>,
 }
@@ -294,7 +294,7 @@ pub struct ViewChangeOutcome {
     /// MongoDB only: the pipeline as it would be *stored*, re-rendered from the
     /// parsed BSON. Doubles as a round-trip check — an `ObjectId(...)` that came
     /// back as a bare string here would be a view that matches nothing
-    /// (gotcha #33).
+    /// (ADR #33).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pipeline: Option<String>,
     /// MongoDB only: `true` when this creates the view (`createView`), `false`
@@ -390,7 +390,7 @@ pub async fn save_any_view_inner(
 /// here, by the one parser the product has (`db::mongo::shell` via
 /// `parse_pipeline_text`). A structured pipeline would need a second JSON→BSON
 /// converter and would turn `ObjectId("...")` into a string, leaving a view that
-/// silently matches nothing — CLAUDE.md gotcha #33.
+/// silently matches nothing — ADR #33.
 async fn save_mongo_view_inner(
     sink: &dyn LogSink,
     conn: &crate::state::MongoConn,

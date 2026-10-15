@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 /// What an AI request needs, variant by variant.
 ///
-/// Exhaustive, with **no `_` arm** (gotchas #49, #71): a new `BridgeRequest`
+/// Exhaustive, with **no `_` arm** (convention #49, ADR #71): a new `BridgeRequest`
 /// cannot be added without saying what policy it needs, because the failure
 /// mode of a default is an AI reaching a relation its user's role hides.
 fn needs_of(request: &BridgeRequest) -> Vec<Need> {
@@ -291,7 +291,7 @@ pub fn free_sql_blocked_for(state: &AppState, connection_id: &str, subject: Subj
 /// Whether free SQL is withheld from the AI on this connection, so the AI
 /// panel can leave `run_query` out of its catalogue instead of offering a tool
 /// that always refuses (gotcha #74: absence beats present-but-refused). Over
-/// MCP the tool list cannot vary per connection (gotchas #58, #59), so there
+/// MCP the tool list cannot vary per connection (ADRs #58, #59), so there
 /// the call is refused instead.
 pub fn free_sql_blocked(state: &AppState, connection_id: &str) -> bool {
     free_sql_blocked_for(state, connection_id, Subject::Ai)

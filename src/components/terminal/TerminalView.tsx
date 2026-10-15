@@ -16,7 +16,7 @@
  * palette, Settings, and the bottom dock's own toggles) — VS Code's
  * "commands to skip shell", minus the configurability.
  *
- * Copy and paste go through the native clipboard plugin (gotcha #63), on
+ * Copy and paste go through the native clipboard plugin (ADR #63), on
  * Ctrl+Shift+C / Ctrl+Shift+V as in every Linux terminal — Ctrl+C has to stay
  * the interrupt it is everywhere else.
  */

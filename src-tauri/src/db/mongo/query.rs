@@ -350,7 +350,7 @@ pub async fn execute_batch(
                 if is_read {
                     if shed_to_batch_budget(&mut result.rows, &mut rows_kept) {
                         // `row_types` is cell-aligned to `rows` and must stay
-                        // that way (gotcha #29): shedding rows without
+                        // that way (ADR #29): shedding rows without
                         // shedding their type trees would hand the document
                         // view a type for a row that is not there.
                         if let Some(types) = result.row_types.as_mut() {
@@ -712,7 +712,7 @@ fn field_value(column: &str, value: &Value) -> Bson {
 /// match over a large collection degrades to a scan. That is the price of the
 /// operator telling the truth instead of returning an empty result set; the
 /// alternative — offering `contains` on a numeric column and having it always
-/// answer "no rows" — is the failure mode gotchas #29/#30/#39 exist to prevent.
+/// answer "no rows" — is the failure mode ADRs #29/#30/#39 exist to prevent.
 ///
 /// The `$convert` (rather than a bare `$toString`) is not decoration:
 /// `$toString` raises a query-killing error when the field is missing, or holds
@@ -1132,7 +1132,7 @@ fn set_document(set_values: &[RowValue]) -> Document {
 /// require a live connection to exercise.
 ///
 /// The grammar is [`shell::parse_relaxed_value`], not `serde_json`. That is the
-/// one-parser rule (gotcha #33) and it is load-bearing here rather than tidy:
+/// one-parser rule (ADR #33) and it is load-bearing here rather than tidy:
 /// a document typed with `_id: ObjectId("…")`, `ISODate("…")` or
 /// `NumberLong(…)` has to mean the same thing in this box as it does in the
 /// query editor and the aggregation builder, and `serde_json` would either
@@ -1303,7 +1303,7 @@ mod tests {
         let d = &docs[0];
         assert!(matches!(d.get("_id"), Some(Bson::ObjectId(_))));
         assert!(matches!(d.get("when"), Some(Bson::DateTime(_))));
-        // Not an Int32: a `Long` narrowed on the way in is gotcha #29's trap,
+        // Not an Int32: a `Long` narrowed on the way in is ADR #29's trap,
         // and it fits in an i32, so nothing downstream would notice.
         assert!(matches!(d.get("big"), Some(Bson::Int64(301353073))));
     }
@@ -1950,7 +1950,7 @@ mod tests {
 
     #[test]
     fn text_match_on_a_dotted_path_builds_a_nested_field_path() {
-        // A Mongo column can be a dotted path (gotcha #29); the `$expr` branch
+        // A Mongo column can be a dotted path (ADR #29); the `$expr` branch
         // has to address it as `$a.b`, not as a literal key.
         let f = build_filter(
             &text_filter(FilterOp::Contains, "customData.format", "pdf"),

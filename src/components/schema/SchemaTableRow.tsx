@@ -98,7 +98,7 @@ export function tableMetricLabel(
  * writes a fresh `columns` map reference on every load, so expanding ANY
  * table on the page invalidated the `cs` prop for every OTHER row too.
  * Taking the three derived values as their own props (computed once per row
- * by `TableSection`, gotcha #28) is what turns "a toggle re-renders every
+ * by `TableSection`, convention #28) is what turns "a toggle re-renders every
  * row on the page" into "a toggle re-renders one".
  */
 export const TableRow = memo(function TableRow({

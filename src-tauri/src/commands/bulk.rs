@@ -93,7 +93,7 @@ fn validate_args(args: &BulkUpdateArgs) -> AppResult<()> {
 /// function, so the two can never diverge.
 ///
 /// Mirrors the per-value type handling `update_cell_inner`/`insert_row`
-/// already have (gotchas #15/#31): a plain textual placeholder is wrong for a
+/// already have (gotcha #15 / ADR #31): a plain textual placeholder is wrong for a
 /// MySQL `BIT` column (the literal `"0"` is stored as the ASCII byte, not the
 /// integer) and for a SQL Server binary-family column (the implicit
 /// nvarchar->varbinary conversion reinterprets the characters). This used to

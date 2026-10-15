@@ -11,7 +11,7 @@
 //! `hidden`. That is fine for a read-only listing and fatal for an editor:
 //! recreating `{ createdAt: -1 }` from a field-name list would silently
 //! rebuild it ascending, which is invisible in testing and permanent in the
-//! data — gotcha #29's failure mode, one subsystem over.
+//! data — ADR #29's failure mode, one subsystem over.
 //!
 //! So the catalogue is read from the **raw `listIndexes` reply documents**
 //! rather than through the typed helper. A raw document preserves the key
@@ -25,7 +25,7 @@
 //! (rendered by [`bson_to_shell_text`], parsed back by
 //! [`parse_relaxed_value`]) — never as display JSON, and never parsed on the
 //! frontend. Same rule, and the same reason, as the aggregation editor's
-//! pipelines (gotcha #33): one grammar, in Rust, or the two ends drift and
+//! pipelines (ADR #33): one grammar, in Rust, or the two ends drift and
 //! the drift is silent. An `ObjectId` or a `NumberLong` inside a partial
 //! filter has to come back out exactly as it went in, or reopening an index
 //! and saving it unchanged would quietly stop it matching.

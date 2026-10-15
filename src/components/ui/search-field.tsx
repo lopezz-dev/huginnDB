@@ -21,7 +21,7 @@ import { IconButton } from "@/components/ui/icon-button";
  * NOT for `connection/TreeFilterBox` or `grid/GridSearchInput`, whose docstrings
  * explain why they compose by hand: the first owns the raw needle plus its
  * debounce and key handling so a keystroke does not re-render the whole tree
- * (gotcha #55), and the second has a history dropdown welded to its right edge.
+ * (ADR #55), and the second has a history dropdown welded to its right edge.
  */
 
 /** Glyph size, its offset, and the input padding that clears it. */

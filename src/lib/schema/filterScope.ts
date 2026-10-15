@@ -56,7 +56,7 @@ export function widenScope(scope: FilterScope): FilterScope {
  *
  * `connectionId` may be a profile id or a synthetic `<parent>::db::<db>` view
  * id, and a connection scope has to include its children: a multi-DB server
- * keeps every one of its tables in those child slices (gotcha #36), so a scope
+ * keeps every one of its tables in those child slices (ADR #36), so a scope
  * that excluded them would search a server and find nothing in it.
  */
 export function scopeIncludes(scope: FilterScope, connectionId: string): boolean {

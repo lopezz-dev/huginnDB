@@ -127,7 +127,7 @@ export const useOriginSync = create<OriginSyncState>((set, get) => ({
 
   syncAll: async () => {
     // Origins are global, but `tab_state.json` (where they live) is still
-    // main-window-owned (gotcha #8), and this sweep writes `profiles.json`
+    // main-window-owned (ADR #8), and this sweep writes `profiles.json`
     // too. A secondary window syncing would race the main one's own writes.
     if (!isMainWindow()) return;
     if (get().syncing) return;

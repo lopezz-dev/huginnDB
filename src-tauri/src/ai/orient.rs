@@ -26,7 +26,7 @@
 //! Deliberately not cached. A catalog read against a live connection is
 //! milliseconds next to a completion that takes seconds, and a cache here
 //! would be a second copy of the schema that can be wrong — the schema tree's
-//! own warm state already taught that lesson (gotcha #55).
+//! own warm state already taught that lesson (ADR #55).
 
 use crate::ai::exec::{AiCall, AiRuntime};
 use crate::ai::tools;

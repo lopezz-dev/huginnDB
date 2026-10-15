@@ -190,7 +190,7 @@ describe("totalMatches", () => {
 });
 
 describe("summarizeMatches — a read that failed", () => {
-  // The last loose end of gotcha #68. A connection whose schema read failed is
+  // The last loose end of ADR #68. A connection whose schema read failed is
   // `initialized: true, tables: []`, which is byte-for-byte what an empty
   // connection looks like — so it landed in `none`: dimmed row, confident `0`,
   // and folded away by the filter, which unmounted the one place the error was

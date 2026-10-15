@@ -19,12 +19,12 @@
 //! Three constraints shape everything below.
 //!
 //! **Keys are not column names until the catalogue says so.** A JSON key is
-//! user input; `quote_ident` is documented as catalog-only (gotcha #4). So the
+//! user input; `quote_ident` is documented as catalog-only (convention #4). So the
 //! keys are matched against [`list_columns_inner`] and what reaches the SQL is
 //! the *catalogue's* spelling, never the pasted one. An unmatched key is a
 //! refusal that names it, not a column invented on the spot.
 //!
-//! **Values bind as text** (gotcha #5), so the coercion here is JSON → `String`
+//! **Values bind as text** (ADR #5), so the coercion here is JSON → `String`
 //! and the driver casts. The one thing text alone cannot get right is a
 //! boolean, and the catalogue is what settles it — see [`coerce_value`].
 //!
@@ -55,7 +55,7 @@ pub const MAX_INSERT_ROWS: usize = 10_000;
 
 /// Bind-parameter ceiling for one statement, per engine.
 ///
-/// Exhaustive on purpose (gotcha #30): a fifth dialect has to choose a number
+/// Exhaustive on purpose (ADR #30): a fifth dialect has to choose a number
 /// here rather than inheriting Postgres's by way of a `_ =>` arm.
 const fn max_binds(dialect: Dialect) -> usize {
     match dialect {
@@ -289,7 +289,7 @@ pub(crate) fn parse_rows_source(source: &str) -> AppResult<Vec<Map<String, Value
 /// this implements is unit-testable without a database.
 ///
 /// Matching is case-insensitive and the **catalogue's** spelling is what ends
-/// up in the statement: that is the gotcha #4 gate, and it also means a paste
+/// up in the statement: that is the convention #4 gate, and it also means a paste
 /// from a tool that upper-cases its keys works instead of being a puzzle.
 ///
 /// Column *order* comes from the catalogue too, and that is not a preference.
@@ -953,7 +953,7 @@ mod tests {
         assert!(msg.contains("id, email"), "{msg}");
     }
 
-    /// The gotcha #4 gate: what reaches `quote_ident` is the catalogue's
+    /// The convention #4 gate: what reaches `quote_ident` is the catalogue's
     /// spelling, never the pasted key.
     #[test]
     fn keys_match_case_insensitively_and_the_catalogue_spelling_wins() {

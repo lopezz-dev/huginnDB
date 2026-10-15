@@ -255,7 +255,7 @@ for connection-storm behaviour during replica-set failover.
 | F6 | MongoDB pool is unbounded (driver default 100/host) | **Medium** | `mongo/mod.rs:43` |
 | F7 | Keepalive (180 s) defeats idle reaping (600 s) | **Medium** | `keepalive.rs:38` |
 | F8 | `too many connections` is unclassified; retry paths re-fire | **Medium** | `connectFlow.ts:37` |
-| | *(classified in P0; the signal itself was masked by `sqlx` until 1.21.x — see §4.6's amendment and gotcha #66)* | | |
+| | *(classified in P0; the signal itself was masked by `sqlx` until 1.21.x — see §4.6's amendment and ADR #66)* | | |
 | F9 | Teardown relies on `Drop` instead of `close().await` | **Medium** | `connection.rs:436` |
 | F10 | No preference, no per-profile override, no live visibility | **Medium** | `prefs.rs` |
 | F11 | Export/import dialogs leave a permanent pool per database | **Low** | `ExportDatabaseDialog.tsx:128` |
@@ -321,7 +321,7 @@ reaped in five minutes when the sidecar owned the pool and lived until the app
 exited when the app did. `ActivePool::origin` is now the discriminator and
 `connections.bridgeIdleTtlSecs` (defaulting to the sidecar's own TTL) the
 schedule; the exemption still holds, unconditionally, for the pools a person
-opened. See gotcha #67.
+opened. See ADR #67.
 
 Reopening a reaped child is one `open_pool` call and the schema cache in
 `useSchema` is untouched, so the user cannot tell the difference.
@@ -365,7 +365,7 @@ pub max_connections: Option<u32>,
 This ships in `profiles.json`, so it exports/imports for free (`transfer.rs`),
 syncs through shared origins, and — because the sidecar reads the same file —
 applies to the MCP connector automatically with no extra plumbing. Note
-CLAUDE.md gotcha #14: the field must be declared on both the Rust struct and
+gotcha #14: the field must be declared on both the Rust struct and
 `src/types.ts` or serde drops it.
 
 Global fallbacks in `prefs.rs` under a new `connections` section:
@@ -411,7 +411,7 @@ Postgres was reported as *our* pool timing out rather than in the server's own
 words. `db::pool::connect_probed` now proves the endpoint with one un-pooled
 `Connection::connect` and builds the pool with `connect_lazy`, so the signal
 this table classifies is the raw driver error and `PoolTimedOut` is an
-acquire-time-only condition. See gotcha #66.
+acquire-time-only condition. See ADR #66.
 
 The footprint clause is also omitted when the footprint is zero, which is the
 state the first failing connect of a session is always in — quoting "0 connection
@@ -509,7 +509,7 @@ reaped.
     that cannot be compiled or tested from a Unix box. Shipping the strong path
     only where it can be tested, and an untested `#[cfg(windows)]` branch on the
     platform most users are on, is the wrong trade for a project that has
-    already been burnt twice by Windows-only build paths (gotchas #20, #21). The
+    already been burnt twice by Windows-only build paths (ADRs #20, #21). The
     token file is `0600`, so another local user can reach the port but cannot
     authenticate.
   - **The fallback rule is the load-bearing detail.** A transport failure falls

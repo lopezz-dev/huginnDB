@@ -1,6 +1,6 @@
 /**
  * The seam's contract, which is easy to regress into the exact bug it exists
- * to fix (gotcha #63): both halves must go through the Tauri plugin, and
+ * to fix (ADR #63): both halves must go through the Tauri plugin, and
  * `navigator.clipboard` must only ever be the outside-the-shell fallback.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";

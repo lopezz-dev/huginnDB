@@ -128,7 +128,7 @@ async fn get_table_create_ddl_inner(
 /// editor's round-trip DTO — mirrored in `src/types.ts` and fed straight back
 /// into `apply_structure_change` as `desired` — so a field added for a different
 /// feature's benefit would ride into that payload, which is the failure
-/// gotcha #39 records for `WorkingColumn`.
+/// ADR #39 records for `WorkingColumn`.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelationDescription {

@@ -150,7 +150,7 @@ export interface AutoFitInput {
   columns: readonly { name: string; data_type: string }[];
   /**
    * Backend index for a column name. Display order can differ from backend
-   * order, and the values are indexed by the latter (gotcha #7's neighbour).
+   * order, and the values are indexed by the latter (ADR #7's neighbour).
    */
   columnIndexByName: ReadonlyMap<string, number>;
   /** Rows in scope — the fetched page after the client filter. */

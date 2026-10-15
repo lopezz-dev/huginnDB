@@ -8,7 +8,7 @@
  * It never validates, never builds an AST, and gives up (returns the most
  * conservative answer) on anything it doesn't recognise — the text that
  * actually reaches the backend is untouched, still parsed exactly once, in
- * Rust (gotcha #33). What it tracks is only brace/bracket depth and which key
+ * Rust (ADR #33). What it tracks is only brace/bracket depth and which key
  * immediately precedes the value at a given offset, which is enough to answer
  * "is the cursor inside a `$lookup`'s `from`?" without understanding the rest
  * of the document. It also never looks past the cursor: everything after

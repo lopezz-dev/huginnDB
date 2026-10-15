@@ -4,7 +4,7 @@
 //! Pure by construction: the resolver takes the endpoint's declared trust and
 //! the connection's own opt-in and returns a decision. Neither input is read
 //! from disk here, so the rule that decides whether rows may leave the machine
-//! is testable without an `AppState` (gotcha #52).
+//! is testable without an `AppState` (convention #52).
 
 use serde::{Deserialize, Serialize};
 

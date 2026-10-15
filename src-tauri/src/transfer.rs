@@ -204,7 +204,7 @@ pub struct ImportResult {
 // connection profiles it groups, and the shared origins those connections (or
 // the environment's own mirror, if it's one) depend on — not its tabs,
 // dockview geometry or launch state. Those are session artifacts
-// tied to the machine that produced them (CLAUDE.md gotcha #10: the inner
+// tied to the machine that produced them (ADR #10: the inner
 // dockview's geometry is a JSON blob keyed to panel ids from that machine's
 // `useTabs`), so portability stops at "which connections, from where".
 //

@@ -5,7 +5,7 @@
  * the glob and the specificity ranking live exclusively in Rust
  * (`src-tauri/src/json_schemas/mod.rs`), and a helper in this file growing a
  * "does this match?" branch would be the first step toward the second
- * implementation gotchas #30/#33 exist to prevent.
+ * implementation ADRs #30/#33 exist to prevent.
  */
 
 import type { JsonSchemaBinding } from "@/types";

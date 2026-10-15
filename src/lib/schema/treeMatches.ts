@@ -11,14 +11,14 @@
  *   would be a lie that lasts as long as the fetch does.
  * - **cold** — a multi-DB server whose per-database table lists have never been
  *   read (they live in `<parent>::db::<db>` child slices that only exist once
- *   something opens that view, gotcha #36). We have not looked, so we do not
+ *   something opens that view, ADR #36). We have not looked, so we do not
  *   say `0`; the row offers to look instead. Typing must never open a pool by
  *   itself — see `warmForSearch`.
  * - **failed** — we asked and the server would not answer. Added in 1.21.x, and
  *   its absence was the same bug one state over: a connection whose schema read
  *   failed is `initialized: true, tables: []`, which read as `none`, so the row
  *   dimmed, grew a confident `0` and was *folded away by the filter* —
- *   unmounting the one place the error was rendered. See gotcha #68.
+ *   unmounting the one place the error was rendered. See ADR #68.
  * - **none** — everything visible is loaded and nothing matched. The only state
  *   in which a `0` badge is the truth.
  *
@@ -249,7 +249,7 @@ export function totalMatches(list: Iterable<ConnectionMatchSummary>): {
  * user abandon a search that would have worked. `out-of-scope` outranks
  * everything for the same reason, one step further out.
  *
- * `failed` outranks both, and that ordering is the fix for gotcha #68's last
+ * `failed` outranks both, and that ordering is the fix for ADR #68's last
  * loose end. A connection whose read failed used to land in `none` — the one
  * state that means "this really is empty" — so the row dimmed, showed `0`, and
  * `ConnectionsTree.filterFoldsIgnoringOverride` folded it to a single line,

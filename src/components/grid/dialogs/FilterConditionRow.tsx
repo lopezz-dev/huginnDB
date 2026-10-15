@@ -145,7 +145,7 @@ export const FilterConditionRow = forwardRef<
   ) : null;
 
   // Removing one row of a not-yet-applied draft destroys nothing, so `quiet`
-  // rather than `destructive` (gotcha #61).
+  // rather than `destructive` (convention #61).
   const removeButton = (
     <IconButton
       type="button"
@@ -159,7 +159,7 @@ export const FilterConditionRow = forwardRef<
   // `scroll-mt-2` keeps the row clear of the scroll container's top edge when
   // the dialog opens focused on it. Built with `cn` and whole literal classes,
   // never an interpolated template: Tailwind's JIT scans source as text, so a
-  // class assembled at runtime is simply never generated (gotcha #60).
+  // class assembled at runtime is simply never generated (convention #60).
   const outer = cn("scroll-mt-2", highlighted && "rounded-md ring-2 ring-brand/40");
 
   if (list) {

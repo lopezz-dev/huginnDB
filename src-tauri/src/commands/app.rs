@@ -8,7 +8,7 @@
 //!
 //! It exists so the UI can make it *unmistakable* that you are in the sandbox
 //! canary build (separate, isolated on-disk state — see
-//! `crate::app_identity::APP_DIR` and CLAUDE.md gotcha #26) rather than your
+//! `crate::app_identity::APP_DIR` and ADR #26) rather than your
 //! real stable install, since the two are otherwise visually identical once
 //! you are inside the window.
 

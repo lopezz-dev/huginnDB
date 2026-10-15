@@ -2,7 +2,7 @@
  * The display form of an action's primary binding, for menu items and hints.
  *
  * Safe as a Zustand selector because `getBinding` returns a `string`, which is
- * compared by value — the rule from CLAUDE.md gotcha #1 that the rest of this
+ * compared by value — the rule from gotcha #1 that the rest of this
  * module has to work around. Returns `undefined` for an unbound action so a
  * caller can render nothing rather than an empty chip.
  */

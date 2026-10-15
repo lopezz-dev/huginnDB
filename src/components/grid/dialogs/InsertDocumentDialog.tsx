@@ -16,12 +16,12 @@
  *
  * **The frontend does not parse what is typed here.** The text crosses the IPC
  * boundary as source and is read by `shell::parse_relaxed_value`, the same Rust
- * parser the query editor and the aggregation builder use (gotcha #33). That is
+ * parser the query editor and the aggregation builder use (ADR #33). That is
  * what lets a document pasted out of a shell session — `ObjectId(…)`,
  * `ISODate(…)`, `NumberLong(…)`, unquoted keys, single quotes, trailing commas,
  * comments — mean here exactly what it means everywhere else. A `JSON.parse`
  * here would reject most of that outright and, worse, would quietly narrow a
- * `NumberLong` that fits in an `Int32` (gotcha #29's trap).
+ * `NumberLong` that fits in an `Int32` (ADR #29's trap).
  *
  * `PipelineEditor` rather than the JSON cell editor for the same reason: it
  * renders the `mongodb-pipeline` language, whose Monarch grammar knows those

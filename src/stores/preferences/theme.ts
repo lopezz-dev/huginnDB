@@ -91,7 +91,7 @@ interface ThemeState {
    * Theme id the *active environment* wants applied instead of `themeId`, or
    * `null` for "no override — use the default". Only ever fixes the FAMILY,
    * never the mode — the mode stays a personal preference independent of
-   * which environment is active (see gotcha #27: an environment describes
+   * which environment is active (see ADR #27: an environment describes
    * session/visual identity, not user ergonomics). Set by
    * `useEnvironments.restoreSession`/`switchTo`/`update`, never persisted
    * here: it describes the current environment, not a user preference, and

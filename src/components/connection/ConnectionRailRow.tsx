@@ -4,7 +4,7 @@
  * Split out of `ConnectionRail` when provenance arrived: the row grew a
  * shared-origin badge and a protected (uncheckable) state on top of the
  * selection checkbox, the live-pool dot and the driver badge, which is more than
- * a closure inside another component's body should carry (gotcha #28).
+ * a closure inside another component's body should carry (convention #28).
  *
  * A `<div role="button">` rather than a `<button>` so the selection
  * `<input type="checkbox">` can nest legally inside it.

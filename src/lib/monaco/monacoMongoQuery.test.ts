@@ -242,7 +242,7 @@ describe("arguments", () => {
     complete("db.logs.find({ |})");
     complete("db.logs.find({ x|})");
     expect(requested).toEqual(["logs", "logs"]);
-    // Two calls, because deduping is the *caller's* job (gotcha #57) — the
+    // Two calls, because deduping is the *caller's* job (ADR #57) — the
     // provider cannot await and must stay synchronous.
   });
 });

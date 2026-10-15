@@ -29,7 +29,7 @@
  * schema tree) and, when a collection's fields aren't loaded yet, fire
  * `requestFields` once and return without them — the next keystroke picks
  * them up once the fetch lands. No parsing of the pipeline happens here
- * either: `completionPositionAt` (gotcha #33's sibling) only tracks cursor
+ * either: `completionPositionAt` (ADR #33's sibling) only tracks cursor
  * position, never the document's meaning.
  *
  * Two things make this behave like Compass rather than a flat word list:

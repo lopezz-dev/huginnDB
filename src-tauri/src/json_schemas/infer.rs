@@ -11,7 +11,7 @@
 //! intersection, the enum threshold, determinism, depth limits) — exactly the
 //! shape of code this repo already tests with `cargo test` (`db/ddl.rs`,
 //! `db/sql.rs`, `tab_state.rs`), and there is no frontend test runner at all.
-//! Its failure mode is also the one gotcha #29 names by its proper name:
+//! Its failure mode is also the one ADR #29 names by its proper name:
 //! *invisible in testing, permanent in the data*. A `required` that quietly
 //! became a union instead of an intersection, or an unordered key emission that
 //! makes every diff unreadable, is not something anyone catches by hand.

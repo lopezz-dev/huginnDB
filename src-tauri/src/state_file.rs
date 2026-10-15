@@ -16,7 +16,7 @@
 //! ids. Routing it through [`save_atomic`] fixes that as a side effect of having
 //! one implementation.
 //!
-//! **Canary isolation is only as good as its weakest call site.** Gotcha #26's
+//! **Canary isolation is only as good as its weakest call site.** ADR #26's
 //! rule is that no state path may hardcode `"HuginnDB"`, because the canary
 //! build flips `APP_DIR` to keep its state away from a real install's. That was
 //! six independent chances to get it wrong; it is now one.
@@ -104,7 +104,7 @@ pub fn save_atomic<T: Serialize + ?Sized>(file: &str, value: &T) -> AppResult<()
 ///
 /// Extracted because the shared-origin editor writes a file the app does not
 /// own: a document on a UNC share, which [`path`] cannot express — it only ever
-/// resolves names relative to the config directory, by design (gotcha #26's
+/// resolves names relative to the config directory, by design (ADR #26's
 /// canary isolation depends on that being the only way in). The atomicity
 /// matters more there than it does here: consumers read that file with
 /// `std::fs::read` and no coordination whatsoever, so a plain
@@ -305,7 +305,7 @@ mod tests {
     /// A scratch directory of our own. Deliberately **not** [`path`]: that
     /// resolves through the developer's real config dir under `cargo test`, and
     /// writing there is how three tests once overwrote a live `profiles.json`
-    /// (CLAUDE.md gotcha #52).
+    /// (convention #52).
     fn scratch(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("huginndb-state-file-{tag}"));
         let _ = std::fs::remove_dir_all(&dir);

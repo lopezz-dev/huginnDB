@@ -28,7 +28,7 @@
 //!
 //! Nothing here is user-facing text. A degradation is a [`PulseNote`] carrying a
 //! machine-readable `code` the frontend translates, for the same reason the
-//! backend never writes an environment's default name (gotcha #27): copy chosen
+//! backend never writes an environment's default name (ADR #27): copy chosen
 //! in Rust would freeze one language into the user's screen.
 
 pub mod sampler;

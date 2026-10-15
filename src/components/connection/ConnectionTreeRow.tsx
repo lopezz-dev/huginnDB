@@ -8,7 +8,7 @@
  * `ConnectionsTree`'s own render pass, which means React could never bail
  * out of diffing it, no matter how little a given row actually changed. As
  * an actual `memo()`-wrapped component, a row now CAN skip re-rendering
- * when its own props are unchanged — see CLAUDE.md gotcha #28.
+ * when its own props are unchanged — see convention #28.
  *
  * The prop signature is wide (a whole `ConnectionMatchSummary`, a callback
  * bundle) rather than narrowed to primitives the way `SchemaTableRow` is —
@@ -109,7 +109,7 @@ export const ConnectionTreeRow = memo(function ConnectionTreeRow({
   // `failed` is deliberately absent from this list, as it is from
   // `filterFoldsIgnoringOverride`: a connection the server would not answer is
   // the row the user most needs to see, and quietening it is how the failure
-  // used to leave the screen entirely (gotcha #68).
+  // used to leave the screen entirely (ADR #68).
   const dimmedByFilter =
     filtering &&
     isActive &&

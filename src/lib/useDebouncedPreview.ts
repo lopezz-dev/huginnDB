@@ -2,7 +2,7 @@
  * Re-run a preview a beat after its input last changed.
  *
  * The structure and view editors both preview by round-tripping to the backend
- * — `preview_structure_change` builds the DDL in Rust (gotcha #16), the view
+ * — `preview_structure_change` builds the DDL in Rust (ADR #16), the view
  * editor also runs a `LIMIT`ed query — so every keystroke would otherwise be an
  * IPC call and, for the view editor, a real query against the server.
  *

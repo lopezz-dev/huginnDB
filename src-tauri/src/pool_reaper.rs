@@ -37,7 +37,7 @@
 //! The same connection was reaped in five minutes when the sidecar owned the
 //! pool and lived until the app exited when the app did. [`PoolOrigin`] is the
 //! discriminator, and `connections.bridgeIdleTtlSecs` — defaulting to the
-//! sidecar's own TTL — is the schedule. See gotcha #67.
+//! sidecar's own TTL — is the schedule. See ADR #67.
 
 use crate::db::pool::{close_pool, PoolOwnership, CLOSE_TIMEOUT};
 use crate::log_bus::{self, LogEntry, LogKind};

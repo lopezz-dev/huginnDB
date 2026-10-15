@@ -15,14 +15,14 @@
 //!
 //! `crate::bridge::server`'s `policy_id_of` and `class_of` both end in
 //! `_ => None`, so a [`BridgeRequest`] variant added without touching them is
-//! silently unclassified rather than a build error (gotcha #49). Those two now
+//! silently unclassified rather than a build error (convention #49). Those two now
 //! have a second consumer, which doubles the stakes — and this module answers a
 //! *sharper* question than they do: not "which tier does this need" but "may a
 //! language model reach this at all, and does its reply carry rows". Getting
 //! that wrong is exactly how the metadata-only guarantee leaks.
 //!
 //! So [`exposure`] is an exhaustive match, the pattern `MongoOp::class` uses
-//! (gotcha #54): a new variant does not compile until somebody has decided, in
+//! (ADR #54): a new variant does not compile until somebody has decided, in
 //! writing, whether a model may call it. That is the whole mechanism, and it is
 //! why this module keeps its own mapping instead of extending `class_of`.
 

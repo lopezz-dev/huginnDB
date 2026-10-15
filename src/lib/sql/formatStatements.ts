@@ -7,7 +7,7 @@
  *
  * The structure and view editors had this expression written out identically.
  * It is presentation only: the statements themselves come from the Rust builder
- * that also runs them (gotcha #16), and this text is never executed.
+ * that also runs them (ADR #16), and this text is never executed.
  */
 export function joinStatements(statements: string[]): string {
   return statements.join(";\n") + (statements.length ? ";" : "");

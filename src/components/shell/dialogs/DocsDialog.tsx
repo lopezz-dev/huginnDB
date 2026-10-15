@@ -1,7 +1,7 @@
 /**
  * Documentation viewer — Help → Documentation.
  *
- * A workbench dialog built on the same anatomy as Preferences (gotcha #82), so
+ * A workbench dialog built on the same anatomy as Preferences (convention #82), so
  * the two read as one family: a header, a left rail with its own search box and
  * grouped entries, and a pane with a page header above a scrolling body.
  *

@@ -680,7 +680,7 @@ pub struct TableScan {
 /// doubly-flattened payload is harder to read than the nine fields it stands
 /// for, and this is the shape the frontend types mirror (see `TableQuery` in
 /// `src/types.ts` — a field missing on either side is silently dropped by
-/// serde, CLAUDE.md gotcha #14, which is what the round-trip test at the
+/// serde, gotcha #14, which is what the round-trip test at the
 /// bottom of this module pins down).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -886,7 +886,7 @@ impl QueryResult {
         self
     }
 
-    /// MongoDB's per-cell BSON type trees (gotcha #29). Must stay cell-aligned
+    /// MongoDB's per-cell BSON type trees (ADR #29). Must stay cell-aligned
     /// with `rows`.
     pub fn with_row_types(mut self, row_types: Vec<Vec<Value>>) -> Self {
         self.row_types = Some(row_types);
@@ -1489,7 +1489,7 @@ pub(crate) async fn execute_batch_inner(
                                 let over_budget = shed_to_batch_budget(&mut data, &mut rows_kept);
                                 // No `row_types`: SQL, so the catalog column type is
                                 // the hint the editor needs, and per-cell BSON type
-                                // trees are MongoDB's alone (gotcha #29).
+                                // trees are MongoDB's alone (ADR #29).
                                 results.push(
                                     QueryResult::rows(
                                         cols.into_iter()
@@ -2589,7 +2589,7 @@ pub(crate) async fn update_cell_inner(
         })
         .collect::<Vec<_>>()
         .join(" AND ");
-    // The cell value travels as a textual literal (gotcha #5) and drivers
+    // The cell value travels as a textual literal (ADR #5) and drivers
     // coerce it to the column type server-side. That coercion is wrong for
     // MySQL `BIT`: binding the string "1" makes MySQL store the ASCII byte
     // 0x31 (the character '1') rather than the integer 1, so editing a BIT
@@ -3687,7 +3687,7 @@ mod filter_tests {
     //
     // `TableQuery` / `TableScan` are the wire contract with `src/types.ts`, and
     // serde drops any key the Rust struct does not declare — silently, before
-    // the value is ever read (CLAUDE.md gotcha #14). These pin the exact JSON
+    // the value is ever read (gotcha #14). These pin the exact JSON
     // the frontend sends. `withCount: false` in particular is load-bearing:
     // lose it and every page fetch silently reacquires the `COUNT(*)` that
     // issue #77 moved off the render path.

@@ -11,7 +11,7 @@
  * same contract the modal `CellEditor` relies on.
  *
  * Subscribe with the single-object selector `s => s.target` so the value stays
- * reference-stable between opens (CLAUDE.md gotcha #1).
+ * reference-stable between opens (gotcha #1).
  *
  * `close()` also hides the docked panel itself (`panelLayout.sideEditorOpen`)
  * — before the outer-shell redesign the panel was a dockview group with its
@@ -43,7 +43,7 @@ export interface CellBindingContext {
   table?: string;
   /**
    * Column name — or, for a MongoDB nested field, its dotted path, which is what
-   * the document view already synthesises as the column name (gotcha #29).
+   * the document view already synthesises as the column name (ADR #29).
    */
   column: string;
   /** BSON type of the field, MongoDB only. */

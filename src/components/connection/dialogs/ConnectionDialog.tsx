@@ -245,7 +245,7 @@ export function ConnectionDialog({
 
   // Tell the store which profile is on screen, so a full-screen editor opened
   // from here (the origin editor) can put the manager aside and bring it back
-  // on this profile rather than the one it was opened on (gotcha #101).
+  // on this profile rather than the one it was opened on (ADR #101).
   const reportFocus = useConnectionDialog((s) => s.focus);
   useEffect(() => {
     if (open) reportFocus(editingId);
@@ -346,7 +346,7 @@ export function ConnectionDialog({
    *
    * `withSecret` is read from the password field *as it was when the save ran*
    * — the reload the save triggers clears it — and it is what decides whether
-   * the republish re-encrypts at all (gotcha #56).
+   * the republish re-encrypts at all (ADR #56).
    */
   function offerRepublish(profileId: string, secretChanged: boolean) {
     if (!canEditInPlace || !stored?.origin_id) return;
@@ -758,7 +758,7 @@ export function ConnectionDialog({
                         every case this could show for, since it implies
                         `originIsPublished`. Opening the editor puts this
                         manager aside, and closing it reopens the manager on
-                        this profile (`useOriginEditor`, gotcha #101). */}
+                        this profile (`useOriginEditor`, ADR #101). */}
                       {canEditInPlace && stored?.origin_id && (
                         <Button
                           type="button"
@@ -1521,7 +1521,7 @@ export function ConnectionDialog({
           // The form visibly repopulates, so the fold itself needs no
           // announcement — what does is the part that is *not* on screen: the
           // hosts, the SRV lookup or the password that just stopped existing.
-          // A pill, since the count is the whole message (gotcha #64).
+          // A pill, since the count is the whole message (ADR #64).
           notify.warning(t("connectionDialog.mongoFoldDone"), {
             description: lost
               .map((reason) =>

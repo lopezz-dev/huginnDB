@@ -17,7 +17,7 @@
  *
  * There is no `open` prop, and that is deliberate. `useAsyncSubmit` leaves
  * `submitting` true after a success, because its contract assumes the success
- * path unmounts the dialog (gotcha #44). Here the *parent* — the connection
+ * path unmounts the dialog (ADR #44). Here the *parent* — the connection
  * manager — stays open, so a hook living up there would be stuck for every
  * later delete. Rendering this only while there are targets makes the unmount
  * the reset.

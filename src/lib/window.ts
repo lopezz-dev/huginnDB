@@ -2,7 +2,7 @@
  * Which window this code is running in.
  *
  * The distinction is load-bearing, not cosmetic. `tab_state.json` is written by
- * the main window *only* (gotchas #8 and #27): a secondary "New window"
+ * the main window *only* (ADRs #8 and #27): a secondary "New window"
  * instance that read or wrote the shared blob would corrupt the main window's
  * session, so every tab-state-aware path has to be gated. Same for the
  * shared-origin sweep and the environment rail.

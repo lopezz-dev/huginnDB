@@ -18,14 +18,14 @@
  * `mongodb-pipeline` is not the answer either: that grammar begins *inside* a
  * stage's `{`, and nothing in it knows what `db.` means.
  *
- * Like its sibling, this language needs no worker (Monarch only — gotcha #2):
+ * Like its sibling, this language needs no worker (Monarch only — ADR #2):
  * `javascript` would need the TypeScript worker this app deliberately does
  * not bundle, and `json` would flag every legal thing the relaxed grammar
  * allows as an error.
  *
  * ## What the provider understands
  *
- * `shellSlotAt` (a cursor scanner, never a parser — gotcha #33) answers where
+ * `shellSlotAt` (a cursor scanner, never a parser — ADR #33) answers where
  * the cursor is, and the catalogues in `shellCatalog.ts` — mirrors of
  * `src-tauri/src/db/mongo/shell.rs` — answer what belongs there:
  *
@@ -49,7 +49,7 @@
  *
  * Field suggestions never fetch from inside the provider (it cannot `await`):
  * they read what `MongoQueryEntry.getFields` has cached and fire
- * `requestFields` at most once per collection per session (gotcha #57). The
+ * `requestFields` at most once per collection per session (ADR #57). The
  * same ADR puts dotted nested paths and "fields after this stage" out of
  * scope on purpose, and nothing here reaches for them.
  */

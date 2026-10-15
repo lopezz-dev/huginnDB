@@ -211,7 +211,7 @@ pub fn save_launch_state(state: State<'_, AppState>, launch_state: LaunchState) 
 }
 
 /// The part of [`save_launch_state`] worth testing without an `AppState`
-/// (CLAUDE.md gotcha #52) — a pure function over the one `Environment` it
+/// (convention #52) — a pure function over the one `Environment` it
 /// touches.
 ///
 /// For a mirrored environment, `visible_connections` is diverted into
@@ -238,7 +238,7 @@ fn apply_launch_state(env: &mut Environment, launch_state: LaunchState) {
 // active one scopes every tab-state / layout / launch call above.
 //
 // All of these are main-window-only in practice, for the same reason tab state
-// is (CLAUDE.md gotcha #8): a secondary window writing here would reshape the
+// is (ADR #8): a secondary window writing here would reshape the
 // main window's session out from under it.
 
 /// Every environment in display order, plus which one is active.
@@ -459,7 +459,7 @@ pub fn reorder_environments(state: State<'_, AppState>, ids: Vec<String>) -> App
 /// Every connection id this environment references, anywhere: its remembered
 /// tab state, what was live at last close, the focused connection, and the
 /// per-connection database-visibility overrides. Deleting a profile already
-/// sweeps all of these (gotcha #27), so in practice every id here resolves to
+/// sweeps all of these (ADR #27), so in practice every id here resolves to
 /// a real profile — but the export still filters defensively rather than
 /// assuming that.
 /// `pub(crate)` for a second caller with the same question: the origin
@@ -522,7 +522,7 @@ pub fn find_environments_for_connection(
 ///
 /// Tabs, dockview geometry and launch state are deliberately left out — they
 /// are session artifacts tied to this machine, not part of an environment's
-/// portable identity (CLAUDE.md gotcha #10).
+/// portable identity (ADR #10).
 #[tauri::command]
 pub async fn export_environments(
     app: AppHandle,
@@ -732,7 +732,7 @@ pub fn analyze_environment_import(
 ///
 /// `window` is only used to scope [`IMPORT_PROGRESS_EVENT`] to the caller —
 /// see the event's own doc comment (`commands::connection`) for why a plain
-/// `app.emit` would leak progress into every open window (CLAUDE.md gotcha #25).
+/// `app.emit` would leak progress into every open window (gotcha #25).
 #[tauri::command]
 pub async fn import_environment(
     app: AppHandle,

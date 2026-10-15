@@ -697,7 +697,7 @@ fn read_verbs(sql: &str) -> Verbs {
 /// statement in it. An authorisation boundary that holds on three drivers out
 /// of five is not a boundary.
 ///
-/// This is not a SQL parser and is not trying to be (gotcha #33): it only
+/// This is not a SQL parser and is not trying to be (ADR #33): it only
 /// needs to know where a statement ends, which is a lexical question.
 pub fn split_statements(sql: &str) -> Vec<&str> {
     let masked = mask_non_code(sql);
@@ -869,7 +869,7 @@ pub fn classify(sql: &str) -> StmtClass {
 }
 
 /// Everything `sql` does, as a set of [`Verbs`] — the union over every
-/// statement in it (gotcha #76), so `SELECT 1; DELETE FROM t` needs `delete`.
+/// statement in it (ADR #76), so `SELECT 1; DELETE FROM t` needs `delete`.
 ///
 /// Nothing to classify — an empty string, or only semicolons — needs every row
 /// write, for the same reason an unrecognised statement does: the conservative

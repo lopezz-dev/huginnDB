@@ -9,7 +9,7 @@
  *
  * The most-specific-wins cascade (four axes, globs, tie-breaks) exists only in
  * Rust — see `src-tauri/src/json_schemas/mod.rs`. Mirroring it here would be the
- * same one-grammar-two-implementations trap gotchas #30/#33 exist to prevent,
+ * same one-grammar-two-implementations trap ADRs #30/#33 exist to prevent,
  * and the drift would be silent: a resolution bug is not an error, it is "the
  * autocompletion did not appear". What this store holds is a cache of
  * *results*, keyed per relation, filled by one call when a data tab opens.
@@ -43,7 +43,7 @@ import type {
  *
  * The connection id is folded to its parent profile id first: a server-wide
  * connection browses each database under a synthetic `<parent>::db::<db>` id
- * (gotcha #32), and the backend resolves against the parent, so keying on the
+ * (ADR #32), and the backend resolves against the parent, so keying on the
  * child would cache the same answer once per database and — worse — look like a
  * miss every time the user switched database.
  */

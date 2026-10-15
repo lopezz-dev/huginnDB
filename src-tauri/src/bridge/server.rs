@@ -436,7 +436,7 @@ fn class_of(request: &BridgeRequest) -> Option<StmtClass> {
 /// same [`BridgeRequest`] enum. That is the whole reason the check lives on the
 /// request rather than at either entry point — and it is why the AI catalogue
 /// keeps its own exhaustive mapping instead of extending `verbs_of_request`'s
-/// `_ => None` (gotcha #49).
+/// `_ => None` (convention #49).
 pub(crate) fn check_policy(state: &AppState, request: &BridgeRequest) -> AppResult<()> {
     let Some(policy_id) = policy_id_of(request) else {
         return Ok(());
@@ -544,7 +544,7 @@ async fn dispatch(
     // it — the frontend deliberately does not listen for `connection-opened`,
     // since a new window must not adopt another's live connections — so nobody
     // will ever disconnect it, and until the marker existed the app's reaper
-    // skipped it as "a connection the user opened". See gotcha #67.
+    // skipped it as "a connection the user opened". See ADR #67.
     if let BridgeRequest::EnsureConnected { connection_id } = request {
         // The one request `bridge::exec::execute` never sees, so the policy
         // is applied here: a connection the AI's role cannot reach is not

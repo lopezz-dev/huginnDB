@@ -10,7 +10,7 @@
  * The bodies are literal JSON and deliberately untranslated: a schema body is
  * *data*, not copy. Only the names and descriptions are i18n keys — the same
  * reasoning that keeps the backend from ever writing display copy into an
- * environment's `name` (gotcha #27).
+ * environment's `name` (ADR #27).
  *
  * Each one states `$schema`, which is load-bearing rather than decorative:
  * without it Monaco validates with 2020-12 semantics instead of draft-07.

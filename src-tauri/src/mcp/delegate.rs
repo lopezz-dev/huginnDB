@@ -31,7 +31,7 @@ pub const DELEGATED_ENV: &str = "HUGINNDB_MCP_DELEGATED";
 /// The stable app's `productName` (`tauri.conf.json`), which names both its
 /// install folder and its uninstall key. Stable on purpose, not keyed off the
 /// `canary` feature: the connector inside the `.mcpb` is always a stable build
-/// (gotcha #26), and a canary install is not what it should hand over to.
+/// (ADR #26), and a canary install is not what it should hand over to.
 #[cfg_attr(not(windows), allow(dead_code))]
 const PRODUCT_NAME: &str = "HuginnDB";
 
@@ -121,7 +121,7 @@ fn candidates() -> Vec<PathBuf> {
     const EXE: &str = "huginndb-mcp.exe";
     let mut out = Vec::new();
     // The installer records where it put the app. Only locating a binary is
-    // at stake here, so HKCU is fine (unlike the policy, gotcha #94): whoever
+    // at stake here, so HKCU is fine (unlike the policy, ADR #94): whoever
     // can write this key can also edit the client's own server config.
     if let Some(dir) = registered_install_dir() {
         out.push(dir.join(EXE));

@@ -84,7 +84,7 @@ pub struct ExportTarget {
 /// is only ever an approximate, engine-side statistic — stale on Postgres,
 /// an InnoDB estimate on MySQL, always absent on SQLite — and its own doc
 /// comment says as much. `emit_to`, not a broadcast `emit`, for the same
-/// reason as `IMPORT_PROGRESS_EVENT` (CLAUDE.md gotcha #25): the export was
+/// reason as `IMPORT_PROGRESS_EVENT` (gotcha #25): the export was
 /// started from one window's dialog.
 pub const EXPORT_PROGRESS_EVENT: &str = "huginndb://export-progress";
 

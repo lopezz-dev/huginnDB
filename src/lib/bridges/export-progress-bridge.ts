@@ -24,7 +24,7 @@ export interface ExportProgress {
  *
  * Scoped to this window's label — the backend emits with `emit_to`, and a
  * bare `listen()` would default to `EventTarget::Any` and still receive a
- * *different* window's export (CLAUDE.md gotcha #25).
+ * *different* window's export (gotcha #25).
  */
 export async function withExportProgress<T>(
   onProgress: (p: ExportProgress) => void,

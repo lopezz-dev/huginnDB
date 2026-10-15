@@ -67,7 +67,7 @@ interface CellInputProps {
    * This is the discoverability path for anyone who never opens the heavy
    * editor: a one-line `<input>` cannot offer completion or validation, so the
    * only hint that the schema exists is that escalating is worth it. Double-click
-   * behaviour is unchanged (gotcha #12) — this swaps an icon, nothing more.
+   * behaviour is unchanged (ADR #12) — this swaps an icon, nothing more.
    */
   schemaBound?: boolean;
 }

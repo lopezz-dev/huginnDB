@@ -1,7 +1,7 @@
 /**
  * Dockview helpers for the *inner* workspace dockview only — the nested
  * `DockviewReact` inside `TabbedArea` that hosts open table/query tabs
- * (gotcha #10 in CLAUDE.md).
+ * (ADR #10).
  *
  * The outer shell (Schema/Saved/Console docking, the workspace island) no
  * longer uses dockview at all — see `stores/session/panelLayout.ts` for

@@ -134,7 +134,7 @@ export default function App() {
   // first paint. An editor that mounts first *is* repainted when the
   // definitions land — but only because it resolves its theme through
   // `useMonacoTheme`, which subscribes to the store this fills. This comment
-  // used to assert that repaint while nothing implemented it (gotcha #90);
+  // used to assert that repaint while nothing implemented it (ADR #90);
   // the guarantee lives in the hook, not here. Runs in every window; the
   // call is read-only.
   useEffect(() => {
@@ -166,7 +166,7 @@ export default function App() {
   // same operation, and its ordering is load-bearing enough that two copies
   // would eventually drift: the layout `fromJSON` must run AFTER the
   // reconnected tabs are in `useTabs`, or the TabbedArea reconciler deletes the
-  // panels it just built (gotcha #10), and focus must come last because
+  // panels it just built (ADR #10), and focus must come last because
   // `connect()` never sets it and the auto-select effect below would otherwise
   // win with whichever pool opened first. Runs once.
   const launchRestoreDone = useRef(false);
@@ -232,7 +232,7 @@ export default function App() {
   // bumped the app to a version flagged `major` in `releaseNotes.ts`, pop the
   // highlights dialog. MAIN-WINDOW-ONLY — the seen-marker is shared, so a
   // secondary ephemeral window shouldn't also fire it (same rationale as the
-  // CLI-routing guard below and CLAUDE.md gotcha #8).
+  // CLI-routing guard below and ADR #8).
   useEffect(() => {
     if (!isMainWindow()) return;
     void (async () => {
@@ -249,7 +249,7 @@ export default function App() {
   // second launch of the app forwarded by the single-instance handler. Called
   // HERE, not in a child component: a child's effects mount before its
   // parent's, which would move these ahead of the launch-restore sequence
-  // above whose ordering gotchas #8 and #10 pin down. This is the position the
+  // above whose ordering ADRs #8 and #10 pin down. This is the position the
   // code occupied before it moved into the hook.
   const cli = useCliIntents();
 
@@ -259,7 +259,7 @@ export default function App() {
   // alone anything more abrupt) could lose up to the debounce window's
   // worth of trailing tab/layout edits, including split-panel geometry.
   // Main-window-only: secondary ("New window") instances never touch
-  // `tab_state.json` (see CLAUDE.md gotcha #8).
+  // `tab_state.json` (see ADR #8).
   useEffect(() => {
     if (!isMainWindow()) return;
     let unlisten: (() => void) | null = null;
@@ -458,7 +458,7 @@ export default function App() {
         }
       },
       scopeFilterToConnection: () => {
-        // `selectedConnectionId` is always a profile id (gotcha #32), which is
+        // `selectedConnectionId` is always a profile id (ADR #32), which is
         // exactly what a connection scope anchors to.
         const connectionId = useUi.getState().selectedConnectionId;
         if (!connectionId) return;

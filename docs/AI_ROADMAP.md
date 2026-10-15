@@ -201,12 +201,12 @@ So the `#[tool]` macros in `src-tauri/src/mcp/mod.rs` are rmcp-specific
 for an LLM — over the same enum.
 
 > ⚠️ This raises the stakes on [gotcha
-> #49](../adr/gotcha-049-mcp-write-tool-checklist-unenforced-arms.md).
+> #49](../engineering/conventions/convention-049-mcp-write-tool-checklist-unenforced-arms.md).
 > `policy_id_of` and `class_of` both end in `_ => None`, which is not
 > compiler-enforced, and they will now have **two** consumers instead of one.
 > Phase 1 must make the AI catalogue's mapping an **exhaustive match** over
 > `BridgeRequest` (the pattern [gotcha
-> #54](../adr/gotcha-054-statement-classify-text-based-single-source.md) uses
+> #54](../engineering/adr/adr-054-statement-classify-text-based-single-source.md) uses
 > for `MongoOp::class()`), so a new variant is a build error rather than a
 > silently unclassified tool.
 
@@ -312,7 +312,7 @@ introduce a second policy type.
   refusal text naming the propose-instead path.
 - A connection with `ai_enabled == false` is unreachable even when named
   correctly.
-- Per [gotcha #52](../adr/gotcha-052-cargo-test-real-state-directory-risk.md),
+- Per [convention #52](../engineering/conventions/convention-052-cargo-test-real-state-directory-risk.md),
   **no test may reach `state_file::path` / `save_profiles`**. Use the pure
   seams; extract one if you need it.
 
@@ -398,7 +398,7 @@ valid tool call.
   Claude/Codex licence" path (§1).
 
 **Note.** `prefId` is derived from `Preferences` ([gotcha
-#47](../adr/gotcha-047-prefid-compile-time-derived.md)), so adding `AiPrefs`
+#47](../engineering/adr/adr-047-prefid-compile-time-derived.md)), so adding `AiPrefs`
 extends the settings-navigation union automatically and a typo'd `prefId`
 fails to compile. Free correctness — don't hand-maintain a parallel list.
 
@@ -442,12 +442,12 @@ pays nothing).
 **SQL blocks.** Render them in Monaco and reuse the existing per-statement ▶ Run
 CodeLens so a proposed statement is one click from the editor's normal
 execution path. Follow the per-model provider registry pattern from [gotcha
-#57](../adr/gotcha-057-mongo-pipeline-completion-context-scanner.md) to avoid
+#57](../engineering/adr/adr-057-mongo-pipeline-completion-context-scanner.md) to avoid
 registering duplicate providers.
 
 **Constraints.** `components/ui/` may only import
 `react`/`@radix-ui/*`/`lucide-react`/`cva`/`@/lib/utils` ([gotcha
-#60](../adr/gotcha-060-ui-library-dependency-rule-density-focus.md)) — panel
+#60](../engineering/conventions/convention-060-ui-library-dependency-rule-density-focus.md)) — panel
 components live in `components/ai/`, not `ui/`. `uiAdoption.test.ts` asserts
 its budget maps **exactly**, so new files carrying a counted pattern fail the
 build; write the new code against the primitives instead of adding debt. Every
@@ -554,7 +554,7 @@ from that track.
 | **Tool-call delta assembly.** Servers fragment `tool_calls` arguments differently; a naive concatenation works on one and corrupts another. | Test against captured fragments from at least two server implementations before phase 6. This is the most likely source of "the AI is broken" reports. |
 | **Small models make the feature look bad.** | Phase 5 before phase 6; the probe gates agent mode; the docs are honest about hardware. |
 | **The metadata-only guarantee leaks.** A tool added later that returns rows but is not marked `needs_rows`. | `needs_rows` on `ToolSpec` plus the exhaustive-match requirement in phase 1; a test asserting the metadata-only catalogue is row-free. |
-| **`policy_id_of` / `class_of`'s `_ => None` arms** now serve two consumers ([gotcha #49](../adr/gotcha-049-mcp-write-tool-checklist-unenforced-arms.md)). | Do not extend them for the AI path — the AI catalogue keeps its own exhaustive mapping, and calls `check_policy` rather than re-deriving a tier. |
+| **`policy_id_of` / `class_of`'s `_ => None` arms** now serve two consumers ([convention #49](../engineering/conventions/convention-049-mcp-write-tool-checklist-unenforced-arms.md)). | Do not extend them for the AI path — the AI catalogue keeps its own exhaustive mapping, and calls `check_policy` rather than re-deriving a tier. |
 | **Scope creep into writes.** | D4 is locked. A write-capable assistant is a separate decision with a separate threat model, not a phase 8 someone bolts on. |
 
 ---

@@ -7,7 +7,7 @@
  *
  * The preview and the apply run the *same* Rust builder (`db::ddl::build_ddl`
  * and `db::view_ddl::build_view_ddl`), which is what makes "what is shown is
- * what runs" true — see CLAUDE.md gotcha #16. This component only renders the
+ * what runs" true — see ADR #16. This component only renders the
  * result; it never assembles SQL.
  */
 

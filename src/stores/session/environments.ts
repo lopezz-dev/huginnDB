@@ -7,7 +7,7 @@
  * whichever environment is active, so switching one is mostly a pointer move on
  * disk. The work — and the ordering risk — is all on this side.
  *
- * Writing to `tab_state.json` is main-window only (gotcha #8): `create`,
+ * Writing to `tab_state.json` is main-window only (ADR #8): `create`,
  * `update`, `remove`, `reorder` and the full `restoreSession`/`switchTo`
  * teardown-and-reconnect all touch it and only run there. A secondary "New
  * window" instance still reads the environment list (`load`, safe — it never
@@ -183,7 +183,7 @@ interface EnvironmentsState {
    * `switchTo`, which owns the tab/layout hand-over. An unknown id (the
    * environment was deleted between the click and the window's boot) leaves the
    * window as a plain blank one. Nothing is written — every persistence path
-   * stays behind `isMainWindow()` (gotcha #8).
+   * stays behind `isMainWindow()` (ADR #8).
    */
   enterInThisWindow: (id: string) => Promise<void>;
   create: (env: {
@@ -265,7 +265,7 @@ interface EnvironmentsState {
 /**
  * Apply an environment's connection/database view filters to *this* window's
  * own `useUi` — nothing else. Used by secondary "New window" instances, which
- * never own `tab_state.json` (gotcha #8) and so can't run the pool/tab/layout
+ * never own `tab_state.json` (ADR #8) and so can't run the pool/tab/layout
  * parts of `restoreSession`, only the "how does the tree look" part of it.
  * Each window has its own JS process and therefore its own `useUi` instance
  * (same free isolation `useConnections.active` already relies on), so this
@@ -319,7 +319,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
         error: null,
       });
       // Secondary windows never call `restoreSession` (main-window-only,
-      // gotcha #8) and so never had their own view filters seeded — without
+      // ADR #8) and so never had their own view filters seeded — without
       // this a "New window" showed every saved connection from every
       // environment (the reported bug). Seed this window's local view from
       // whichever environment is active right now, with no pool/tab/layout
@@ -492,7 +492,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
   switchTo: async (id) => {
     if (!isMainWindow()) {
       // Secondary windows never touch the shared backend pointer or its
-      // pools/tabs/layout (gotcha #8) — picking a different environment here
+      // pools/tabs/layout (ADR #8) — picking a different environment here
       // only changes which one's connection/database filters *this* window
       // applies to its own connections tree, entirely in memory.
       if (get().switchingTo || get().activeId === id) return;

@@ -6,7 +6,7 @@
  * ⚠️ The index is derived with `useMemo` from the **raw** overrides map, never
  * inside a Zustand selector: `resolveBindings` returns a fresh `Map` on every
  * call, and a selector returning a fresh reference re-renders forever
- * (CLAUDE.md gotcha #1). The six `getBinding` selectors this replaces were
+ * (gotcha #1). The six `getBinding` selectors this replaces were
  * only safe because each returned a `string`.
  */
 

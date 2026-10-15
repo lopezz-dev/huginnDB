@@ -15,7 +15,7 @@
  * relaxed Mongo syntax, not JSON — `{ status: { $eq: "active" } }` is valid
  * and a JSON validator would reject it — and they are parsed in Rust, whose
  * error message (with a position) is what surfaces on a bad one. That is the
- * gotcha #33 contract: one grammar, on the Rust side, never a second one here.
+ * ADR #33 contract: one grammar, on the Rust side, never a second one here.
  *
  * "Replace" is destructive by nature: MongoDB cannot alter an index in place,
  * so saving an edit drops the old index and builds a new one, and the

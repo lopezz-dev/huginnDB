@@ -5,8 +5,8 @@
  * Extracted from `DataGrid` (245 lines with no JSX in them). The rules that make
  * this more than a `Set<string>`:
  *
- * - **A row is identified by its key, never by a display index** (CLAUDE.md
- *   gotcha #7). `getRowKey` comes from the parent — the primary-key tuple for a
+ * - **A row is identified by its key, never by a display index** (ADR #7).
+ *   `getRowKey` comes from the parent — the primary-key tuple for a
  *   table, `null` for a query result with no identity — and a `null`-keyed row
  *   simply cannot be selected, because there would be no way to address it in a
  *   later UPDATE or DELETE.

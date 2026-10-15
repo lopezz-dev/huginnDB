@@ -17,7 +17,7 @@
 //!
 //! A binding is `(table, column)`: it belongs to the *server*, not to the
 //! Producción/Staging axis. Putting it on `Environment` would reproduce the
-//! `visible_databases` bug (gotcha #27) exactly — the same table would have a
+//! `visible_databases` bug (ADR #27) exactly — the same table would have a
 //! schema in one environment and not in another. `tab_state.json` is also
 //! LRU-pruned, which a user-authored library must never be. The right
 //! precedent is [`crate::prefs::GridPrefs`]'s `column_widths`, which is
@@ -32,11 +32,11 @@
 //! option either: it is a *global* feature of `serde_json` in this tree and
 //! would change key order for every `Value` in the app (BSON conversions,
 //! Extended JSON, `internal_layout`, `bson_to_shell_text`) — precisely the
-//! invisible-and-permanent loss gotchas #17/#29/#34 are about.
+//! invisible-and-permanent loss gotcha #17 and ADRs #29/#34 are about.
 //!
 //! A body is therefore stored as **source text** and this module **never
 //! parses it**. The only JSON Schema parser in the product is the one already
-//! inside Monaco's bundled JSON worker, which keeps gotcha #33's "one grammar,
+//! inside Monaco's bundled JSON worker, which keeps ADR #33's "one grammar,
 //! one parser" trivially true. The cost — `json_schemas.json` is awkward to
 //! hand-edit because bodies are escaped strings — is the same one
 //! `tab_state.json` already accepts for `PersistedTab::query`.
@@ -169,7 +169,7 @@ pub struct JsonSchemaBinding {
     /// Required. Simple `*` glob; `"*"` is the wildcard spelling.
     ///
     /// Admits dots, because a MongoDB field path arrives as `path.join(".")`
-    /// (gotcha #29) — and `.` is **not** a metacharacter here, so `customData`
+    /// (ADR #29) — and `.` is **not** a metacharacter here, so `customData`
     /// does not match `customData.format`; that needs `customData.*`.
     pub column: String,
     pub enabled: bool,
@@ -471,7 +471,7 @@ pub fn explain(lib: &JsonSchemaLibrary, t: &ResolveTarget<'_>) -> Vec<JsonSchema
 /// almost-guaranteed frontend bug, and the backend is the right place to make
 /// it unrepresentable. `Some("*")` collapses too, because `*` is the universal
 /// spelling of "any" and no real identifier is `*` — note this is *not* the
-/// `undefined`-vs-`null` distinction of gotcha #27, where the two spellings
+/// `undefined`-vs-`null` distinction of ADR #27, where the two spellings
 /// genuinely meant different things; here they mean the same thing.
 pub fn normalise_binding(b: &mut JsonSchemaBinding) -> AppResult<()> {
     b.id = b.id.trim().to_string();
@@ -530,7 +530,7 @@ pub fn same_rule(a: &JsonSchemaBinding, b: &JsonSchemaBinding) -> bool {
 /// `apply_profile_imports` mint a fresh one), so such a binding can never match
 /// again — it is not "inert but possibly meaningful" like
 /// `launch.collapsed_connections`, it is a provably dead rule. That makes it a
-/// keyed payload worth reaping (gotcha #27, precedent `database_visibility`).
+/// keyed payload worth reaping (ADR #27, precedent `database_visibility`).
 ///
 /// The destruction is asymmetric on purpose: the **schema** — the expensive
 /// artefact the user wrote — is never touched; only the six trivial fields of

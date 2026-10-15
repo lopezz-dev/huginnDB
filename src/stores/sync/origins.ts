@@ -2,7 +2,7 @@
  * The registered shared origins (#108), cached for lookup by id.
  *
  * Deliberately separate from `originSync.ts`, which is the *pull* and the
- * notices it produces: that store is guarded by `isMainWindow()` (gotcha #8),
+ * notices it produces: that store is guarded by `isMainWindow()` (ADR #8),
  * holds in-memory decisions the user made, and writes `profiles.json` as it
  * goes. This one only ever reads, so it must also work in a secondary window —
  * the connection manager there needs to name the origin behind a row just as

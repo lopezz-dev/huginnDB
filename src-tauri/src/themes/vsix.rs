@@ -214,7 +214,7 @@ mod tests {
     /// Deliberately not `tempfile`: the crate is not a dependency here, and
     /// every other test in this workspace already builds scratch paths this
     /// way (see `state_file.rs`, `db/exec.rs`). Never anywhere near the real
-    /// state directory — see gotcha #52.
+    /// state directory — see convention #52.
     struct Scratch(PathBuf);
 
     impl Drop for Scratch {

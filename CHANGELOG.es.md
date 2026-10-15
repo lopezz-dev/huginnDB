@@ -52,6 +52,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **El botón de la consola de la barra de estado cambia a la Consola cuando
   se está mostrando el Terminal**, en vez de cerrar el panel.
+- **Los "hard-earned gotchas" internos se archivan ahora como ADRs, gotchas y
+  convenciones** bajo `engineering/` (antes `adr/`). Leídas una a una, 85 de
+  las 107 entradas eran decisiones con alternativas, 9 eran normas de la casa
+  y 13 eran gotchas en sentido estricto: hechos de una dependencia que ningún
+  diseño nuestro puede cambiar. Cada tipo se retira de forma distinta. Una
+  decisión se sustituye por un ADR nuevo, un gotcha queda obsoleto cuando la
+  dependencia lo corrige y una convención se edita en su sitio. Cada entrada
+  lleva ahora front matter (tipo, estado, fecha original recuperada del
+  historial de `CLAUDE.md`, etiquetas, related / supersedes / amends), y los
+  ADRs empiezan por su decisión y las alternativas que el cuerpo recoge como
+  descartadas. La numeración sigue siendo una única secuencia global, así que
+  toda cita `#N` existente sigue resolviendo. Los comentarios del código y la
+  documentación nombran ahora el tipo (`ADR #54`, `gotcha #19`,
+  `convention #28`). `node scripts/engineering-index.mjs` regenera los cuatro
+  índices desde el front matter (`--check` avisa si alguno está desfasado).
+  Solo documentación: ningún cambio de comportamiento.
 
 ## [1.33.0] — 2026-10-14
 
@@ -1423,7 +1439,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   No se expone por MCP. El conector ya tiene un `insert_row` estructurado que le
   sirve mejor a un modelo que un blob de texto, y cada herramienta de escritura
   nueva cuesta tres pasos de cableado que el compilador no comprueba. Ver
-  [`adr/gotcha-084`](adr/gotcha-084-json-row-insert-catalogue-gated-and-transactional.md).
+  [`engineering/adr/adr-084`](engineering/adr/adr-084-json-row-insert-catalogue-gated-and-transactional.md).
 
 - **"Consultar esta tabla…" sobre una tabla o vista del árbol de esquema.**
   Abre un editor de query ya acotado a la conexión *y* la base de datos de esa
@@ -1669,7 +1685,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   por defecto cerrado habría estrechado todos los orígenes registrados al
   actualizar y habría hecho que la siguiente sincronización informase de que ha
   desaparecido la configuración entera del usuario. Ver
-  [`adr/gotcha-083`](adr/gotcha-083-origin-consumption-scope-defaults-open.md)
+  [`engineering/adr/adr-083`](engineering/adr/adr-083-origin-consumption-scope-defaults-open.md)
   (en inglés).
 
 ### Corregido

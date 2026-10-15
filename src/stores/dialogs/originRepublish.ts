@@ -23,7 +23,7 @@ export interface OriginRepublishRequest {
   /**
    * Whether the local save changed the *secret*, which is the only thing that
    * makes a republish re-encrypt. An unchanged envelope travels verbatim
-   * (gotcha #56): re-encrypting draws a fresh salt and nonce, invalidating
+   * (ADR #56): re-encrypting draws a fresh salt and nonce, invalidating
    * every consumer's `landedSecrets` fingerprint and costing each of them
    * ~600 000 PBKDF2 rounds for a password that did not change.
    */

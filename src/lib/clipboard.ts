@@ -3,7 +3,7 @@
  *
  * **Both halves go through Tauri's clipboard plugin, never
  * `navigator.clipboard`** — the webview's own Clipboard API was wrong for this
- * app in two separate, user-visible ways (gotcha #63):
+ * app in two separate, user-visible ways (ADR #63):
  *
  *  - `readText()` triggers WebView2's native "allow this site to see text and
  *    images copied to the clipboard" prompt. It fires on Ctrl+V inside a

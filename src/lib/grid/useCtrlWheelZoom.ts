@@ -3,7 +3,7 @@
  *
  * Bound as a **non-passive native listener** so `preventDefault` actually
  * suppresses the browser's page zoom — a JSX `onWheel` is passive by default and
- * cannot (CLAUDE.md gotcha #13). Persistence is the prefs store's job (it
+ * cannot (ADR #13). Persistence is the prefs store's job (it
  * debounces the write), so this only pushes the clamped row height.
  *
  * Returns the ref to attach to the scroll container; the grid needs that ref for

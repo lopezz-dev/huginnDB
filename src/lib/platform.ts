@@ -33,8 +33,7 @@ export function isMac(): boolean {
  *
  * Gates the SQL Server Windows-authentication modes in the connection dialog:
  * `tiberius`'s NTLM support is `cfg(windows)`-gated, so the backend refuses
- * those modes everywhere else and the UI must not offer them (see CLAUDE.md
- * gotcha #31).
+ * those modes everywhere else and the UI must not offer them (see ADR #31).
  */
 export function isWindows(): boolean {
   return ua().includes("windows");

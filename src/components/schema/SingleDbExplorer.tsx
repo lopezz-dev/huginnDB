@@ -234,7 +234,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
   // multi-DB blank-panel bug). Keeping it here, reading `cs?.tables`, makes
   // the hook count constant. Memoising also keeps the grouping object
   // reference-stable so the `TableSection` subtree doesn't thrash on every
-  // render of the surviving explorers (CLAUDE.md gotcha #1).
+  // render of the surviving explorers (gotcha #1).
   const filtering = patterns.length > 0;
   const { bySchema, schemas, allSchemas } = useMemo(() => {
     const grouped: Record<string, { tables: TableInfo[]; views: TableInfo[] }> =
@@ -275,7 +275,7 @@ export const SingleDbExplorer = memo(function SingleDbExplorer({
   );
 
   /**
-   * `TableSection`/`TableRow` are `memo()`-wrapped (gotcha #28), which is
+   * `TableSection`/`TableRow` are `memo()`-wrapped (convention #28), which is
    * worthless if their `actions` bundle is a fresh object every render —
    * exactly what this was before the fix, rebuilt unconditionally on every
    * `SingleDbExplorer` render regardless of whether any handler's

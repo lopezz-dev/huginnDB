@@ -312,14 +312,14 @@ function protectStackBoundary(host: NotificationSurface, maxVisible: number) {
  * `entries` is the raw store array (stable unless the stack actually
  * changes), and the subtraction is cheap arithmetic done at render time, not
  * a selector return — so this stays clear of the infinite-re-render trap in
- * CLAUDE.md gotcha #1.
+ * gotcha #1.
  */
 export function useHiddenToastCount(host: NotificationSurface): number {
   const entries = useToastStack((s) => s.entries);
   const maxVisible = usePreferences((s) => s.prefs.notifications.maxVisible);
   // Filtering happens here and not in the selector on purpose: a selector
   // returning a fresh array re-renders every consumer on every store write
-  // (CLAUDE.md gotcha #1).
+  // (gotcha #1).
   const mine = entries.reduce((n, e) => (e.host === host ? n + 1 : n), 0);
   return Math.max(0, mine - maxVisible);
 }

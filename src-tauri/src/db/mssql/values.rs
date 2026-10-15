@@ -189,7 +189,7 @@ pub fn first_string(row: &Row) -> Option<String> {
 /// which is what made the artifact reachable from the grid, the row-copy /
 /// CSV-export paths and the `huginndb-mcp` connector alike (`.sql` export is
 /// the one consumer spared, only because it refuses SQL Server outright —
-/// gotcha #31).
+/// ADR #31).
 ///
 /// So: take the sign off the mantissa once, format the magnitude as digits,
 /// left-pad it to at least `scale + 1` digits (values below 1 need the leading

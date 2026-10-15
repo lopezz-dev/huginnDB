@@ -13,9 +13,9 @@
 //! points [`APP_DIR`] at a *different* directory so it can be installed and run
 //! side-by-side with the stable release. This lets a maintainer dogfood a
 //! pre-release — including changes that perform destructive, one-way on-disk
-//! migrations (e.g. the tab-state v2→v3 migration, CLAUDE.md gotcha #8) —
+//! migrations (e.g. the tab-state v2→v3 migration, ADR #8) —
 //! without ever touching the production install's state. See `docs/CANARY.md`
-//! and CLAUDE.md gotcha #26.
+//! and ADR #26.
 //!
 //! ## What is deliberately *not* split
 //!

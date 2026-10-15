@@ -29,8 +29,8 @@
  * Two structural notes:
  *
  * - Every mutation addresses its field by **path**, never by a display index —
- *   the list is filtered/sorted client-side just like the table (CLAUDE.md
- *   gotcha #7), and a nested field has no index to speak of.
+ *   the list is filtered/sorted client-side just like the table (ADR #7),
+ *   and a nested field has no index to speak of.
  * - Per-card state (folds, the field being edited, the draft field) lives in
  *   `DocumentCard`, so editing one document never re-renders the others. Cards
  *   are keyed by position, which is what makes folds survive the refetch that
@@ -196,7 +196,7 @@ interface DocumentListViewProps {
    * "which field" because this component keys documents by position and fields
    * by dotted path. The parent resolves the row key against the very `rows`
    * array it passes here, in the same render, so the index cannot drift the way
-   * gotcha #7 warns about — it is not carried across two different arrays.
+   * ADR #7 warns about — it is not carried across two different arrays.
    */
   flashedRowIndex?: number | null;
   flashedPath?: string | null;
@@ -533,7 +533,7 @@ export function DocumentListView({
  * - **On MongoDB every field carries its own BSON type**, written into the
  *   draft cell and sent as `insert_row`'s type hint. Inferring it from the text
  *   would store `"301353073"` as an `Int32` where the collection holds a
- *   `Long`, which is the fidelity trap gotcha #29 documents one level up.
+ *   `Long`, which is the fidelity trap ADR #29 documents one level up.
  */
 function DraftDocumentCard({
   columns,
@@ -1119,7 +1119,7 @@ const DocumentCard = memo(function DocumentCard({
    * cannot be one.
    *
    * **Array indexes are dropped**, the way the filter builder's paths drop
-   * them (gotcha #81): `items.0.sku` browses as `items.sku`, and an element of
+   * them (ADR #81): `items.0.sku` browses as `items.sku`, and an element of
    * a scalar array as the array itself. That is what the gesture means from a
    * document — "filter by this value" on one tag is "has this tag", which
    * `{ tags: "x" }` is and `{ "tags.0": "x" }` is not, and `sort()` does not

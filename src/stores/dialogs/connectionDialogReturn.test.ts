@@ -2,7 +2,7 @@
  * The connection manager is a workbench, like the shared-origin editor its
  * "edit at origin" link opens. The editor puts the manager aside on the way in
  * and gives it back on the way out, on the profile it was showing, and only
- * when it was the manager it was opened from (gotcha #101).
+ * when it was the manager it was opened from (ADR #101).
  */
 
 import { beforeEach, describe, expect, it } from "vitest";

@@ -5,7 +5,7 @@
  * **Kept in sync with `src-tauri/src/db/mongo/shell.rs`** — the same
  * convention (and the same obligation) as `monacoMongo.ts`'s constructor
  * list, which now reads its copy from here. There is exactly one parser for
- * this grammar and it is in Rust (gotcha #33); everything below is a *mirror*
+ * this grammar and it is in Rust (ADR #33); everything below is a *mirror*
  * of what that parser accepts, kept here so the editor can suggest it:
  *
  * - {@link SHELL_METHODS} mirrors `build_op`'s match arms (its `other =>`

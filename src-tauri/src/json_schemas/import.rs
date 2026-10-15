@@ -5,7 +5,7 @@
 //!
 //! # Import never merges *identities*
 //!
-//! Same rule as gotcha #35: an import mints fresh ids and never adopts one from
+//! Same rule as ADR #35: an import mints fresh ids and never adopts one from
 //! the file. What it does reconcile is **names**, because a schema library is
 //! global and two machines will genuinely have a `product-config` each. The
 //! conflict machinery (`ConflictAction`, `ImportConflict`) is the profile

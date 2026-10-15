@@ -376,7 +376,7 @@ pub async fn save_origin_document(
 /// resolving one is a document-shaped job and this command only knows a row.
 ///
 /// `with_secret` is the whole reason this is not simply "publish the profile".
-/// A slot that did not change must travel **verbatim** (gotcha #56): a fresh
+/// A slot that did not change must travel **verbatim** (ADR #56): a fresh
 /// `encrypt_secret` draws a new salt and nonce, which invalidates every
 /// consumer's `landed_secrets` fingerprint and costs each of them ~600 000
 /// PBKDF2 rounds for a password that is still the same one. So correcting a

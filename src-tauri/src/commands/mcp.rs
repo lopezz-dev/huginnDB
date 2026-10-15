@@ -1,7 +1,7 @@
 //! MCP connector introspection.
 //!
 //! The `huginndb-mcp` binary lives in its own workspace crate (see
-//! `mcp-server/` and gotcha #20 in `CLAUDE.md`) and ships as a Tauri
+//! `mcp-server/` and ADR #20) and ships as a Tauri
 //! `externalBin` sidecar — installed side-by-side with the main executable,
 //! never started by the desktop app for itself (an AppImage's `--mcp` hands
 //! the whole process over to it, see `crate::mcp_launcher`). This command
@@ -49,8 +49,8 @@ pub fn get_mcp_connector_info() -> AppResult<McpConnectorInfo> {
 /// Best-effort check for whether the `huginndb-mcp` sidecar is currently
 /// running — i.e. some external MCP client (Claude Code, Cursor, Antigravity,
 /// ...) has spawned it and may be relying on it right now. The desktop app
-/// never starts or stops this process itself (see gotcha #20/#23 in
-/// CLAUDE.md), so the only signal available is asking the OS's own process
+/// never starts or stops this process itself (see ADR #20 / gotcha #23), so
+/// the only signal available is asking the OS's own process
 /// list — there is no IPC channel to the sidecar to ask it directly.
 ///
 /// Used by the update flow to warn the user before installing: the Windows

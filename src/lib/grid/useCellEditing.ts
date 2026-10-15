@@ -12,7 +12,7 @@ import type { CellValue, ColumnInfo, ColumnMeta } from "@/types";
 export interface FieldRef {
   /** Path from the document root, e.g. `["customData", "format"]`. */
   path: string[];
-  /** The field's BSON type, so the write preserves it (gotcha #29). */
+  /** The field's BSON type, so the write preserves it (ADR #29). */
   type: string;
 }
 
@@ -82,12 +82,12 @@ export interface CellEditingOptions {
  * `DataGrid` entirely; what comes back is the openers plus the live values the
  * `cell` renderer reads.
  *
- * **The routing in `openCellEdit` is gotcha #12** and is why all four openers
+ * **The routing in `openCellEdit` is ADR #12** and is why all four openers
  * live together: a double-click goes to an inline control, never straight to
  * the modal. Split them up and a future caller reaches `openModalEditor`
  * directly and quietly undoes that.
  *
- * **Identity is the row's values array, never a display index** (gotcha #7).
+ * **Identity is the row's values array, never a display index** (ADR #7).
  * `inlineEdit.rowValues === rowValues` is what the renderer compares, so an
  * edit survives a sort or filter reshuffle between activation and commit —
  * which a display index does not, since TanStack's `row.index` is the
@@ -224,7 +224,7 @@ export function useCellEditing(opts: CellEditingOptions) {
   }
 
   /**
-   * Double-click entry point (gotcha #12). Routes to the right editor:
+   * Double-click entry point (ADR #12). Routes to the right editor:
    * - single-column FK → inline combobox of valid referenced values;
    * - editable cell → inline `CellInput` (with an expand-to-modal affordance);
    * - read-only result grid → the Monaco modal as a viewer.

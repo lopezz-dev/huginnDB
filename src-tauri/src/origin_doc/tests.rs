@@ -4,7 +4,7 @@
 //! a stylistic preference — `state_file::path` resolves through the developer's
 //! real config directory under `cargo test`, so a test that reaches
 //! `store::save_profiles` (or constructs `AppState`) overwrites their own saved
-//! connections. See CLAUDE.md gotcha #52 for the time that happened.
+//! connections. See convention #52 for the time that happened.
 
 use super::*;
 use crate::json_schemas::JsonSchemaBinding;
@@ -79,7 +79,7 @@ fn environment(source_id: &str, name: &str, members: &[&str]) -> DraftEnvironmen
 
 /// The property the whole feature rests on: opening a published file and saving
 /// it back unchanged must reproduce it exactly. Same spirit as
-/// `pipeline_source_round_trips_through_bson` (gotcha #33) — the failure mode
+/// `pipeline_source_round_trips_through_bson` (ADR #33) — the failure mode
 /// here is not an error either, it is a publish that silently drops a field the
 /// editor did not model, and every consumer adopting the loss on their next
 /// sync.

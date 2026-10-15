@@ -472,7 +472,7 @@ function DatabaseRoot({
   // collection", "Refresh") goes through here on a node that may well be
   // *collapsed*. There the state was written into a branch that is not
   // mounted, so the menu item did nothing at all and said nothing about it.
-  // See gotcha #68.
+  // See ADR #68.
   //
   // One open at a time: the expand effect and a context-menu action fired
   // while it is still running used to open the view twice — two pools against

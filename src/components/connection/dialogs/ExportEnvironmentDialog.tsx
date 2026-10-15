@@ -67,7 +67,7 @@ export function ExportEnvironmentDialog({ open, preselect, onClose }: Props) {
   const [includePasswords, setIncludePasswords] = useState(false);
   // Opt-in, and off by default: schemas are global rather than owned by an
   // environment, so bundling them is a convenience for setting up a machine, not
-  // part of what makes an environment portable (gotcha #35).
+  // part of what makes an environment portable (ADR #35).
   const [includeJsonSchemas, setIncludeJsonSchemas] = useState(false);
   const [passphrase, setPassphrase] = useState("");
   const [passphraseConfirm, setPassphraseConfirm] = useState("");

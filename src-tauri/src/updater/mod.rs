@@ -1,11 +1,11 @@
 //! Silent updates for the workstation where nobody opens the app.
 //!
 //! The in-app updater (`src/stores/update.ts`) only runs while a window is
-//! up, and it never installs without a click (gotcha #24). That is right for
+//! up, and it never installs without a click (ADR #24). That is right for
 //! someone using HuginnDB, and leaves behind everyone who only uses the MCP
 //! connector through an AI client: they never open the app, so they never
 //! update, and since the `.mcpb` hands its sessions to the installed connector
-//! (gotcha #102) the connector they use is only ever as new as the app.
+//! (ADR #102) the connector they use is only ever as new as the app.
 //!
 //! This module is the other path. `huginndb.exe --update=<trigger>` runs with
 //! no window, checks the same signed feed the interface uses, and installs in
@@ -13,7 +13,7 @@
 //! ([`decide`]). Windows' Task Scheduler launches it at logon and once a day
 //! ([`schedule`]); where the domain forbids that, a `Run` value covers logon,
 //! and where it forbids that too, the app says so instead of pretending
-//! ([`schedule::Mechanism::Manual`]). See gotcha #103.
+//! ([`schedule::Mechanism::Manual`]). See ADR #103.
 //!
 //! Windows only, like the scheduled tasks it depends on. On Linux the Tauri
 //! updater only replaces an AppImage, and `.deb`/`.rpm` belong to the package

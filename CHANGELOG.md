@@ -48,6 +48,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **The status bar's console button switches to the Console when the
   Terminal is showing**, instead of closing the dock.
+- **The internal "hard-earned gotchas" are now filed as ADRs, gotchas and
+  conventions** under `engineering/` (previously `adr/`). Read one at a time,
+  85 of the 107 entries were decisions with alternatives, 9 were house rules,
+  and 13 were gotchas in the strict sense: facts about a dependency that no
+  design of ours can change. Each kind is retired differently. A decision is
+  superseded by a newer ADR, a gotcha goes obsolete when the dependency fixes
+  it, and a convention is edited in place. Each entry now carries front matter
+  (type, status, original date recovered from `CLAUDE.md`'s history, tags,
+  related / supersedes / amends), and ADRs open with their decision and the
+  alternatives the body records as rejected. Numbers stay one global sequence,
+  so every existing `#N` citation still resolves. Code comments and docs now
+  name the kind (`ADR #54`, `gotcha #19`, `convention #28`).
+  `node scripts/engineering-index.mjs` regenerates the four indexes from the
+  front matter (`--check` reports a stale one). Documentation only: no
+  behaviour changes.
 
 ## [1.33.0] — 2026-10-14
 
@@ -1322,7 +1337,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Not exposed over MCP. The connector already has a structured `insert_row`
   that serves a model better than a text blob would, and every new write tool
   costs three wiring steps the compiler does not check. See
-  [`adr/gotcha-084`](adr/gotcha-084-json-row-insert-catalogue-gated-and-transactional.md).
+  [`engineering/adr/adr-084`](engineering/adr/adr-084-json-row-insert-catalogue-gated-and-transactional.md).
 
 - **"Query this table…" on a table or view in the schema tree.** It opens a
   query editor already scoped to that relation's connection *and* database,
@@ -1552,7 +1567,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   origin was already doing, not a permission, so a closed default would have
   narrowed every registered origin on update and made the next sync report the
   user's entire configuration as vanished. See
-  [`adr/gotcha-083`](adr/gotcha-083-origin-consumption-scope-defaults-open.md).
+  [`engineering/adr/adr-083`](engineering/adr/adr-083-origin-consumption-scope-defaults-open.md).
 
 ### Fixed
 

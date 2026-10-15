@@ -263,7 +263,7 @@ pub struct UiPrefs {
     /// (`crate::jump_list`). Windows only; ignored elsewhere.
     ///
     /// On by default, against the house rule that a new flag starts off
-    /// (gotchas #58, #83), and the exception is argued rather than assumed:
+    /// (ADRs #58, #83), and the exception is argued rather than assumed:
     /// that rule is about flags that *grant* something — an AI reaching a
     /// database, a machine writing to a share — where "off" is the safe state.
     /// This one grants nothing. It writes connection names and ids (never a
@@ -568,7 +568,7 @@ impl Default for AiPrefs {
 /// The theme browser's access to an extension registry.
 ///
 /// **`enabled` defaults to `true`, against this project's rule that a new flag
-/// starts off** (gotchas #58 and #83), and the exception is argued rather than
+/// starts off** (ADRs #58 and #83), and the exception is argued rather than
 /// assumed. Those flags are per-connection and guard a *database*: leaving one
 /// on by default would expose a server the user never offered. Nothing of the
 /// user's leaves the machine here — the browser issues anonymous GETs for

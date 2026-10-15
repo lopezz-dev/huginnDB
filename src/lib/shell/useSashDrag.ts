@@ -18,8 +18,8 @@
  * *total* delta correct; only how often it's flushed changes.
  *
  * Extracted out of `Sash.tsx` as a hook because it owns state (the pending
- * delta, the rAF handle) rather than merely borrowing it — see CLAUDE.md
- * gotcha #28's rule for when a hook is a legitimate extraction.
+ * delta, the rAF handle) rather than merely borrowing it — see convention #28's
+ * rule for when a hook is a legitimate extraction.
  */
 
 import { useCallback, useRef } from "react";
@@ -48,7 +48,7 @@ export function useSashDrag({
   const rafId = useRef<number | null>(null);
   // Read fresh inside the rAF callback without making it a dependency the
   // callback has to be rebuilt for on every render — the same ref-mirror
-  // idea as DataGrid's `interactiveRef` (CLAUDE.md gotcha #7's neighbour).
+  // idea as DataGrid's `interactiveRef` (ADR #7's neighbour).
   const onResizeRef = useRef(onResize);
   onResizeRef.current = onResize;
 

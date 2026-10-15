@@ -6,7 +6,7 @@
  * nineteen loaded, nineteen broken, reported as a clean success. And every
  * non-limit failure was reduced to `skipped += 1` with the error itself
  * dropped, so a server that had gone away produced a counter and nothing that
- * said why. See gotcha #68.
+ * said why. See ADR #68.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";

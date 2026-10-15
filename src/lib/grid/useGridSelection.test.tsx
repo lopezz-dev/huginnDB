@@ -35,7 +35,7 @@ describe("useGridSelection", () => {
     const { result } = setup();
     act(() => result.current.toggleRowKey("2"));
     // Identity is the key, and what comes back is the row payload — never a
-    // display index (gotcha #7).
+    // display index (ADR #7).
     expect(result.current.selectedRows).toEqual([[2, "beta"]]);
     act(() => result.current.toggleRowKey("2"));
     expect(result.current.selectedRows).toEqual([]);

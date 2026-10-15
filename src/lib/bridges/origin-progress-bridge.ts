@@ -36,7 +36,7 @@ export interface PublishProgress {
  *
  * Scoped to this window's label: the backend emits with `emit_to`, but a bare
  * `listen()` defaults to `EventTarget::Any` and would still receive a *different*
- * window's publish (CLAUDE.md gotcha #25) — the same pattern as
+ * window's publish (gotcha #25) — the same pattern as
  * `import-progress-bridge.ts` and `log-bridge.ts`.
  */
 export async function withPublishProgress<T>(

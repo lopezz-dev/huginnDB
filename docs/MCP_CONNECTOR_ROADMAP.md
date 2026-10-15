@@ -360,7 +360,7 @@ allow rules. That exception is also the route we can't take:
 | **Claude Desktop extension (`.mcpb`)** | **Viable, and the route to the directory.** A zip + `manifest.json`, one-click install from Settings → Extensions with a per-extension toggle. The open question here — whether Anthropic accepts `.mcpb` into a *curated* directory rather than only sideloading — resolved yes: local MCPB submissions go through their own form (no portal, no paid org), and no OAuth, since a local stdio server authenticates nothing. Manifest 0.3 has a `binary` server type for a precompiled executable plus `platform_overrides`, which is the shape this sidecar needs. Extra rules for the local flavour: a Privacy Policy section in `README.md`, a `privacy_policies` array in the manifest, HTTPS policy URLs. Verify against `claude.com/docs/connectors/building/submission` before committing to it. |
 
 Neither viable route can bundle the binary: `huginndb-mcp` is a compiled
-per-target sidecar shipped by the app's own installer (gotcha #22), and
+per-target sidecar shipped by the app's own installer (ADR #22), and
 committing four target triples into a plugin repo is not an option. Both would
 need a small launcher that resolves the *installed* sidecar — the same
 `current_exe()`-relative logic `get_mcp_connector_info` already implements,
@@ -370,7 +370,7 @@ Two prerequisites worth doing on their own merits, whichever route is picked
 (the first is done):
 
 1. ~~**Move `--connections` out of argv.**~~ **Done** (see the `Unreleased`
-   CHANGELOG entry and gotcha #58). The exposed set is
+   CHANGELOG entry and ADR #58). The exposed set is
    `ConnectionProfile::mcp_exposed`, ticked in Settings → MCP and re-read per
    call; argv still wins when passed. The client-side command is now a bare
    `huginndb-mcp`, which is exactly what a plugin or `.mcpb` needs in order to
@@ -379,7 +379,7 @@ Two prerequisites worth doing on their own merits, whichever route is picked
    tool call any more.
 2. **Declare `_meta["anthropic/requiresUserInteraction"] = true` on the write
    tools.** *(Partly overtaken: the tools now carry titles and
-   `readOnlyHint`/`destructiveHint` annotations — see gotcha #59 — which is the
+   `readOnlyHint`/`destructiveHint` annotations — see ADR #59 — which is the
    portable half of this. `requiresUserInteraction` is the Claude-Code-specific
    half and is still open.)* This is available now, with no marketplace involved: it forces an
    explicit approval prompt on every call, even in auto mode and even when an

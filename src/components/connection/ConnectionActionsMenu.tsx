@@ -126,7 +126,7 @@ export function ConnectionActionsMenu({
    * behaves the same way.
    *
    * Nothing here touches `tab_state.json`: every writer sits behind
-   * `isMainWindow()` (gotcha #8), including the non-obvious path where
+   * `isMainWindow()` (ADR #8), including the non-obvious path where
    * `connectToProfile` reaches `useEnvironments.switchTo`. Note that if the
    * frontend ever did start listening to `-connection-opened`, the main
    * window would adopt this connection and its next `persistLaunchState`

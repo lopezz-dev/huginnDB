@@ -4,7 +4,7 @@
  * Surfaces the bundled `huginndb-mcp` sidecar's on-disk path and generates
  * a ready-to-paste client config, so wiring up an AI tool doesn't require
  * hunting through the install directory or the source tree (see
- * `docs/MCP.md` and gotcha #20 in `CLAUDE.md`). It never starts the server —
+ * `docs/MCP.md` and ADR #20). It never starts the server —
  * that is the AI client's job — but it does write one field: each connection's
  * MCP write policy.
  *
@@ -81,7 +81,7 @@ export function McpSection() {
    *
    * Deliberately NOT `useAsyncSubmit`: that hook leaves `submitting` true after a
    * success, on the contract that the success path unmounts the dialog it is
-   * driving (gotcha #44). This row lives in a section that stays mounted, so the
+   * driving (ADR #44). This row lives in a section that stays mounted, so the
    * flag never cleared and the three buttons stayed disabled until the user
    * navigated to another section and back. Clearing in a `finally` is right here
    * for the same reason it is wrong there — nothing unmounts to do it for us,

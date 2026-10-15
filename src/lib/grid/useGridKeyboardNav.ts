@@ -166,7 +166,7 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
     // Through the shared seam, which reads the clipboard in Rust. Reading it
     // from JS here is what used to make Ctrl+V raise WebView2's own "allow
     // this site to see your clipboard" prompt — inside a desktop app, on a
-    // paste the user just asked for (gotcha #63).
+    // paste the user just asked for (ADR #63).
     void readFromClipboard().then((text) => {
       // `null` is "nothing readable in the clipboard", not an error: there is
       // nothing useful to say about an empty clipboard, same convention as

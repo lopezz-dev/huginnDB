@@ -5,8 +5,8 @@
  * Exists so the global F5 / Ctrl+R interceptor in `App.tsx` can trigger a
  * specific table tab's reload without threading a callback down through
  * the dockview panel tree — the same "registry populated on mount, cleared
- * on unmount" shape used for the Monaco SQL providers (see CLAUDE.md
- * gotcha #9 / `src/lib/monacoSql.ts`).
+ * on unmount" shape used for the Monaco SQL providers (see gotcha #9
+ * / `src/lib/monacoSql.ts`).
  */
 
 const registry = new Map<string, () => void>();

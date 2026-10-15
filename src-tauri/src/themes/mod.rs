@@ -6,7 +6,7 @@
 //! (`src/lib/vscodeTheme/`), where it is pure, testable without a running app,
 //! and checked against five real themes kept as fixtures. What lives here is
 //! only what the frontend cannot do — unzip an archive, reach the network,
-//! write a file — and none of it interprets a palette. See gotcha #87.
+//! write a file — and none of it interprets a palette. See ADR #87.
 //!
 //! - [`vsix`] reads a `.vsix` (a ZIP) and produces the raw text of the theme
 //!   files it contributes.

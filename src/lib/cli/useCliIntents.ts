@@ -12,7 +12,7 @@
  * with the shell it shared a component with. It is a **hook, not a child
  * component**, and that is deliberate: a child's effects mount before its
  * parent's, which would move the CLI effects ahead of the launch-restore
- * sequence whose ordering CLAUDE.md gotchas #8 and #10 pin down. Called from the
+ * sequence whose ordering ADRs #8 and #10 pin down. Called from the
  * same position `App` used to declare this code, the effect order is unchanged.
  *
  * The guards that are load-bearing here:
@@ -387,7 +387,7 @@ export function useCliIntents() {
   // The second-launch listener effect below subscribes once on mount, so it
   // would otherwise close over the first render's `handleIncomingConnection`
   // (and thus a stale `cliConnectDefault`) for the rest of the session — see
-  // CLAUDE.md gotcha #9 for the same pattern with Monaco's Ctrl+Enter.
+  // gotcha #9 for the same pattern with Monaco's Ctrl+Enter.
   const handleIncomingConnectionRef = useRef(handleIncomingConnection);
   handleIncomingConnectionRef.current = handleIncomingConnection;
 
@@ -431,8 +431,8 @@ export function useCliIntents() {
   // above). If secondary windows also ran this, the intent would be processed
   // twice: a window spawned to satisfy a "new window" route would boot,
   // re-drain the still-full buffer, and route it AGAIN — opening a third
-  // window nobody asked for (issue #23). Same guard rationale as CLAUDE.md
-  // gotcha #8 (only the main window touches shared session state).
+  // window nobody asked for (issue #23). Same guard rationale as ADR #8
+  // (only the main window touches shared session state).
   useEffect(() => {
     if (!isMainWindow()) return;
     let unlisten: (() => void) | null = null;

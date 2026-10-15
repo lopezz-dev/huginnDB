@@ -11,7 +11,7 @@
 //! `execute_params` / `execute_simple` / `scalar`), so its arm here is one line
 //! in every function. What the duplication actually cost was the guarantee: a
 //! new engine had to be threaded through twelve bodies, and a `_ =>` in any one
-//! of them would have silently given it Postgres's behaviour (gotcha #30).
+//! of them would have silently given it Postgres's behaviour (ADR #30).
 //!
 //! **MongoDB never reaches these functions.** It is not a SQL dialect; every
 //! command dispatches it to [`crate::db::mongo`] before any SQL is built. A
@@ -19,7 +19,7 @@
 //! so rather than inventing a fallback — matching what the individual call sites
 //! already did.
 //!
-//! Values cross as `Option<String>` end-to-end (gotcha #5): the cell editor only
+//! Values cross as `Option<String>` end-to-end (ADR #5): the cell editor only
 //! ever emits text and the drivers cast textual literals server-side. Anything
 //! needing a per-driver cast around the placeholder (a MySQL `BIT`, a SQL Server
 //! `varbinary`) builds that into the SQL *before* getting here.
@@ -147,7 +147,7 @@ pub async fn execute_params(pool: &DbPool, sql: &str, binds: &[Option<String>]) 
 ///
 /// The three `sqlx` pools lean on `Transaction`'s rollback-on-drop, so a `?`
 /// mid-list unwinds without an explicit branch. SQL Server takes a visibly
-/// different arm for the reason gotcha #31 gives — `tiberius` has no
+/// different arm for the reason ADR #31 gives — `tiberius` has no
 /// transaction handle, so the boundaries are statements on a held session —
 /// and it acquires **once**: `execute_params` takes a connection per call, so
 /// building the loop out of it would scatter the chunks across sessions and
@@ -221,7 +221,7 @@ pub async fn execute_params_in_tx(
 /// A rollback plus a loud error is what turns that family of bug from silent
 /// corruption into a visible refusal.
 ///
-/// SQL Server takes a visibly different arm on purpose (gotcha #31): `tiberius`
+/// SQL Server takes a visibly different arm on purpose (ADR #31): `tiberius`
 /// has no transaction handle, so `BEGIN`/`COMMIT`/`ROLLBACK` are statements
 /// issued on one held session rather than calls on a transaction object. That is
 /// also why it cannot use the pool's one-shot helpers here.
