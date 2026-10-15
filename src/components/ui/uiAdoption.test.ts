@@ -369,7 +369,6 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/origins/OriginEditorHeader.tsx": 1,
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
     "src/components/origins/sections/SchemasPane.tsx": 1,
-    "src/components/schema/MultiDbExplorer.tsx": 1,
     "src/components/settings/sections/JsonSchemasSection.tsx": 1,
     // Documented exception, the same one the raw-button budget records for
     // this file: a Radix tooltip portals below Sonner's toaster, so the file
@@ -377,7 +376,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/NotificationCard.tsx": 1,
   };
 
-  it(`is down to ${72} in ${35} files`, () => {
+  it(`is down to ${71} in ${34} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const [tag, attrs] of openingTags(src)) {

@@ -5,36 +5,36 @@
  */
 
 import { ChevronDown, ChevronRight, LayoutList } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { TreeRow } from "@/components/ui/tree-row";
+import { useSchema } from "@/stores/session/schema";
 
 export function IndexesSectionHeader({
-  label,
   sectionKey,
   connectionId,
-  expanded,
-  toggleNode,
+  open,
 }: {
-  label: string;
   sectionKey: string;
   connectionId: string;
-  expanded: Set<string>;
-  toggleNode: (connectionId: string, key: string) => void;
+  open: boolean;
 }) {
-  const isOpen = expanded.has(sectionKey);
+  const { t } = useTranslation();
   return (
     <TreeRow
       className="py-1 pl-5"
-      aria-expanded={isOpen}
-      onClick={() => toggleNode(connectionId, sectionKey)}
+      aria-expanded={open}
+      onClick={() => useSchema.getState().toggleNode(connectionId, sectionKey)}
     >
-      {isOpen ? (
+      {open ? (
         <ChevronDown className="h-3 w-3 text-muted-foreground/60" />
       ) : (
         <ChevronRight className="h-3 w-3 text-muted-foreground/60" />
       )}
       <LayoutList className="h-3 w-3 text-muted-foreground/70" />
-      <span className="text-2xs text-muted-foreground">{label}</span>
+      <span className="text-2xs text-muted-foreground">
+        {t("schema.sectionIndexes")}
+      </span>
     </TreeRow>
   );
 }

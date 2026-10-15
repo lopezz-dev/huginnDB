@@ -22,7 +22,7 @@
  * **What is deliberately not here: anything that acts on one database.**
  * Creating a collection in it and dropping it both lived here for a while, for
  * want of anywhere better — single-DB mode had no database node to hang them
- * on. It has one now (`SingleDbExplorer`), so they are on it, and this menu is
+ * on. It has one now (`BoundDatabaseRow`), so they are on it, and this menu is
  * back to being about the connection: creating a database is an action *on the
  * server*, dropping one is an action on a database.
  *

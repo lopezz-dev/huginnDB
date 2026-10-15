@@ -50,6 +50,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **El panel de Esquema responde igual tenga la base de datos las tablas que
+  tenga.** Al abrir una sección con 10.000 tablas se montaban las 10.000
+  filas a la vez, cada una con su menú contextual, y el panel se quedaba
+  congelado. El árbol es ahora una única lista virtualizada, de las carpetas
+  a las columnas, y solo existen las filas cercanas a la zona visible. Se ve
+  y se comporta como antes:
+  - mismas guías, menús y filtro;
+  - las flechas siguen moviendo entre filas de conexión, desplazándose hasta
+    una que esté lejos;
+  - una base de datos desplegada muy abajo en la lista sigue abriendo su pool
+    al arrancar, así que sus pestañas guardadas vuelven.
 - **Una base de datos con miles de tablas muestra su lista de tablas al
   momento.** El número de filas y el tamaño llegan ahora un instante después
   de los nombres en todos los drivers, no solo en MongoDB. Leerlos es la parte

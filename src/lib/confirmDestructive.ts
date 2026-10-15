@@ -18,7 +18,7 @@
  * Read from the store imperatively (not via a hook) so it can be called from
  * event handlers and non-component code paths alike.
  *
- * NOTE: `DROP TABLE` (in `SchemaExplorer`) uses its own dedicated, always-on
+ * NOTE: `DROP TABLE` (the schema tree's `DropObjectDialog`) uses its own dedicated, always-on
  * confirmation dialog rather than this preference-gated helper — dropping a
  * table is a higher safety tier, so it is confirmed regardless of this toggle.
  */

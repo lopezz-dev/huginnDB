@@ -16,16 +16,16 @@ import type { ColumnInfo, DatabaseInfo, IndexInfo, TableInfo } from "@/types";
  * Fetch a connection's schema once, on mount, unless it is already loaded or a
  * fetch is in flight.
  *
- * Both explorers had a byte-identical copy of this effect, and the guard is the
- * subtle part: `!cs.loading` matters because `refresh` calls
+ * The guard is the subtle part: `!cs.loading` matters because `refresh` calls
  * `set({ loading: true })`, which mints a new slice reference, re-runs the
  * effect, and would fire a second concurrent fetch before the first returns —
  * a tight loop on the slower drivers (MySQL). The `!cs` arm covers the very
  * first render, before any slice exists.
  *
- * `id` is whatever the caller renders for: a profile id in the single-database
- * explorer, the *parent* id in the multi-database one (its own tables live in
- * the `::db::` child slices, ADR #36).
+ * For the surfaces that need one slice while mounted (the query editor's
+ * autocomplete, the aggregation builder). The schema tree applies the same
+ * guard to every slice it shows through `buildFlatTree`'s needs instead: its
+ * rows are virtualised (ADR #108), and "mounted" is not the condition there.
  */
 export function useEnsureSchemaLoaded(id: string): void {
   const cs = useSchema((s) => s.byConnection[id]);

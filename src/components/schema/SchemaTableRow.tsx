@@ -1,15 +1,15 @@
 /**
- * One table/view row of the explorer tree, plus the three leaf pieces only it
- * renders: the column-type colour, the loading shimmer and the row-count/size
+ * One table/view row of the schema tree, the rows under it when it is
+ * expanded (its columns, or the shimmer / retry standing in for them), and the
+ * leaf helpers only they use: the column-type colour and the row-count/size
  * badge.
  *
  * Split out of `SchemaExplorer.tsx`, where it was the single largest thing in a
- * 2800-line file. It stays a component rather than a hook because it is all
- * markup and one lazy fetch — the expensive part is `TableSection`'s memoised
- * grouping above it (gotcha #1), which is unchanged.
+ * 2800-line file. The grouping that feeds it is `buildFlatTree`'s, memoised per
+ * `(tables, patterns)` (gotcha #1).
  */
 
-import { memo, useState } from "react";
+import { memo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -46,10 +46,9 @@ import { selectSnippet } from "@/lib/grid/copyFormats";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { usePolicyLocker } from "@/lib/policy/access";
 import { useConnections } from "@/stores/session/connections";
-import { tableKey } from "@/stores/session/schema";
-import { tableTabKey } from "@/lib/schema/useOpenTableKeys";
+import { tableKey, useSchema } from "@/stores/session/schema";
 import { copyToClipboard } from "@/lib/clipboard";
-import type { TableActions } from "@/components/schema/SchemaTableSection";
+import type { TableActions } from "@/lib/schema/tableActions";
 import type { ColumnInfo, SchemaTableMetric, TableInfo } from "@/types";
 
 /**
@@ -88,52 +87,42 @@ export function tableMetricLabel(
 }
 
 /**
- * One table/view row + its expandable column list, wrapped in a context menu
- * with the destructive (DROP) and renaming actions.
+ * One table/view row, wrapped in a context menu with the destructive (DROP)
+ * and renaming actions. Its column list is rows of their own below it
+ * (`ColumnRow`, `ColumnsErrorRow`) — the tree is one virtualised list
+ * (ADR #108), and a row that rendered its own children is what made opening a
+ * ten-thousand-table section mount ten thousand of these at once.
  *
- * `memo()`-wrapped, which is only useful because of what it does NOT
- * receive: earlier this took the connection's WHOLE per-connection schema
- * slice (`cs`) and read three things out of it (`expanded`, `columns`,
- * `columnError`) — but `TableDataTab.tsx` documents that `loadColumns`
- * writes a fresh `columns` map reference on every load, so expanding ANY
- * table on the page invalidated the `cs` prop for every OTHER row too.
- * Taking the three derived values as their own props (computed once per row
- * by `TableSection`, convention #28) is what turns "a toggle re-renders every
- * row on the page" into "a toggle re-renders one".
+ * `memo()`-wrapped, which is only useful because every prop is a primitive or
+ * a reference that only changes when this row's own facts do: the expansion
+ * and column state arrive as booleans, the "you are here" state as two
+ * booleans computed once per render of the tree, and `actions` is the cached
+ * per-connection bundle (`tableActionsFor`).
  */
 export const TableRow = memo(function TableRow({
   table,
   connectionId,
   expanded,
-  columns: cols,
-  columnError: colError,
-  toggleNode,
-  loadColumns,
+  hasColumns,
+  hasColumnError,
   actions,
   metric,
-  loadingLabel,
-  activeTableKey,
-  openTableKeys,
+  isActive,
+  isOpen,
 }: {
   table: TableInfo;
   connectionId: string;
   expanded: boolean;
-  columns: ColumnInfo[] | undefined;
-  columnError: string | undefined;
-  toggleNode: (connectionId: string, key: string) => void;
-  loadColumns: (
-    connectionId: string,
-    schema: string | undefined,
-    table: string,
-  ) => Promise<void>;
+  /** A column list is already loaded — the chevron only fetches when
+   *  neither it nor an error is there. */
+  hasColumns: boolean;
+  hasColumnError: boolean;
   actions: TableActions;
   metric: SchemaTableMetric;
-  loadingLabel: string;
-  /** This row's "you are here" state, derived ONCE per explorer render by
-   *  `useOpenTableKeys` instead of two O(tabs) scans per row — see that
-   *  hook's own doc comment. */
-  activeTableKey: string | null;
-  openTableKeys: ReadonlySet<string>;
+  /** This table is the active tab ("you are here"). */
+  isActive: boolean;
+  /** This table is open in *some* tab, active or not. */
+  isOpen: boolean;
 }) {
   const { t: ct } = useTranslation();
   const t = table;
@@ -149,14 +138,6 @@ export const TableRow = memo(function TableRow({
   // locks here are about verbs: a visible table that is read-only for them.
   const lock = usePolicyLocker(connectionId, { schema: t.schema, name: t.name });
   const ddlLock = lock("ddl");
-
-  const thisTableKey = tableTabKey(connectionId, t.schema, t.name);
-  // Reflect the currently-open table tab so the tree shows "you are here".
-  const isActive = activeTableKey === thisTableKey;
-  // Whether this table is open in a tab *anywhere* (not just the active one),
-  // so the tree can answer "do I have this open?" at a glance when many tabs
-  // are open.
-  const isOpen = openTableKeys.has(thisTableKey);
 
   const copyName = () => {
     void copyToClipboard(t.name);
@@ -177,172 +158,112 @@ export const TableRow = memo(function TableRow({
   return (
     <ContextMenu onOpenChange={setMenuOpen}>
       <ContextMenuTrigger asChild>
-        <div>
-          <div
-            className={cn(
-              "flex items-center pl-8 pr-2 hover:bg-accent",
-              // Active-table "you are here" marker: soft brand wash + a 2px
-              // inset brand rail (inset shadow, so it adds no layout shift).
-              isActive &&
-                "bg-brand/10 shadow-[inset_2px_0_0_var(--brand)] hover:bg-brand/15",
-              // Right-clicked-and-menu-open marker — see the `menuOpen`
-              // state's comment above.
-              menuOpen && "ring-1 ring-inset ring-ring",
-            )}
-          >
-            <IconButton
-              size="xs"
-              flat
-              icon={tableOpen ? ChevronDown : ChevronRight}
-              label={
-                tableOpen
-                  ? ct("schema.collapseColumns")
-                  : ct("schema.expandColumns")
-              }
-              aria-expanded={tableOpen}
-              onClick={() => {
-                toggleNode(connectionId, tableNodeKey);
-                // Don't auto-relaunch a failed load on every toggle — the
-                // retry button below is the explicit way to try again while
-                // the error is still showing.
-                if (!cols && !colError)
-                  loadColumns(connectionId, t.schema, t.name);
-              }}
-              // Only the chevron toggles the column list now — the rest of
-              // the row opens the table in a tab (below). A single click
-              // anywhere used to expand columns, which surprised users
-              // coming from IDEs where clicking a table row opens it.
-              // The 24px square is the old `p-1.5` + 12px glyph exactly;
-              // `-my-1` keeps it from growing the 24px row.
-              className="-my-1 -ml-1 shrink-0"
-            />
-            <button
-              type="button"
-              onClick={() =>
-                actions.openTab({
-                  kind: "table",
-                  title: tableTabTitle(
-                    useConnections.getState().profiles,
-                    connectionId,
-                    t.name,
-                  ),
-                  connectionId,
-                  schema: t.schema,
-                  table: t.name,
-                })
-              }
-              className="flex flex-1 items-center gap-1 py-1 text-left"
-            >
-              {isView ? (
-                <Eye
-                  className={cn(
-                    "h-3.5 w-3.5",
-                    isActive ? "text-brand" : "text-muted-foreground",
-                  )}
-                />
-              ) : (
-                <TableIcon
-                  className={cn(
-                    "h-3.5 w-3.5",
-                    isActive ? "text-brand" : "text-muted-foreground",
-                  )}
-                />
-              )}
-              <span
-                className={cn(
-                  // min-w-0 lets this flex-item shrink below its content's
-                  // intrinsic width so `truncate` can actually clip long
-                  // names — without it the row overflows and the metric
-                  // badge gets pushed off, forcing horizontal scroll.
-                  "min-w-0 truncate text-xs",
-                  // Table name is the row's primary target → the boldest leaf
-                  // in the 3-tier ramp (section label muted / column muted).
-                  isActive
-                    ? "font-semibold text-brand"
-                    : "font-medium text-foreground",
-                )}
-              >
-                {t.name}
-              </span>
-              {isOpen && !isActive && (
-                // "Open in a tab" marker — a soft brand dot so you can tell,
-                // while browsing, which tables you already have open (the
-                // active one carries the stronger rail + bold instead).
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand/70"
-                  aria-label={ct("schema.tableOpenTooltip")}
-                  title={ct("schema.tableOpenTooltip")}
-                />
-              )}
-              {(() => {
-                const badge = tableMetricLabel(t, metric);
-                return badge ? (
-                  <span className="ml-auto shrink-0 pl-2 text-3xs tabular-nums text-muted-foreground">
-                    {badge}
-                  </span>
-                ) : null;
-              })()}
-            </button>
-          </div>
-
-          {tableOpen && (
-            // Column list. `ml-8` aligns the depth guide to the table row's
-            // left edge (pl-8) so the vertical hairline drops straight down
-            // from under the table's chevron — a continuous tree guide, and a
-            // consistent 12px-per-level indent ladder (schema 8 → section 20 →
-            // table 32). Brand-tinted while this table is the active tab.
-            <div
-              className={cn(
-                "ml-8 border-l pl-3 pr-2",
-                isActive ? "border-brand/40" : "border-border/35",
-              )}
-            >
-              {cols ? (
-                cols.map((c) => (
-                  <div
-                    key={c.name}
-                    className="flex items-center gap-1 py-1 text-2xs text-muted-foreground"
-                  >
-                    {c.is_primary_key && (
-                      <KeyRound
-                        className="h-2.5 w-2.5 shrink-0 text-pk"
-                        aria-label="primary key"
-                      />
-                    )}
-                    {c.referenced_table && (
-                      <KeyRound
-                        className="h-2.5 w-2.5 shrink-0 text-fk"
-                        aria-label={`foreign key → ${c.referenced_table}`}
-                      />
-                    )}
-                    <span className="truncate">{c.name}</span>
-                    <span
-                      className={cn(
-                        "ml-auto shrink-0 pl-2 text-3xs uppercase",
-                        typeColorClass(c.data_type),
-                      )}
-                    >
-                      {c.data_type}
-                    </span>
-                  </div>
-                ))
-              ) : colError ? (
-                <button
-                  type="button"
-                  onClick={() => loadColumns(connectionId, t.schema, t.name)}
-                  className="flex items-center gap-1 py-1 text-2xs text-destructive/80 hover:text-destructive"
-                  title={colError}
-                >
-                  <RefreshCw className="h-2.5 w-2.5 shrink-0" />
-                  <span className="truncate">
-                    {ct("schema.columnsLoadError")}
-                  </span>
-                </button>
-              ) : (
-                <TreeSkeleton label={loadingLabel} />
-              )}
-            </div>
+        <div
+          className={cn(
+            "flex items-center pl-8 pr-2 hover:bg-accent",
+            // Active-table "you are here" marker: soft brand wash + a 2px
+            // inset brand rail (inset shadow, so it adds no layout shift).
+            isActive &&
+              "bg-brand/10 shadow-[inset_2px_0_0_var(--brand)] hover:bg-brand/15",
+            // Right-clicked-and-menu-open marker — see the `menuOpen`
+            // state's comment above.
+            menuOpen && "ring-1 ring-inset ring-ring",
           )}
+        >
+          <IconButton
+            size="xs"
+            flat
+            icon={tableOpen ? ChevronDown : ChevronRight}
+            label={
+              tableOpen
+                ? ct("schema.collapseColumns")
+                : ct("schema.expandColumns")
+            }
+            aria-expanded={tableOpen}
+            onClick={() => {
+              const schema = useSchema.getState();
+              schema.toggleNode(connectionId, tableNodeKey);
+              // Don't auto-relaunch a failed load on every toggle — the
+              // retry row below is the explicit way to try again while the
+              // error is still showing.
+              if (!hasColumns && !hasColumnError)
+                void schema.loadColumns(connectionId, t.schema, t.name);
+            }}
+            // Only the chevron toggles the column list now — the rest of
+            // the row opens the table in a tab (below). A single click
+            // anywhere used to expand columns, which surprised users
+            // coming from IDEs where clicking a table row opens it.
+            // The 24px square is the old `p-1.5` + 12px glyph exactly;
+            // `-my-1` keeps it from growing the 24px row.
+            className="-my-1 -ml-1 shrink-0"
+          />
+          <button
+            type="button"
+            onClick={() =>
+              actions.openTab({
+                kind: "table",
+                title: tableTabTitle(
+                  useConnections.getState().profiles,
+                  connectionId,
+                  t.name,
+                ),
+                connectionId,
+                schema: t.schema,
+                table: t.name,
+              })
+            }
+            className="flex flex-1 items-center gap-1 py-1 text-left"
+          >
+            {isView ? (
+              <Eye
+                className={cn(
+                  "h-3.5 w-3.5",
+                  isActive ? "text-brand" : "text-muted-foreground",
+                )}
+              />
+            ) : (
+              <TableIcon
+                className={cn(
+                  "h-3.5 w-3.5",
+                  isActive ? "text-brand" : "text-muted-foreground",
+                )}
+              />
+            )}
+            <span
+              className={cn(
+                // min-w-0 lets this flex-item shrink below its content's
+                // intrinsic width so `truncate` can actually clip long
+                // names — without it the row overflows and the metric
+                // badge gets pushed off, forcing horizontal scroll.
+                "min-w-0 truncate text-xs",
+                // Table name is the row's primary target → the boldest leaf
+                // in the 3-tier ramp (section label muted / column muted).
+                isActive
+                  ? "font-semibold text-brand"
+                  : "font-medium text-foreground",
+              )}
+            >
+              {t.name}
+            </span>
+            {isOpen && !isActive && (
+              // "Open in a tab" marker — a soft brand dot so you can tell,
+              // while browsing, which tables you already have open (the
+              // active one carries the stronger rail + bold instead).
+              <span
+                className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand/70"
+                aria-label={ct("schema.tableOpenTooltip")}
+                title={ct("schema.tableOpenTooltip")}
+              />
+            )}
+            {(() => {
+              const badge = tableMetricLabel(t, metric);
+              return badge ? (
+                <span className="ml-auto shrink-0 pl-2 text-3xs tabular-nums text-muted-foreground">
+                  {badge}
+                </span>
+              ) : null;
+            })()}
+          </button>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
@@ -599,3 +520,109 @@ export const TableRow = memo(function TableRow({
     </ContextMenu>
   );
 });
+
+/**
+ * The guide every row under an expanded table sits in. `ml-8` aligns the
+ * hairline with the table row's `pl-8`, so it drops straight down from under
+ * the table's chevron — a consistent 12px-per-level ladder (schema 8 → section
+ * 20 → table 32). Brand-tinted while the table is the active tab. One wrapper
+ * per row rather than one around the whole list: adjacent rows' borders meet,
+ * so the line still reads as continuous.
+ */
+function ColumnGuide({
+  isActive,
+  children,
+}: {
+  isActive: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "ml-8 border-l pl-3 pr-2",
+        isActive ? "border-brand/40" : "border-border/35",
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** One column under an expanded table. */
+export const ColumnRow = memo(function ColumnRow({
+  column: c,
+  isActive,
+}: {
+  column: ColumnInfo;
+  isActive: boolean;
+}) {
+  return (
+    <ColumnGuide isActive={isActive}>
+      <div className="flex items-center gap-1 py-1 text-2xs text-muted-foreground">
+        {c.is_primary_key && (
+          <KeyRound
+            className="h-2.5 w-2.5 shrink-0 text-pk"
+            aria-label="primary key"
+          />
+        )}
+        {c.referenced_table && (
+          <KeyRound
+            className="h-2.5 w-2.5 shrink-0 text-fk"
+            aria-label={`foreign key → ${c.referenced_table}`}
+          />
+        )}
+        <span className="truncate">{c.name}</span>
+        <span
+          className={cn(
+            "ml-auto shrink-0 pl-2 text-3xs uppercase",
+            typeColorClass(c.data_type),
+          )}
+        >
+          {c.data_type}
+        </span>
+      </div>
+    </ColumnGuide>
+  );
+});
+
+/** A table whose column list would not load, with the retry on the line. */
+export function ColumnsErrorRow({
+  connectionId,
+  schema,
+  table,
+  message,
+  isActive,
+}: {
+  connectionId: string;
+  schema: string;
+  table: string;
+  message: string;
+  isActive: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ColumnGuide isActive={isActive}>
+      <button
+        type="button"
+        onClick={() =>
+          void useSchema.getState().loadColumns(connectionId, schema, table)
+        }
+        className="flex items-center gap-1 py-1 text-2xs text-destructive/80 hover:text-destructive"
+        title={message}
+      >
+        <RefreshCw className="h-2.5 w-2.5 shrink-0" />
+        <span className="truncate">{t("schema.columnsLoadError")}</span>
+      </button>
+    </ColumnGuide>
+  );
+}
+
+/** A table's column list being read. */
+export function ColumnsLoadingRow({ isActive }: { isActive: boolean }) {
+  const { t } = useTranslation();
+  return (
+    <ColumnGuide isActive={isActive}>
+      <TreeSkeleton label={t("schema.loadingColumns")} />
+    </ColumnGuide>
+  );
+}

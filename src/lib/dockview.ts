@@ -86,10 +86,10 @@ export function consumePendingInternalLayout(): unknown | null {
  * `useTabs` once every tab that owned one is back — but a table/query/security
  * tab against a multi-DB "database view" child (`<parent>::db::<database>`)
  * is NOT restored by `restoreSession`'s reconnect loop. It comes back later,
- * asynchronously, whenever `SchemaExplorer`'s own auto-re-expand effect (for a
- * database node that was expanded before) gets around to calling
- * `openTrackedDatabaseView` — a completely separate React component's effect,
- * on its own schedule, decoupled from `restoreSession` entirely. If
+ * asynchronously, whenever the schema tree's needs effect
+ * (`useSchemaTreeNeeds`, for a database node that was expanded before) gets
+ * around to calling `openTrackedDatabaseView` — a separate React effect, on
+ * its own schedule, decoupled from `restoreSession` entirely. If
  * `hydrateWorkspaceLayout` waited for `useTabs` to already contain that tab
  * before restoring the split (an earlier version of this fix tried exactly
  * that, via a reconciler-convergence poll), it would wait on a `tabs` value

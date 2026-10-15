@@ -436,7 +436,7 @@ export const useEnvironments = create<EnvironmentsState>((set, get) => ({
     // Applied unconditionally, not gated on "are there tabs yet" — a saved
     // split can belong entirely to a multi-DB database-view child, which
     // isn't restored by the reconnect loop above at all (it comes back later,
-    // asynchronously, via `SchemaExplorer`'s own auto-re-expand effect). Gating
+    // asynchronously, via the schema tree's `useSchemaTreeNeeds` effect). Gating
     // this on `useTabs.getState().tabs.length > 0` used to skip the whole
     // restore in exactly that case — see `hydrateWorkspaceLayout`'s doc
     // comment for the full story and how it now handles a panel whose tab

@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-107 entries: 85 ADRs, 13 gotchas, 9 conventions.
+108 entries: 86 ADRs, 13 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -147,4 +147,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 105 | ADR | [an SSH tunnel redials its own session, views ride their parent's tunnel, and every pool check is bounded](adr/adr-105-ssh-tunnels-heal-and-pool-checks-are-bounded.md) | accepted | 2026-10-06 |
 | 106 | ADR | [a reservation is not an open connection, and a server's budget is shared adaptively](adr/adr-106-reserved-is-not-open-and-the-share-adapts.md) | accepted | 2026-10-07 |
 | 107 | ADR | [the terminal's sessions are owned by the component that shows them, and `mongosh` signs in as the open pool](adr/adr-107-the-terminal-owns-its-sessions-and-mongosh-signs-in-as-the-pool.md) | accepted | 2026-10-15 |
+| 108 | ADR | [The schema tree is one flat, virtualised list, and its side effects follow the expanded structure, not mounted components](adr/adr-108-the-schema-tree-is-one-flat-virtualised-list.md) | accepted | 2026-10-15 |
 <!-- index:end -->
