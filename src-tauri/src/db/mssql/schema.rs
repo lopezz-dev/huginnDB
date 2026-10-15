@@ -141,63 +141,74 @@ pub async fn database_sizes(pool: &MsSqlPool) -> AppResult<Vec<DatabaseSize>> {
         .collect())
 }
 
-pub async fn list_tables(pool: &MsSqlPool) -> AppResult<Vec<TableInfo>> {
+/// Tables and views, **names only** — what the schema tree draws from.
+///
+/// One scan of `sys.objects` (`U` is a user table, `V` a view: the same rows
+/// `sys.tables` and `sys.views` expose, without the `UNION`). Row counts and
+/// sizes are [`table_stats`]' job and arrive afterwards, because on a database
+/// with ten thousand tables `sys.dm_db_partition_stats` was most of the wait
+/// before the tree showed anything — and all of it counted against the
+/// operation timeout.
+pub async fn list_table_names(pool: &MsSqlPool) -> AppResult<Vec<TableInfo>> {
     let mut c = pool.acquire().await?;
     let rows = c
         .query_rows(
-            "SELECT s.name AS [schema_name], t.name AS [object_name], 'table' AS [kind] \
-             FROM sys.tables t JOIN sys.schemas s ON s.schema_id = t.schema_id \
-             UNION ALL \
-             SELECT s.name, v.name, 'view' \
-             FROM sys.views v JOIN sys.schemas s ON s.schema_id = v.schema_id \
-             ORDER BY 1, 2",
+            "SELECT s.name AS [schema_name], o.name AS [object_name], \
+                    CASE o.type WHEN 'V' THEN 'view' ELSE 'table' END AS [kind] \
+             FROM sys.objects o JOIN sys.schemas s ON s.schema_id = o.schema_id \
+             WHERE o.type IN ('U', 'V') \
+             ORDER BY s.name, o.name",
             &[],
         )
         .await?;
+    Ok(rows
+        .iter()
+        .map(|r| TableInfo {
+            schema: s(r, "schema_name"),
+            name: s(r, "object_name"),
+            kind: s(r, "kind"),
+            row_count: None,
+            size_bytes: None,
+        })
+        .collect())
+}
 
-    // Row counts and sizes come from `sys.dm_db_partition_stats`, which needs
-    // VIEW DATABASE STATE. A login without it gets the tree anyway, minus the
-    // two optional columns — the same graceful degradation SQLite's `dbstat`
-    // probe uses.
-    let stats = c
+/// Approximate row count and reserved size per table, for the tree to fold
+/// into [`list_table_names`]' answer by `(schema, name)`.
+///
+/// Aggregated by `object_id` *before* the names are joined in, so the server
+/// groups on an integer rather than on two `sysname` strings per partition.
+/// `index_id IN (0, 1)` counts the heap or the clustered index once; the
+/// nonclustered indexes would count every row again.
+///
+/// `sys.dm_db_partition_stats` needs VIEW DATABASE STATE. A login without it
+/// gets an empty answer rather than an error — the tree keeps its names and
+/// loses the badges, the same graceful degradation SQLite's `dbstat` probe uses.
+pub async fn table_stats(pool: &MsSqlPool) -> AppResult<Vec<TableInfo>> {
+    let mut c = pool.acquire().await?;
+    let rows = c
         .query_rows(
             "SELECT s.name AS [schema_name], t.name AS [object_name], \
-                    SUM(CASE WHEN p.index_id IN (0, 1) THEN p.row_count ELSE 0 END) AS [rows], \
-                    SUM(p.reserved_page_count) * 8192 AS [bytes] \
-             FROM sys.tables t \
-             JOIN sys.schemas s ON s.schema_id = t.schema_id \
-             JOIN sys.dm_db_partition_stats p ON p.object_id = t.object_id \
-             GROUP BY s.name, t.name",
+                    p.[rows] AS [rows], p.[bytes] AS [bytes] \
+             FROM (SELECT object_id, \
+                          SUM(CASE WHEN index_id IN (0, 1) THEN row_count ELSE 0 END) AS [rows], \
+                          SUM(reserved_page_count) * 8192 AS [bytes] \
+                   FROM sys.dm_db_partition_stats \
+                   GROUP BY object_id) p \
+             JOIN sys.tables t ON t.object_id = p.object_id \
+             JOIN sys.schemas s ON s.schema_id = t.schema_id",
             &[],
         )
         .await
         .unwrap_or_default();
-    let by_name: HashMap<(String, String), (Option<i64>, Option<i64>)> = stats
-        .iter()
-        .map(|r| {
-            (
-                (s(r, "schema_name"), s(r, "object_name")),
-                (i(r, "rows"), i(r, "bytes")),
-            )
-        })
-        .collect();
-
     Ok(rows
         .iter()
-        .map(|r| {
-            let schema = s(r, "schema_name");
-            let name = s(r, "object_name");
-            let (row_count, size_bytes) = by_name
-                .get(&(schema.clone(), name.clone()))
-                .copied()
-                .unwrap_or((None, None));
-            TableInfo {
-                schema,
-                name,
-                kind: s(r, "kind"),
-                row_count: row_count.and_then(|v| u64::try_from(v).ok()),
-                size_bytes: size_bytes.and_then(|v| u64::try_from(v).ok()),
-            }
+        .map(|r| TableInfo {
+            schema: s(r, "schema_name"),
+            name: s(r, "object_name"),
+            kind: "table".into(),
+            row_count: i(r, "rows").and_then(|v| u64::try_from(v).ok()),
+            size_bytes: i(r, "bytes").and_then(|v| u64::try_from(v).ok()),
         })
         .collect())
 }

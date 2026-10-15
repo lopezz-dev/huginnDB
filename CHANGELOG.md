@@ -46,6 +46,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **A database with thousands of tables shows its table list right away.**
+  Row counts and sizes now arrive a moment after the names on every driver,
+  instead of only on MongoDB. Reading them is the part that grows with the
+  table count: SQL Server's partition statistics, a `stat` of every file on
+  PostgreSQL, `SHOW TABLE STATUS` on MySQL (which opens every table on 5.7),
+  and one `dbstat` query *per table* on SQLite, now a single aggregate. On a
+  SQL Server database with over 10,000 tables, all of that ran before the tree
+  could show anything, and it counted against the operation timeout. Each
+  listing now uses the cheapest catalog read its engine has (`sys.objects`,
+  `information_schema.tables`, `SHOW FULL TABLES`, `sqlite_master`). The MCP
+  connector's `list_tables`, the dump's progress estimate and the AI panel
+  still get the figures with the names, from the same two reads.
 - **The status bar's console button switches to the Console when the
   Terminal is showing**, instead of closing the dock.
 - **The internal "hard-earned gotchas" are now filed as ADRs, gotchas and
