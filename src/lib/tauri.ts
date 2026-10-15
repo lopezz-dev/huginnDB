@@ -498,10 +498,12 @@ export const api = {
     invoke<TableInfo[]>("list_tables", { connectionId, database }),
 
   /**
-   * The row counts and sizes `listTables` left out because they cost a round
-   * trip per relation (MongoDB only — every other driver answers `[]` without
-   * touching the server, since its listing already carried them). Never
-   * awaited alongside `listTables`: the point is that the tree draws first.
+   * The row counts and sizes `listTables` left out, for every driver: they
+   * are the part of a listing whose cost grows with the relation count (a
+   * round trip per collection on MongoDB, a statistics catalog or a `stat` per
+   * file on the SQL engines). Never awaited alongside `listTables`: the point
+   * is that the tree draws first. Rows name tables only — views have no
+   * figures — and a role the engine will not show statistics to gets `[]`.
    */
   getTableStats: (connectionId: string) =>
     invoke<TableInfo[]>("get_table_stats", { connectionId }),

@@ -91,20 +91,67 @@ pub async fn server_version(pool: &MySqlPool) -> AppResult<String> {
     Ok(format!("mysql {ver}"))
 }
 
-/// Tables and views in the connection's current database, with row-count and
-/// size estimates from `SHOW TABLE STATUS` where the server reports them.
-pub async fn list_tables(p: &sqlx::MySqlPool) -> AppResult<Vec<TableInfo>> {
-    Ok({
-        // Resolve the current database from the connection (set via the
-        // URL when the pool was opened). If the profile has no database
-        // set, DATABASE() is NULL and we return an empty list — the user
-        // needs to specify a database in the connection profile.
-        let db_name: Option<String> = sqlx::query_scalar("SELECT DATABASE()").fetch_one(p).await?;
+/// The connection's current database, or `None` when the profile named none.
+///
+/// Resolved from the connection (set via the URL when the pool was opened).
+/// With no default database `DATABASE()` is NULL and there is nothing to
+/// enumerate — the user needs to specify a database in the connection profile.
+async fn current_database(p: &sqlx::MySqlPool) -> AppResult<Option<String>> {
+    let db_name: Option<String> = sqlx::query_scalar("SELECT DATABASE()").fetch_one(p).await?;
+    Ok(db_name.filter(|d| !d.is_empty()))
+}
 
-        let db = match db_name {
-            Some(d) if !d.is_empty() => d,
-            // No default database; nothing to enumerate.
-            _ => return Ok(vec![]),
+/// A `SHOW` statement's text column by position, tolerating the binary
+/// collation some MySQL/MariaDB builds report for it (see
+/// [`show_create_table`]).
+fn show_text(r: &sqlx::mysql::MySqlRow, idx: usize) -> String {
+    r.try_get::<String, _>(idx)
+        .or_else(|_| {
+            r.try_get::<Vec<u8>, _>(idx)
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+        })
+        .unwrap_or_default()
+}
+
+/// Tables and views in the connection's current database, **names only** —
+/// what the schema tree draws from.
+///
+/// `SHOW FULL TABLES` reads the data dictionary and nothing else: it neither
+/// opens the tables nor computes statistics, which is exactly the part of
+/// `SHOW TABLE STATUS` that grows with the table count (on 5.7, where nothing
+/// caches it, the status of every table is gathered on every call). The
+/// figures are [`table_stats`]' job and arrive afterwards.
+///
+/// The first column is named `Tables_in_<db>`, so both are read by position.
+/// `Table_type` is `BASE TABLE`, `VIEW` or `SYSTEM VIEW`.
+pub async fn list_table_names(p: &sqlx::MySqlPool) -> AppResult<Vec<TableInfo>> {
+    let Some(db) = current_database(p).await? else {
+        return Ok(vec![]);
+    };
+    let q = format!("SHOW FULL TABLES FROM {}", Dialect::Mysql.quote_ident(&db));
+    let rows = sqlx::query(&q).fetch_all(p).await?;
+    Ok(rows
+        .iter()
+        .map(|r| TableInfo {
+            schema: db.clone(),
+            name: show_text(r, 0),
+            kind: if show_text(r, 1).ends_with("VIEW") {
+                "view".into()
+            } else {
+                "table".into()
+            },
+            row_count: None,
+            size_bytes: None,
+        })
+        .collect())
+}
+
+/// Row-count and size estimates from `SHOW TABLE STATUS`, for the tree to fold
+/// into [`list_table_names`]' answer by `(schema, name)`.
+pub async fn table_stats(p: &sqlx::MySqlPool) -> AppResult<Vec<TableInfo>> {
+    Ok({
+        let Some(db) = current_database(p).await? else {
+            return Ok(vec![]);
         };
 
         // SHOW TABLE STATUS is significantly faster than querying

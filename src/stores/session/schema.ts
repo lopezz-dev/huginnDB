@@ -191,10 +191,11 @@ interface SchemaState {
    * Fill in the row-count and size badges `refresh` left blank.
    *
    * Started by `refresh` and never awaited by it, for the reason
-   * `api.getTableStats` exists: on MongoDB each collection's figures are their
-   * own command, and behind an SSH tunnel waiting for all of them was nearly the
-   * whole delay before a database's collections appeared. A no-op when the
-   * listing already carried its figures (every SQL driver).
+   * `api.getTableStats` exists: the figures are the part of a listing that
+   * grows with the relation count — one command per collection on MongoDB, a
+   * statistics catalog or a filesystem walk on the SQL drivers — and on a
+   * database with thousands of tables waiting for them was nearly the whole
+   * delay before the tree showed a single name.
    *
    * Failure is swallowed, like `loadDatabaseSizes`: this is a badge.
    */
@@ -294,10 +295,11 @@ export function tableKey(schema: string | undefined, table: string) {
  * Whether a listing came back without the per-relation figures, so that
  * `loadTableStats` has something to fill in.
  *
- * Read off the rows rather than the driver because the store does not know
- * the driver, and because it is the rows that matter: a listing where any
- * relation already carries a count or a size is one whose driver reads them
- * from a catalog in the same query, and asking again would be a wasted call.
+ * Every driver's listing is names-only today, so in practice this is "not
+ * empty". It is still read off the rows rather than assumed: a listing that
+ * does carry figures (an older backend, a future driver whose catalog makes
+ * them free) would make a second call a wasted one, and the store does not
+ * know the driver to decide that any other way.
  */
 export function needsTableStats(tables: TableInfo[]): boolean {
   return (

@@ -66,57 +66,64 @@ pub async fn server_version(pool: &SqlitePool) -> AppResult<String> {
     Ok(format!("sqlite {raw}"))
 }
 
-/// Tables and views from `sqlite_master`.
-pub async fn list_tables(p: &sqlx::SqlitePool) -> AppResult<Vec<TableInfo>> {
-    Ok({
-        let rows = sqlx::query(
-            "SELECT name, type FROM sqlite_master \
-             WHERE type IN ('table', 'view') \
-             AND name NOT LIKE 'sqlite_%' \
-             ORDER BY name",
-        )
+/// Tables and views from `sqlite_master`, **names only** — what the schema tree
+/// draws from.
+///
+/// SQLite has no statistics catalog with per-table row counts (`sqlite_stat1`
+/// only exists after `ANALYZE` and is unreliable for fresh databases, and a
+/// `COUNT(*)` per table would block the tree on large schemas), so the only
+/// figure is the size [`table_stats`] reads afterwards.
+pub async fn list_table_names(p: &sqlx::SqlitePool) -> AppResult<Vec<TableInfo>> {
+    let rows = sqlx::query(
+        "SELECT name, type FROM sqlite_master \
+         WHERE type IN ('table', 'view') \
+         AND name NOT LIKE 'sqlite_%' \
+         ORDER BY name",
+    )
+    .fetch_all(p)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| TableInfo {
+            schema: "main".into(),
+            name: r.get("name"),
+            kind: r.get("type"),
+            row_count: None,
+            size_bytes: None,
+        })
+        .collect())
+}
+
+/// Per-table size from the `dbstat` virtual table, for the tree to fold into
+/// [`list_table_names`]' answer by name.
+///
+/// **One aggregate, not one query per table.** This used to probe `dbstat`
+/// once per table inside the listing, so a file with ten thousand tables was
+/// ten thousand statements before the tree drew anything. `dbstat` names every
+/// b-tree — indexes too — and an index's row is simply not in the listing, so
+/// the merge drops it; the table's own figure is its own b-tree, as before.
+///
+/// `dbstat` is a compile-time feature of SQLite and may be absent; a build
+/// without it answers with no sizes rather than an error.
+pub async fn table_stats(p: &sqlx::SqlitePool) -> AppResult<Vec<TableInfo>> {
+    let rows = sqlx::query("SELECT name, SUM(pgsize) AS size FROM dbstat GROUP BY name")
         .fetch_all(p)
-        .await?;
-        // Per-table size comes from the optional `dbstat` virtual table.
-        // It is a compile-time feature of SQLite and may be absent on some
-        // builds; the first probe failure flips `dbstat_available` to false
-        // so we don't spam errors for every remaining table.
-        let mut dbstat_available = true;
-        let mut out = Vec::with_capacity(rows.len());
-        for r in rows {
-            let name: String = r.get("name");
-            let kind: String = r.get("type");
-            let size_bytes = if dbstat_available && kind == "table" {
-                match sqlx::query_scalar::<_, Option<i64>>(
-                    "SELECT SUM(pgsize) FROM dbstat WHERE name = ?",
-                )
-                .bind(&name)
-                .fetch_one(p)
-                .await
-                {
-                    Ok(v) => v.map(|n| n.unsigned_abs()),
-                    Err(_) => {
-                        dbstat_available = false;
-                        None
-                    }
-                }
-            } else {
-                None
-            };
-            out.push(TableInfo {
-                schema: "main".into(),
-                name,
-                kind,
-                // SQLite has no statistics catalog with per-table row counts.
-                // sqlite_stat1 only exists after ANALYZE and is unreliable for
-                // fresh databases. N individual COUNT(*) queries would block the
-                // UI on large schemas.
-                row_count: None,
-                size_bytes,
-            });
-        }
-        out
-    })
+        .await
+        .unwrap_or_default();
+    Ok(rows
+        .into_iter()
+        .map(|r| TableInfo {
+            schema: "main".into(),
+            name: r.get("name"),
+            kind: "table".into(),
+            row_count: None,
+            size_bytes: r
+                .try_get::<Option<i64>, _>("size")
+                .ok()
+                .flatten()
+                .map(|n| n.unsigned_abs()),
+        })
+        .collect())
 }
 
 /// A table's columns, from `PRAGMA table_info` plus `PRAGMA foreign_key_list`.
@@ -359,6 +366,45 @@ mod tests {
             )
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn names_come_without_figures_and_stats_fold_in_without_index_rows() {
+        let p = pool("names_then_stats").await;
+        for sql in [
+            "CREATE TABLE b (x INTEGER)",
+            "CREATE TABLE a (x INTEGER)",
+            "CREATE INDEX a_x ON a (x)",
+            "CREATE VIEW v AS SELECT x FROM a",
+        ] {
+            sqlx::query(sql).execute(&p).await.unwrap();
+        }
+
+        let names = list_table_names(&p).await.unwrap();
+        let got: Vec<(&str, &str)> = names
+            .iter()
+            .map(|t| (t.name.as_str(), t.kind.as_str()))
+            .collect();
+        assert_eq!(got, vec![("a", "table"), ("b", "table"), ("v", "view")]);
+        assert!(names
+            .iter()
+            .all(|t| t.row_count.is_none() && t.size_bytes.is_none()));
+
+        let stats = table_stats(&p).await.unwrap();
+        let has_dbstat = !stats.is_empty();
+        let merged = crate::commands::schema::merge_table_stats(names, stats);
+        assert_eq!(
+            merged.len(),
+            3,
+            "the index's dbstat row must not become a relation"
+        );
+        assert_eq!(merged[2].size_bytes, None, "a view owns no b-tree");
+        // `dbstat` is optional at compile time; when it is there, a table's
+        // figure is its own b-tree, exactly one page for an empty table.
+        if has_dbstat {
+            assert!(merged[0].size_bytes.is_some_and(|n| n > 0));
+            assert!(merged[1].size_bytes.is_some_and(|n| n > 0));
+        }
     }
 
     #[tokio::test]

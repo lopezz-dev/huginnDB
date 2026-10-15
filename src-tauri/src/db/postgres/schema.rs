@@ -83,50 +83,82 @@ pub async fn server_version(pool: &PgPool) -> AppResult<String> {
         .to_lowercase())
 }
 
-/// Tables and views in every non-system schema, with approximate live-row
-/// counts and on-disk sizes where Postgres can supply them.
-pub async fn list_tables(p: &sqlx::PgPool) -> AppResult<Vec<TableInfo>> {
-    Ok({
-        // LEFT JOIN against pg_stat_user_tables fetches approximate live-row counts
-        // for tables in one round-trip. Views never have stat entries, so their
-        // n_live_tup will be NULL (→ row_count: None).
-        //
-        // pg_total_relation_size only makes sense for ordinary tables; calling it
-        // on a view raises an error, so we gate the call on relkind = 'r' via a
-        // LEFT JOIN against pg_class. Anything else yields NULL.
-        let rows = sqlx::query(
-            "SELECT t.table_schema, t.table_name, t.table_type, s.n_live_tup, \
-                    CASE WHEN c.relkind = 'r' \
-                         THEN pg_total_relation_size(c.oid) \
-                         ELSE NULL END AS size_bytes \
-             FROM information_schema.tables t \
-             LEFT JOIN pg_stat_user_tables s \
-               ON s.schemaname = t.table_schema AND s.relname = t.table_name \
-             LEFT JOIN pg_namespace n ON n.nspname = t.table_schema \
-             LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relname = t.table_name \
-             WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema') \
-             ORDER BY t.table_schema, t.table_name",
-        )
-        .fetch_all(p)
-        .await?;
-        rows.into_iter()
-            .map(|r| TableInfo {
-                schema: r.get::<String, _>("table_schema"),
-                name: r.get::<String, _>("table_name"),
-                kind: if r.get::<String, _>("table_type") == "VIEW" {
-                    "view".into()
-                } else {
-                    "table".into()
-                },
-                row_count: r
-                    .get::<Option<i64>, _>("n_live_tup")
-                    .map(|v| v.unsigned_abs()),
-                size_bytes: r
-                    .get::<Option<i64>, _>("size_bytes")
-                    .map(|v| v.unsigned_abs()),
-            })
-            .collect()
-    })
+/// Tables and views in every non-system schema, **names only** — what the
+/// schema tree draws from.
+///
+/// `information_schema.tables` on purpose rather than `pg_class`: it applies
+/// the visibility rule the tree has always had (a relation the role holds no
+/// privilege on is not listed) without this file restating it. The figures
+/// that used to ride along — `pg_total_relation_size`, which `stat`s every
+/// file of every relation — are [`table_stats`]' job, so ten thousand tables
+/// no longer means ten thousand trips to the filesystem before the first name
+/// is drawn.
+pub async fn list_table_names(p: &sqlx::PgPool) -> AppResult<Vec<TableInfo>> {
+    let rows = sqlx::query(
+        "SELECT table_schema, table_name, table_type \
+         FROM information_schema.tables \
+         WHERE table_schema NOT IN ('pg_catalog', 'information_schema') \
+         ORDER BY table_schema, table_name",
+    )
+    .fetch_all(p)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| TableInfo {
+            schema: r.get::<String, _>("table_schema"),
+            name: r.get::<String, _>("table_name"),
+            kind: if r.get::<String, _>("table_type") == "VIEW" {
+                "view".into()
+            } else {
+                "table".into()
+            },
+            row_count: None,
+            size_bytes: None,
+        })
+        .collect())
+}
+
+/// Approximate live-row counts and on-disk sizes, for the tree to fold into
+/// [`list_table_names`]' answer by `(schema, name)`.
+///
+/// Only ordinary (`r`) and partitioned (`p`) tables, the relations that have
+/// statistics at all. `pg_total_relation_size` stays gated on `r`: a
+/// partitioned parent owns no storage of its own and the old listing never
+/// sized it. The privilege test is the one `information_schema.tables`
+/// applies, so no relation the listing hides is `stat`ed only to be dropped by
+/// the merge.
+pub async fn table_stats(p: &sqlx::PgPool) -> AppResult<Vec<TableInfo>> {
+    let rows = sqlx::query(
+        "SELECT n.nspname AS table_schema, c.relname AS table_name, s.n_live_tup, \
+                CASE WHEN c.relkind = 'r' \
+                     THEN pg_total_relation_size(c.oid) \
+                     ELSE NULL END AS size_bytes \
+         FROM pg_class c \
+         JOIN pg_namespace n ON n.oid = c.relnamespace \
+         LEFT JOIN pg_stat_user_tables s ON s.relid = c.oid \
+         WHERE c.relkind IN ('r', 'p') \
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema') \
+           AND NOT pg_is_other_temp_schema(n.oid) \
+           AND (pg_has_role(c.relowner, 'USAGE') \
+                OR has_table_privilege(c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') \
+                OR has_any_column_privilege(c.oid, 'SELECT, INSERT, UPDATE, REFERENCES'))",
+    )
+    .fetch_all(p)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| TableInfo {
+            schema: r.get::<String, _>("table_schema"),
+            name: r.get::<String, _>("table_name"),
+            kind: "table".into(),
+            row_count: r
+                .get::<Option<i64>, _>("n_live_tup")
+                .map(|v| v.unsigned_abs()),
+            size_bytes: r
+                .get::<Option<i64>, _>("size_bytes")
+                .map(|v| v.unsigned_abs()),
+        })
+        .collect())
 }
 
 /// A table's columns, with primary-key and single-column foreign-key flags.

@@ -623,10 +623,11 @@ pub async fn create_collection(
     }
 }
 
-/// List user-visible tables and views, with approximate row counts where available.
+/// List user-visible tables and views — **names only**, for the schema tree.
 ///
-/// Row counts are sourced from engine statistics catalogs in a single query to
-/// avoid N+1 round-trips. See [`TableInfo::row_count`] for per-driver details.
+/// Row counts and sizes are left out for every driver and fetched afterwards
+/// through [`get_table_stats`]; see [`list_table_names_inner`] for why. The
+/// complete listing, figures included, is [`list_tables_inner`].
 #[tauri::command]
 pub async fn list_tables(
     app: tauri::AppHandle,
@@ -657,51 +658,86 @@ pub async fn list_tables(
 /// `_database` argument the command accepts is unused (the pool is already
 /// bound to one database), so the inner form drops it.
 ///
+/// For the SQL drivers this is literally the tree's two calls back to back,
+/// folded by [`merge_table_stats`]: one listing and one statistics read, so
+/// there is no third query that could disagree with them. MongoDB keeps its
+/// own combined reader, which already does both in one pass.
+///
 /// Not what the schema tree draws from any more: see
 /// [`list_table_names_inner`].
 pub async fn list_tables_inner(state: &AppState, connection_id: &str) -> AppResult<Vec<TableInfo>> {
-    match state.pool_for(connection_id)? {
-        DbPool::Postgres(p) => crate::db::postgres::schema::list_tables(&p).await,
-        DbPool::Mysql(p) => crate::db::mysql::schema::list_tables(&p).await,
-        DbPool::Sqlite(p) => crate::db::sqlite::schema::list_tables(&p).await,
-        DbPool::Mongo(conn) => crate::db::mongo::schema::list_collections_with_stats(&conn).await,
-        DbPool::MsSql(p) => crate::db::mssql::schema::list_tables(&p).await,
+    if let DbPool::Mongo(conn) = state.pool_for(connection_id)? {
+        return crate::db::mongo::schema::list_collections_with_stats(&conn).await;
     }
+    let names = list_table_names_inner(state, connection_id).await?;
+    let stats = get_table_stats_inner(state, connection_id).await?;
+    Ok(merge_table_stats(names, stats))
 }
 
-/// The listing a person is waiting on: [`list_tables_inner`] minus any figure
-/// that costs a round trip **per relation**.
+/// The listing a person is waiting on: [`list_tables_inner`] minus every
+/// per-relation figure. The tree asks for those afterwards through
+/// [`get_table_stats`] and folds them in by `(schema, name)`.
 ///
-/// Only MongoDB differs. The SQL drivers read counts and sizes from one
-/// statistics catalog in the same query that lists the tables, so leaving them
-/// out would save nothing. MongoDB has no such catalog — each collection's
-/// count is its own command — and behind an SSH tunnel those commands were
-/// nearly the whole of the wait before a database's collections appeared. The
-/// tree asks for them afterwards through [`get_table_stats`].
+/// This used to be MongoDB's alone, on the reasoning that the SQL drivers read
+/// their figures "for free" from a statistics catalog in the same query. That
+/// held for a few hundred tables and stopped holding long before ten thousand:
+/// SQL Server's `sys.dm_db_partition_stats`, Postgres'
+/// `pg_total_relation_size` (a `stat` per file), MySQL's `SHOW TABLE STATUS`
+/// (which opens every table on 5.7) and SQLite's per-table `dbstat` probe all
+/// grow with the table count, and all of it stood between the user and the
+/// first name in the tree — inside the operation timeout. Every driver now
+/// lists names with the cheapest catalog read it has.
 ///
-/// Explicit arms, no `_ =>` (ADR #30): a new driver states which half it
-/// belongs to.
+/// Explicit arms, no `_ =>` (ADR #30).
 pub async fn list_table_names_inner(
     state: &AppState,
     connection_id: &str,
 ) -> AppResult<Vec<TableInfo>> {
     match state.pool_for(connection_id)? {
+        DbPool::Postgres(p) => crate::db::postgres::schema::list_table_names(&p).await,
+        DbPool::Mysql(p) => crate::db::mysql::schema::list_table_names(&p).await,
+        DbPool::Sqlite(p) => crate::db::sqlite::schema::list_table_names(&p).await,
         DbPool::Mongo(conn) => crate::db::mongo::schema::list_collections(&conn).await,
-        DbPool::Postgres(_) | DbPool::Mysql(_) | DbPool::Sqlite(_) | DbPool::MsSql(_) => {
-            list_tables_inner(state, connection_id).await
+        DbPool::MsSql(p) => crate::db::mssql::schema::list_table_names(&p).await,
+    }
+}
+
+/// Fold statistics rows into a names-only listing by `(schema, name)`.
+///
+/// The listing decides what exists: a stats row naming a relation the listing
+/// does not have (an index's b-tree in SQLite's `dbstat`, a table created
+/// between the two reads) is dropped, never added. A relation with no stats
+/// row keeps `None`, which the frontend renders as "would not say".
+pub(crate) fn merge_table_stats(
+    mut names: Vec<TableInfo>,
+    stats: Vec<TableInfo>,
+) -> Vec<TableInfo> {
+    if stats.is_empty() {
+        return names;
+    }
+    let by_key: std::collections::HashMap<(String, String), (Option<u64>, Option<u64>)> = stats
+        .into_iter()
+        .map(|t| ((t.schema, t.name), (t.row_count, t.size_bytes)))
+        .collect();
+    for t in &mut names {
+        // Borrowed lookup would need a `(&str, &str)` key type; the clone is
+        // two short strings per relation, once.
+        if let Some(&(rows, bytes)) = by_key.get(&(t.schema.clone(), t.name.clone())) {
+            t.row_count = rows;
+            t.size_bytes = bytes;
         }
     }
+    names
 }
 
 /// The per-relation figures [`list_tables`] left out, for the schema tree to
 /// fill its badges in after the names are already on screen.
 ///
-/// Returns the same [`TableInfo`] rows as [`list_tables_inner`], so the
-/// frontend merges by `(schema, name)` and the visibility filter is the one
-/// the listing itself goes through. **Empty for every driver whose listing
-/// already carried its figures** — answered without touching the server, so
-/// the frontend can call this unconditionally rather than knowing which
-/// drivers need it.
+/// Returns [`TableInfo`] rows, so the frontend merges by `(schema, name)` and
+/// the visibility filter is the one the listing itself goes through. Only the
+/// relations that *have* figures appear (tables, never views), and a role the
+/// engine will not show statistics to gets an empty answer rather than an
+/// error: these are badges, and the names are already on screen.
 #[tauri::command]
 pub async fn get_table_stats(
     app: tauri::AppHandle,
@@ -732,11 +768,11 @@ pub async fn get_table_stats_inner(
     connection_id: &str,
 ) -> AppResult<Vec<TableInfo>> {
     match state.pool_for(connection_id)? {
+        DbPool::Postgres(p) => crate::db::postgres::schema::table_stats(&p).await,
+        DbPool::Mysql(p) => crate::db::mysql::schema::table_stats(&p).await,
+        DbPool::Sqlite(p) => crate::db::sqlite::schema::table_stats(&p).await,
         DbPool::Mongo(conn) => crate::db::mongo::schema::list_collections_with_stats(&conn).await,
-        // Already in `list_tables`' answer; see `list_table_names_inner`.
-        DbPool::Postgres(_) | DbPool::Mysql(_) | DbPool::Sqlite(_) | DbPool::MsSql(_) => {
-            Ok(Vec::new())
-        }
+        DbPool::MsSql(p) => crate::db::mssql::schema::table_stats(&p).await,
     }
 }
 
@@ -1196,6 +1232,60 @@ pub async fn list_privileges_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rel(
+        schema: &str,
+        name: &str,
+        kind: &str,
+        rows: Option<u64>,
+        bytes: Option<u64>,
+    ) -> TableInfo {
+        TableInfo {
+            schema: schema.into(),
+            name: name.into(),
+            kind: kind.into(),
+            row_count: rows,
+            size_bytes: bytes,
+        }
+    }
+
+    #[test]
+    fn merge_table_stats_fills_figures_by_schema_and_name() {
+        let names = vec![
+            rel("dbo", "orders", "table", None, None),
+            rel("sales", "orders", "table", None, None),
+            rel("dbo", "v_orders", "view", None, None),
+        ];
+        let stats = vec![
+            rel("sales", "orders", "table", Some(7), Some(8192)),
+            rel("dbo", "orders", "table", Some(0), Some(16384)),
+        ];
+        let got = merge_table_stats(names, stats);
+        assert_eq!(got.len(), 3);
+        // Same name in two schemas stays two relations.
+        assert_eq!(
+            (got[0].row_count, got[0].size_bytes),
+            (Some(0), Some(16384))
+        );
+        assert_eq!((got[1].row_count, got[1].size_bytes), (Some(7), Some(8192)));
+        // A view has no stats row and keeps "would not say".
+        assert_eq!((got[2].row_count, got[2].size_bytes), (None, None));
+        assert_eq!(got[2].kind, "view");
+    }
+
+    #[test]
+    fn merge_table_stats_never_adds_a_relation_the_listing_lacks() {
+        // SQLite's `dbstat` names index b-trees too, and a table created between
+        // the two reads is in the stats but not in the names: the listing wins.
+        let names = vec![rel("main", "a", "table", None, None)];
+        let stats = vec![
+            rel("main", "a", "table", None, Some(4096)),
+            rel("main", "a_idx", "table", None, Some(4096)),
+        ];
+        let got = merge_table_stats(names, stats);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].size_bytes, Some(4096));
+    }
 
     fn row(
         schema: Option<&str>,

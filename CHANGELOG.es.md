@@ -50,6 +50,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Una base de datos con miles de tablas muestra su lista de tablas al
+  momento.** El número de filas y el tamaño llegan ahora un instante después
+  de los nombres en todos los drivers, no solo en MongoDB. Leerlos es la parte
+  que crece con el número de tablas: las estadísticas de particiones de SQL
+  Server, un `stat` de cada fichero en PostgreSQL, `SHOW TABLE STATUS` en
+  MySQL (que en 5.7 abre cada tabla) y una consulta a `dbstat` *por tabla* en
+  SQLite, ahora un único agregado. En una base de SQL Server con más de
+  10.000 tablas, todo eso se ejecutaba antes de que el árbol pudiera mostrar
+  nada, y contaba para el tiempo de espera de la operación. Cada listado usa
+  ahora la lectura de catálogo más barata de su motor (`sys.objects`,
+  `information_schema.tables`, `SHOW FULL TABLES`, `sqlite_master`). El
+  `list_tables` del conector MCP, la estimación de progreso del volcado y el
+  panel de IA siguen recibiendo las cifras junto a los nombres, de las mismas
+  dos lecturas.
 - **El botón de la consola de la barra de estado cambia a la Consola cuando
   se está mostrando el Terminal**, en vez de cerrar el panel.
 - **Los "hard-earned gotchas" internos se archivan ahora como ADRs, gotchas y

@@ -173,7 +173,7 @@ describe("deferred table stats", () => {
 
   it("asks only when no relation came back with a figure", () => {
     expect(needsTableStats([bare("a"), bare("b")])).toBe(true);
-    // A catalog-backed driver (MySQL's SHOW TABLE STATUS) already answered.
+    // A listing that already carries a figure needs no second call.
     expect(needsTableStats([{ ...bare("a"), row_count: 0 }, bare("b")])).toBe(false);
     // A multi-database parent lists nothing; there is nothing to fill in.
     expect(needsTableStats([])).toBe(false);
