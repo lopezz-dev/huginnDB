@@ -68,6 +68,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `convention #28`). `node scripts/engineering-index.mjs` regenera los cuatro
   índices desde el front matter (`--check` avisa si alguno está desfasado).
   Solo documentación: ningún cambio de comportamiento.
+- **Los ADR #24 y #81 ya no describen superficies que han desaparecido.**
+  Cada uno gana un apéndice fechado. Desde la 1.23.0, el aviso del sidecar
+  del #24 pasa por `confirmIrreversible` y el `ConfirmHost` de la app, no por
+  `window.confirm`. En la 1.28.0, las condiciones de filtro del #81 pasaron
+  del diálogo de filtro avanzado (eliminado) al panel de consulta y al
+  diálogo de actualización masiva, y el bloque contenedor del panel de
+  sugerencias fijo es ahora el viewport. Ninguna de las dos decisiones
+  cambia.
 
 ## [1.33.0] — 2026-10-14
 

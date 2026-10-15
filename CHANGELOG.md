@@ -63,6 +63,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `node scripts/engineering-index.mjs` regenerates the four indexes from the
   front matter (`--check` reports a stale one). Documentation only: no
   behaviour changes.
+- **ADR #24 and ADR #81 no longer describe surfaces that are gone.** Each
+  gains a dated addendum. #24's sidecar warning has gone through
+  `confirmIrreversible` and the in-app `ConfirmHost` since 1.23.0, not
+  `window.confirm`. #81's filter conditions moved from the deleted
+  advanced-filter dialog to the query panel and the bulk-update dialog in
+  1.28.0, and the fixed suggestion panel's containing block is now the
+  viewport. Neither decision changed.
 
 ## [1.33.0] — 2026-10-14
 
