@@ -9,8 +9,10 @@
 //! - [`session`] — the PTY sessions and their registry.
 //! - [`shell`] — which shell a plain terminal starts.
 //! - [`mongosh`] — finding `mongosh` and the URI it signs in with.
+//! - [`answer`] — answering a question a child asks at startup, unseen.
 //! - [`utf8`] — decoding output read in arbitrary chunks.
 
+pub mod answer;
 pub mod download;
 pub mod mongosh;
 pub mod session;
