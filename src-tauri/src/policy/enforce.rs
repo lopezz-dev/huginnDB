@@ -142,6 +142,33 @@ fn active(state: &AppState, subject: Subject) -> AppResult<Option<Arc<super::mod
     }
 }
 
+/// Whether the policy lets this person have HuginnDB download a tool (the
+/// `mongosh` of the Terminal, ADR #109). Unmanaged: yes. A policy that is
+/// pending or broken blocks, like everything else it governs; an active one
+/// follows the person's role (`allowToolDownloads`, off unless the role says
+/// so). The refusal is the sentence the interface shows.
+pub fn tool_downloads(state: &AppState) -> AppResult<()> {
+    match &*state.policy.read() {
+        PolicyState::Unmanaged => Ok(()),
+        PolicyState::Pending { source } => Err(AppError::InvalidInput(format!(
+            "your organization's HuginnDB policy is still being read from {source}; downloading              tools is paused until it is. Try again in a moment."
+        ))),
+        PolicyState::Broken { source, error } => Err(AppError::InvalidInput(format!(
+            "your organization's HuginnDB policy could not be applied, so downloading tools is              blocked ({source}: {error}). Ask your administrator to fix it."
+        ))),
+        PolicyState::Active { doc, .. } => {
+            let (name, role) = doc.role_for(current_user());
+            if role.allow_tool_downloads {
+                Ok(())
+            } else {
+                Err(AppError::InvalidInput(format!(
+                    "your organization's HuginnDB policy does not let the role \"{name}\"                      download tools; install mongosh yourself or ask your administrator                      (allowToolDownloads)."
+                )))
+            }
+        }
+    }
+}
+
 /// Refuse `request` unless the policy lets the AI make it. Called at the top
 /// of `bridge::exec::execute`, and for `EnsureConnected` where that is
 /// intercepted before it.
@@ -925,5 +952,59 @@ mod tests {
             Subject::Human,
         )
         .is_err());
+    }
+
+    /// A state whose active policy gives the running account `role`, with
+    /// `allowToolDownloads` set as asked.
+    fn state_allowing_downloads(allow: Option<bool>) -> AppState {
+        let state = AppState::new();
+        let flag = match allow {
+            Some(v) => format!(r#", "allowToolDownloads": {v}"#),
+            None => String::new(),
+        };
+        let text = format!(
+            r#"{{ "version": 1, "defaultRole": "r", "users": {{ {user:?}: "r" }},
+                 "roles": {{ "r": {{ "rules": []{flag} }} }} }}"#,
+            user = current_user_or_test(),
+        );
+        let (doc, _) = super::super::model::PolicyDoc::parse(&text).unwrap();
+        *state.policy.write() = PolicyState::Active {
+            doc: Arc::new(doc),
+            source: "test".into(),
+            warnings: Vec::new(),
+        };
+        state
+    }
+
+    #[test]
+    fn downloading_a_tool_is_free_without_a_policy() {
+        assert!(tool_downloads(&AppState::new()).is_ok());
+    }
+
+    #[test]
+    fn under_a_policy_a_role_must_allow_downloading_a_tool() {
+        // Off unless the role says so — a managed machine does not fetch an
+        // executable because nobody thought to forbid it.
+        let silent = tool_downloads(&state_allowing_downloads(None)).unwrap_err();
+        assert!(
+            silent.to_string().contains("allowToolDownloads"),
+            "{silent}"
+        );
+        assert!(tool_downloads(&state_allowing_downloads(Some(false))).is_err());
+        assert!(tool_downloads(&state_allowing_downloads(Some(true))).is_ok());
+    }
+
+    #[test]
+    fn a_pending_or_broken_policy_blocks_downloading_a_tool() {
+        let state = AppState::new();
+        *state.policy.write() = PolicyState::Pending {
+            source: "share".into(),
+        };
+        assert!(tool_downloads(&state).is_err());
+        *state.policy.write() = PolicyState::Broken {
+            source: "share".into(),
+            error: "unreadable".into(),
+        };
+        assert!(tool_downloads(&state).is_err());
     }
 }

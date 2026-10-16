@@ -58,6 +58,13 @@ impl Unmanaged {
 pub struct Role {
     #[serde(default)]
     pub rules: Vec<Rule>,
+    /// Whether people in this role may have HuginnDB download a tool for them
+    /// (today: the `mongosh` the Terminal can fetch, ADR #109). **Off unless a
+    /// role says so**: a managed machine does not fetch and run an executable
+    /// from the internet because nobody thought to forbid it. Without a policy
+    /// the download is on, as everything else is.
+    #[serde(default)]
+    pub allow_tool_downloads: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

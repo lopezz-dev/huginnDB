@@ -22,6 +22,36 @@ export interface TerminalEnvironment {
   /** Why `mongosh` cannot be started: not found (with the download link), or
    *  a configured path that does not exist. */
   mongoshError: string | null;
+  /** The `mongosh` in use is the copy HuginnDB downloaded, not one the user
+   *  installed. */
+  mongoshManaged: boolean;
+  /** Version of HuginnDB's own copy, when one is installed (whether or not
+   *  it is the one in use). */
+  mongoshManagedVersion: string | null;
+  /** There is no `mongosh` anywhere it looks and no path is configured — what
+   *  a download fixes. A configured path that does not exist is not this. */
+  mongoshMissing: boolean;
+  /** MongoDB publishes a build HuginnDB can unpack for this machine. */
+  mongoshDownloadable: boolean;
+  /** Why the managed policy does not let this person download it, when it
+   *  does not (`allowToolDownloads`). */
+  mongoshDownloadBlocked: string | null;
+  /** A download is running right now, in any window. */
+  mongoshDownloading: boolean;
+}
+
+/** `InstallEvent` (Rust): what a `mongosh` download reports, in order.
+ *  `downloading` repeats; the others happen once. */
+export type MongoshInstallEvent =
+  | { kind: "checking" }
+  | { kind: "downloading"; version: string; received: number; total: number | null }
+  | { kind: "verifying" }
+  | { kind: "extracting" };
+
+/** `Installed` (Rust): a finished download. */
+export interface MongoshInstalled {
+  version: string;
+  path: string;
 }
 
 /** What a terminal tab runs. */

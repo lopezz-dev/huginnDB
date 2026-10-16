@@ -17,12 +17,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { MongoshDownload } from "@/components/terminal/MongoshDownload";
 import { api } from "@/lib/tauri";
 import type { TerminalEnvironment } from "@/lib/terminal/types";
+import { isNewerVersion } from "@/lib/terminal/version";
 import {
   usePreferences,
   selectTerminalPrefs,
 } from "@/stores/preferences/preferences";
+import { useMongoshDownload } from "@/stores/session/mongoshDownload";
 import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
 
@@ -105,6 +108,16 @@ export function TerminalSection() {
   const updateTerminal = usePreferences((s) => s.updateTerminal);
   const [env, setEnv] = useState<TerminalEnvironment | null>(null);
   const [detecting, setDetecting] = useState(false);
+  // Bumped when a download lands, so what was just installed is detected
+  // without a click on "Detect again".
+  const downloaded = useMongoshDownload((s) => s.revision);
+  const downloading = useMongoshDownload((s) => s.status.phase === "running");
+  const attachDownload = useMongoshDownload((s) => s.attach);
+  const [latest, setLatest] = useState<string | null>(null);
+  // A download another window (or the page before a reload) started.
+  useEffect(() => {
+    void attachDownload();
+  }, [attachDownload]);
 
   const detect = () => {
     setDetecting(true);
@@ -116,16 +129,60 @@ export function TerminalSection() {
   };
   // Re-detect whenever a committed path changes — the answer depends on it.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(detect, [terminal.mongoshPath, terminal.shellPath]);
+  useEffect(detect, [terminal.mongoshPath, terminal.shellPath, downloaded]);
 
+  // Only HuginnDB's own copy is ours to keep current — a `mongosh` the user
+  // installed is theirs — so only then is the feed asked what is newest. A
+  // failure (offline, MongoDB's host down) is silence: no button, no error.
+  const managedVersion = env?.mongoshManaged ? env.mongoshManagedVersion : null;
+  useEffect(() => {
+    setLatest(null);
+    if (!managedVersion) return;
+    let cancelled = false;
+    void api
+      .terminalMongoshLatestVersion()
+      .then((v) => {
+        if (!cancelled) setLatest(v);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [managedVersion, downloaded]);
+  const updateTo = latest && managedVersion && isNewerVersion(latest, managedVersion) ? latest : null;
+
+  /** The download is on offer: a build exists for this machine and the
+   *  managed policy, if any, lets this person fetch it. */
+  const canDownload = !!env?.mongoshDownloadable && env.mongoshDownloadBlocked === null;
   const mongoshStatus = !env ? (
     <ProgramStatus state="pending">{t("terminal.detecting")}</ProgramStatus>
   ) : env.mongoshError ? (
-    <ProgramStatus state="error">{env.mongoshError}</ProgramStatus>
+    <ProgramStatus state="error">
+      {env.mongoshMissing && canDownload
+        ? t("terminal.download.missing")
+        : env.mongoshDownloadBlocked && env.mongoshMissing
+          ? `${env.mongoshError} ${env.mongoshDownloadBlocked}`
+          : env.mongoshError}
+    </ProgramStatus>
   ) : (
     <ProgramStatus state="found" path={env.mongoshPath}>
       {t("settings.terminal.found", { version: env.mongoshVersion ?? "?" })}
     </ProgramStatus>
+  );
+  const mongoshFooter = (
+    <div className="space-y-2">
+      {mongoshStatus}
+      {env?.mongoshManaged && (
+        <p className="text-2xs text-muted-foreground">{t("settings.terminal.managed")}</p>
+      )}
+      {canDownload && (env.mongoshMissing || downloading || updateTo) && (
+        <MongoshDownload
+          align="start"
+          variant="outline"
+          label={updateTo ? t("settings.terminal.update", { version: updateTo }) : undefined}
+        />
+      )}
+    </div>
   );
   const shellStatus = !env ? (
     <ProgramStatus state="pending">{t("terminal.detecting")}</ProgramStatus>
@@ -176,7 +233,7 @@ export function TerminalSection() {
           prefId="terminal.mongoshPath"
           description={t("settings.terminal.mongoshPath.desc")}
           htmlFor="prefs-terminal-mongosh"
-          footer={mongoshStatus}
+          footer={mongoshFooter}
         >
           <PathInput
             id="prefs-terminal-mongosh"

@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-108 entries: 86 ADRs, 13 gotchas, 9 conventions.
+109 entries: 87 ADRs, 13 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -148,4 +148,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 106 | ADR | [a reservation is not an open connection, and a server's budget is shared adaptively](adr/adr-106-reserved-is-not-open-and-the-share-adapts.md) | accepted | 2026-10-07 |
 | 107 | ADR | [the terminal's sessions are owned by the component that shows them, and `mongosh` signs in as the open pool](adr/adr-107-the-terminal-owns-its-sessions-and-mongosh-signs-in-as-the-pool.md) | accepted | 2026-10-15 |
 | 108 | ADR | [The schema tree is one flat, virtualised list, and its side effects follow the expanded structure, not mounted components](adr/adr-108-the-schema-tree-is-one-flat-virtualised-list.md) | accepted | 2026-10-15 |
+| 109 | ADR | [`mongosh` is downloaded on request from MongoDB's own feed, verified against its published SHA-256, and kept in a per-user directory — never bundled in the installer](adr/adr-109-mongosh-is-downloaded-on-request-from-mongodb-not-bundled.md) | accepted | 2026-10-16 |
 <!-- index:end -->

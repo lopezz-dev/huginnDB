@@ -157,6 +157,13 @@ reqwest = { version = "0.12", default-features = false, features = [
 # Tauri updater — declaring it directly adds a line here and nothing at all to
 # the dependency tree or the build time.
 zip = { version = "4", default-features = false, features = ["deflate"] }
+# Unpacking the `mongosh` the Terminal panel can download on demand
+# (`terminal::download`): the Linux build is a `.tgz`, Windows and macOS ship a
+# zip. Both crates are ALREADY in the lock file — `tar` and `flate2` through the
+# Tauri updater, which unpacks its Linux AppImage the same way — so declaring
+# them directly adds two lines here and no crate to the tree.
+tar = { version = "0.4", default-features = false }
+flate2 = "1"
 aes-gcm = "0.10"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 sha2 = "0.10"

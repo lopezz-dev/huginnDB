@@ -42,6 +42,27 @@ pub struct TerminalEnvironment {
     /// Why `mongosh` cannot be started, when it cannot — "not found" with the
     /// download link, or a configured path that does not exist.
     pub mongosh_error: Option<String>,
+    /// Whether the `mongosh` in use is the copy HuginnDB downloaded, as
+    /// opposed to one the user installed.
+    pub mongosh_managed: bool,
+    /// The version of HuginnDB's own copy, read from its directory name — no
+    /// process is started for it. Present when one is installed, whether or
+    /// not it is the one in use.
+    pub mongosh_managed_version: Option<String>,
+    /// There is no `mongosh` anywhere it looks and none is configured: the
+    /// case the **Download** button fixes. A configured path that does not
+    /// exist is not this.
+    pub mongosh_missing: bool,
+    /// MongoDB publishes a build for this machine that HuginnDB can unpack,
+    /// so the download is on offer at all.
+    pub mongosh_downloadable: bool,
+    /// Why the managed policy does not let this person download it, when it
+    /// does not (`allowToolDownloads`). The interface hides the download and
+    /// says so; the commands refuse regardless.
+    pub mongosh_download_blocked: Option<String>,
+    /// A download is running right now, in any window. A window that opened
+    /// (or reloaded) after it started cannot see its progress, only this.
+    pub mongosh_downloading: bool,
 }
 
 fn require_enabled(state: &AppState) -> AppResult<()> {
@@ -64,7 +85,10 @@ fn sink(channel: Channel<TerminalEvent>) -> terminal::session::Sink {
 }
 
 #[tauri::command]
-pub async fn terminal_environment(state: State<'_, AppState>) -> AppResult<TerminalEnvironment> {
+pub async fn terminal_environment(
+    state: State<'_, AppState>,
+    installer: State<'_, terminal::download::Installer>,
+) -> AppResult<TerminalEnvironment> {
     let (shell_override, mongosh_override) = {
         let prefs = state.prefs.read();
         (
@@ -88,14 +112,85 @@ pub async fn terminal_environment(state: State<'_, AppState>) -> AppResult<Termi
             }
             Err(e) => (None, None, Some(e.to_string())),
         };
+    let mongosh_managed = mongosh_path
+        .as_deref()
+        .is_some_and(|p| terminal::download::is_downloaded(std::path::Path::new(p)));
     Ok(TerminalEnvironment {
         shell,
         shell_path,
         shell_error,
         mongosh_path,
         mongosh_version,
+        mongosh_missing: mongosh_error.is_some() && mongosh_override.trim().is_empty(),
         mongosh_error,
+        mongosh_managed,
+        mongosh_managed_version: terminal::download::downloaded_version(),
+        mongosh_downloadable: terminal::download::target().is_some(),
+        mongosh_download_blocked: crate::commands::guard::tool_download(state.inner())
+            .err()
+            .map(|e| match e {
+                AppError::InvalidInput(reason) => reason,
+                other => other.to_string(),
+            }),
+        mongosh_downloading: installer.is_running(),
     })
+}
+
+/// The newest stable `mongosh` MongoDB offers this machine, for Settings to
+/// compare with the copy HuginnDB installed. One request to the feed; the
+/// caller decides when that is worth making.
+#[tauri::command]
+pub async fn terminal_mongosh_latest_version(state: State<'_, AppState>) -> AppResult<String> {
+    require_enabled(state.inner())?;
+    crate::commands::guard::tool_download(state.inner())?;
+    terminal::download::latest_version().await
+}
+
+/// Download, verify and install the latest stable `mongosh` into HuginnDB's
+/// own data directory, reporting progress on `on_event`. `None` means the user
+/// cancelled ([`terminal_mongosh_cancel_download`]); nothing is left behind.
+///
+/// Which build, from where and against which checksum is decided in
+/// `terminal::download` — the interface can ask for this and for nothing more
+/// (ADR #88's rule for the theme registry, applied here). It touches no
+/// database and carries no credential, but it does fetch and later run an
+/// executable from the internet, so a managed policy has a say
+/// (`guard::tool_download`, the role's `allowToolDownloads`); it also refuses
+/// while the terminal is switched off.
+#[tauri::command]
+pub async fn terminal_mongosh_download(
+    state: State<'_, AppState>,
+    installer: State<'_, terminal::download::Installer>,
+    on_event: Channel<terminal::download::InstallEvent>,
+) -> AppResult<Option<terminal::download::Installed>> {
+    require_enabled(state.inner())?;
+    crate::commands::guard::tool_download(state.inner())?;
+    let root = terminal::download::root()
+        .ok_or_else(|| AppError::Terminal("no data directory available".into()))?;
+    // Released when this future ends — by finishing, failing, panicking or
+    // being dropped — so the installer cannot stay taken.
+    let claim = installer.begin()?;
+    terminal::download::install_latest(&root, claim.token(), &|event| {
+        let _ = on_event.send(event);
+    })
+    .await
+}
+
+/// Whether a download is running — in any window. For a window that cannot
+/// see its progress (it opened or reloaded after the download began) to show
+/// "in progress" instead of offering the button, and to notice when it ends.
+#[tauri::command]
+pub fn terminal_mongosh_download_running(
+    installer: State<'_, terminal::download::Installer>,
+) -> bool {
+    installer.is_running()
+}
+
+/// Stop the download in progress, if there is one. Quiet when there is not:
+/// the button that sends it can race the download finishing.
+#[tauri::command]
+pub fn terminal_mongosh_cancel_download(installer: State<'_, terminal::download::Installer>) {
+    installer.cancel();
 }
 
 #[tauri::command]

@@ -33,6 +33,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - `mongosh` is not bundled. HuginnDB uses the one you installed, found on
     `PATH` or where the official installers put it; Settings → **Terminal**
     shows which one and its version, and accepts a path.
+  - **If there is none, one click downloads it.** On a MongoDB connection with
+    no `mongosh` installed, the Terminal's empty state (and its **+** menu, and
+    Settings → **Terminal**) offers **Download mongosh**. It fetches the latest
+    stable official build for your system from MongoDB's own download site
+    (Windows, macOS and Linux, x64 and — except Windows — ARM), checks it
+    against the checksum MongoDB publishes, and unpacks it into HuginnDB's own
+    data folder; nothing is installed system-wide and no administrator rights
+    are needed. It shows progress and can be cancelled. A `mongosh` you
+    installed yourself always wins over the downloaded one, and when HuginnDB's
+    own copy is the one in use, Settings shows **Update to X** when MongoDB has
+    published a newer version.
+  - **Under a managed policy it is off unless the role allows it.** A role with
+    `"allowToolDownloads": true` may download `mongosh`; without it the button
+    is not shown (the Terminal says why) and HuginnDB refuses the request. See
+    `docs/POLICY.md`.
   - With the focus in the terminal, shell keys such as `Ctrl+R` or `Ctrl+B`
     reach the shell instead of the app. Copy and paste are
     `Ctrl+Shift+C` / `Ctrl+Shift+V`.

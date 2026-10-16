@@ -16,7 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Database, Plus, SquareTerminal, X } from "lucide-react";
+import { Database, Download, Plus, SquareTerminal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -36,8 +36,10 @@ import type { TerminalEnvironment } from "@/lib/terminal/types";
 import { usePreferences, selectTerminalPrefs } from "@/stores/preferences/preferences";
 import { useConnections } from "@/stores/session/connections";
 import { useTabs } from "@/stores/session/tabs";
+import { useMongoshDownload } from "@/stores/session/mongoshDownload";
 import { useTerminals } from "@/stores/session/terminals";
 import { useUi } from "@/stores/session/ui";
+import { MongoshDownload } from "./MongoshDownload";
 import { TerminalView } from "./TerminalView";
 
 /** Free text with every verb is what `mongosh` asks of the policy
@@ -46,10 +48,12 @@ const MONGOSH_NEEDS = ["freeSql", "insert", "update", "delete", "ddl"] as const;
 
 /**
  * What this machine can start, fetched when the panel first shows and again
- * when the paths in Settings change. `null` while the first answer is pending.
+ * when the paths in Settings change or a `mongosh` download lands. `null`
+ * while the first answer is pending.
  */
 function useTerminalEnvironment(): TerminalEnvironment | null {
   const prefs = usePreferences(selectTerminalPrefs);
+  const downloaded = useMongoshDownload((s) => s.revision);
   const [env, setEnv] = useState<TerminalEnvironment | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +66,7 @@ function useTerminalEnvironment(): TerminalEnvironment | null {
     return () => {
       cancelled = true;
     };
-  }, [prefs.mongoshPath, prefs.shellPath]);
+  }, [prefs.mongoshPath, prefs.shellPath, downloaded]);
   return env;
 }
 
@@ -108,6 +112,32 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
     !env || !offerMongosh ? null : (env.mongoshError ?? policyLock);
   const canMongosh = env !== null && offerMongosh && mongoshBlocker === null;
   const canShell = env !== null && env.shellError === null;
+  /** No `mongosh` anywhere: the binary is the problem, so the way to fix it
+   *  is the one action offered, not a disabled "mongosh on X" beside it. */
+  const mongoshMissing = offerMongosh && env?.mongoshMissing === true;
+  /** …and a build exists for this machine, the policy lets this person fetch
+   *  it, and it could be used afterwards: offer to fetch it instead of only
+   *  saying where to install it by hand. */
+  const canDownload =
+    mongoshMissing &&
+    env.mongoshDownloadable &&
+    env.mongoshDownloadBlocked === null &&
+    policyLock === null;
+  const downloading = useMongoshDownload((s) => s.status.phase === "running");
+  const startDownload = useMongoshDownload((s) => s.start);
+  const attachDownload = useMongoshDownload((s) => s.attach);
+  // A download another window (or the page before a reload) started.
+  const runningElsewhere = env?.mongoshDownloading === true;
+  useEffect(() => {
+    if (runningElsewhere) void attachDownload();
+  }, [runningElsewhere, attachDownload]);
+  /** What the empty state says about a missing `mongosh`: the same thing the
+   *  button beside it does. Without a button, how to install it by hand. */
+  const missingNotice = canDownload
+    ? t("terminal.download.missing")
+    : env?.mongoshDownloadBlocked
+      ? `${env.mongoshError ?? ""} ${env.mongoshDownloadBlocked}`.trim()
+      : mongoshBlocker;
 
   const openMongosh = () => {
     if (!target) return;
@@ -135,25 +165,26 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
             ? t("terminal.detecting")
             : t(offerMongosh ? "terminal.empty.hint" : "terminal.empty.hintShell")
         }
-        notice={mongoshBlocker}
+        notice={mongoshMissing ? missingNotice : mongoshBlocker}
         noticeTone={env?.mongoshError ? "warning" : "info"}
         action={
           <div className="flex flex-wrap items-center justify-center gap-2">
-            {offerMongosh && (
+            {offerMongosh && !mongoshMissing && (
               <Button size="sm" icon={Database} disabled={!canMongosh} onClick={openMongosh}>
                 {mongoshLabel}
               </Button>
             )}
             <Button
               size="sm"
-              variant={offerMongosh ? "outline" : "default"}
+              variant={offerMongosh && !canDownload ? "outline" : "default"}
               icon={SquareTerminal}
               disabled={!canShell}
               onClick={openShell}
             >
               {shellLabel}
             </Button>
-            {offerMongosh && env?.mongoshError && (
+            {(canDownload || downloading) && <MongoshDownload />}
+            {offerMongosh && env?.mongoshError && !downloading && (
               <Button size="sm" variant="link" onClick={() => openSettings("terminal")}>
                 {t("terminal.openSettings")}
               </Button>
@@ -214,7 +245,7 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
             <IconButton size="xs" flat icon={Plus} label={t("terminal.newSession")} side="top" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {offerMongosh && (
+            {offerMongosh && !mongoshMissing && (
               <DropdownMenuItem disabled={!canMongosh} onSelect={openMongosh}>
                 <Database className="mr-2 h-4 w-4" />
                 {mongoshLabel}
@@ -224,9 +255,15 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
               <SquareTerminal className="mr-2 h-4 w-4" />
               {shellLabel}
             </DropdownMenuItem>
+            {canDownload && (
+              <DropdownMenuItem disabled={downloading} onSelect={() => void startDownload()}>
+                <Download className="mr-2 h-4 w-4" />
+                {t(downloading ? "terminal.download.running" : "terminal.download.button")}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
-        {mongoshBlocker && (
+        {mongoshBlocker && !canDownload && (
           <span className="ml-2 truncate text-2xs text-muted-foreground">{mongoshBlocker}</span>
         )}
       </div>

@@ -1,7 +1,9 @@
 //! Finding `mongosh`, and starting it signed in as the connection.
 //!
 //! HuginnDB does not ship `mongosh` (it is a ~100 MB Node.js bundle with its
-//! own release cadence); it uses the one the user installed. The session it
+//! own release cadence); it uses the one the user installed or — when there is
+//! none — the official build it downloaded on request into its own data
+//! directory ([`super::download`]). The session it
 //! opens is signed in exactly as the connection's pool is: the same effective
 //! profile (a personal database user included), the password that pool was
 //! opened with, and — when the connection rides an SSH tunnel — the local end
@@ -40,7 +42,10 @@ const BOOTSTRAP: &str = "db = connect(process.env.HUGINNDB_MONGOSH_URI); \
      delete process.env.HUGINNDB_MONGOSH_URI; delete process.env.HUGINNDB_MONGOSH_DB; void 0";
 
 /// The `mongosh` to run: the configured path if set, else the first found on
-/// `PATH` or in an official installer's location.
+/// `PATH` or in an official installer's location, else the copy HuginnDB
+/// downloaded. The downloaded one comes last on purpose: a `mongosh` the user
+/// installed themselves is theirs to keep current, and which one runs must not
+/// change because the app also fetched one.
 pub fn locate(override_path: &str) -> AppResult<PathBuf> {
     let override_path = override_path.trim();
     if !override_path.is_empty() {
@@ -55,6 +60,7 @@ pub fn locate(override_path: &str) -> AppResult<PathBuf> {
     }
     find_on_path("mongosh", std::env::var_os("PATH").as_deref())
         .or_else(|| install_locations().into_iter().find(|p| p.is_file()))
+        .or_else(super::download::downloaded)
         .ok_or_else(|| {
             AppError::Terminal(
                 "mongosh was not found. Install it from \

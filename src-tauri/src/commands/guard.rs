@@ -38,6 +38,13 @@ pub(crate) fn endpoint(state: &AppState, connection_id: &str) -> AppResult<()> {
     require(state, connection_id, Need::Endpoint)
 }
 
+/// Having HuginnDB download a tool for the person — today the `mongosh` the
+/// Terminal can fetch (ADR #109). Not about a connection, so it asks the
+/// policy's role-level switch (`allowToolDownloads`) rather than a rule.
+pub(crate) fn tool_download(state: &AppState) -> AppResult<()> {
+    crate::policy::tool_downloads(state)
+}
+
 /// A database on the connection — opening a per-database view of it.
 pub(crate) fn database(state: &AppState, connection_id: &str, database: &str) -> AppResult<()> {
     require(state, connection_id, Need::Database(database.to_string()))
@@ -226,7 +233,8 @@ pub(crate) fn visible(
 /// does not call into this module.
 ///
 /// Categories: `endpoint`, `database`, `list` (results filtered), `read`,
-/// `free_sql`, `insert`, `update`, `delete`, `ddl`, `export`, `monitor`;
+/// `free_sql`, `insert`, `update`, `delete`, `ddl`, `export`, `monitor`,
+/// `tool_download` (a role-level switch, not a connection rule);
 /// `ai` for the AI panel's commands, which reach a database only through
 /// `bridge::exec::execute` and are bound there (`policy::enforce`); and `none`
 /// for commands that touch no database — preferences, profiles, windows, the
@@ -438,6 +446,15 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("terminal::terminal_resize", "none"),
     ("terminal::terminal_close", "none"),
     ("terminal::terminal_close_window_sessions", "none"),
+    // Fetching `mongosh` itself (ADR #109): a download from MongoDB's own host
+    // into the app's data directory. No database and no credential, but an
+    // executable from the internet — so a role must allow it (`tool_download`,
+    // `allowToolDownloads`). Opening a session as a connection is still the
+    // guarded step; stopping a download in progress is harmless.
+    ("terminal::terminal_mongosh_latest_version", "tool_download"),
+    ("terminal::terminal_mongosh_download", "tool_download"),
+    ("terminal::terminal_mongosh_cancel_download", "none"),
+    ("terminal::terminal_mongosh_download_running", "none"),
     ("updater::get_auto_update_status", "none"),
     ("updater::note_update_check", "none"),
 ];

@@ -220,6 +220,22 @@ user's role matches:
 - `"allow"`: the policy leaves it alone, and only the user's local settings
   apply.
 
+### Downloading tools
+
+`"allowToolDownloads": true` on a **role** lets the people in it have HuginnDB
+download a tool for them — today, the `mongosh` the Terminal can fetch from
+MongoDB's download site (see `MONGODB.md`). **It is off unless the role says
+so**: a managed computer does not fetch and run an executable from the internet
+just because nobody thought to forbid it. Without the permission the Terminal
+shows no **Download mongosh** button and says why, HuginnDB refuses the request
+whatever the interface shows, and a `mongosh` the person installed themselves
+(or you deployed) is used as before. A policy that is still being read, or that
+cannot be applied, blocks downloads too. Without any policy, downloading is on.
+
+```json
+"roles": { "analyst": { "allowToolDownloads": true, "rules": [ … ] } }
+```
+
 ## Each person with their own database user
 
 The app's policy is a guardrail for people, because the database password

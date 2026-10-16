@@ -125,6 +125,18 @@ running, and closing a tab ends it. Disconnecting a connection closes the
 official installers put it; Settings → **Terminal** shows which one it found
 and its version, and takes a path if it guessed wrong.
 
+**No `mongosh` installed? Download it.** When none is found, the Terminal's empty
+state, its **+** menu and Settings → **Terminal** offer **Download mongosh**. It
+fetches the latest stable official build for your system from MongoDB's download
+site, verifies it against the SHA-256 MongoDB publishes for that file, and
+unpacks it into HuginnDB's own data folder (`%LOCALAPPDATA%HuginnDBmongosh` on
+Windows; nothing is installed system-wide and no administrator rights are
+needed). Progress is shown and the download can be cancelled. One you installed
+yourself is always preferred; when HuginnDB's own copy is in use, Settings offers
+**Update to X** when a newer release exists. Linux needs a glibc distribution
+(the official build is not built for musl, e.g. Alpine). Under a managed policy
+the download is offered only to roles with `allowToolDownloads` (see `POLICY.md`).
+
 **How it signs in.** With the connection's own credentials — the same user,
 password and SSH tunnel its pool uses, a personal database user included — so
 the connection has to be open first. The password is handed to `mongosh` in
