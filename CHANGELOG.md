@@ -44,6 +44,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     installed yourself always wins over the downloaded one, and when HuginnDB's
     own copy is the one in use, Settings shows **Update to X** when MongoDB has
     published a newer version.
+  - **Under a managed policy it is off unless the role allows it.** A role with
+    `"allowToolDownloads": true` may download `mongosh`; without it the button
+    is not shown (the Terminal says why) and HuginnDB refuses the request. See
+    `docs/POLICY.md`.
   - With the focus in the terminal, shell keys such as `Ctrl+R` or `Ctrl+B`
     reach the shell instead of the app. Copy and paste are
     `Ctrl+Shift+C` / `Ctrl+Shift+V`.

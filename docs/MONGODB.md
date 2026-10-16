@@ -134,7 +134,8 @@ Windows; nothing is installed system-wide and no administrator rights are
 needed). Progress is shown and the download can be cancelled. One you installed
 yourself is always preferred; when HuginnDB's own copy is in use, Settings offers
 **Update to X** when a newer release exists. Linux needs a glibc distribution
-(the official build is not built for musl, e.g. Alpine).
+(the official build is not built for musl, e.g. Alpine). Under a managed policy
+the download is offered only to roles with `allowToolDownloads` (see `POLICY.md`).
 
 **How it signs in.** With the connection's own credentials — the same user,
 password and SSH tunnel its pool uses, a personal database user included — so

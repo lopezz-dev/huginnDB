@@ -1892,4 +1892,9 @@ export const api = {
   /** Stop the download in progress, if any. */
   terminalMongoshCancelDownload: () =>
     invoke<void>("terminal_mongosh_cancel_download"),
+
+  /** Whether a download is running in any window — for one that cannot see
+   *  its progress (it opened or reloaded after it began). */
+  terminalMongoshDownloadRunning: () =>
+    invoke<boolean>("terminal_mongosh_download_running"),
 };

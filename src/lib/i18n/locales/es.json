@@ -3947,6 +3947,9 @@
       "cancel": "Cancelar",
       "cancelling": "Cancelando…",
       "progress": "Progreso de la descarga de mongosh",
+      "missing": "mongosh no está instalado. Descárgalo con un clic o indica su ruta en Ajustes → Terminal.",
+      "elsewhere": "mongosh se está descargando en otra ventana…",
+      "dismiss": "Descartar",
       "downloading": "Descargando mongosh {{version}} — {{received}} de {{total}}",
       "downloadingUnknown": "Descargando mongosh {{version}} — {{received}}",
       "step": {

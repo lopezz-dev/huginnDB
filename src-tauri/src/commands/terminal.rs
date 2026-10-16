@@ -56,6 +56,13 @@ pub struct TerminalEnvironment {
     /// MongoDB publishes a build for this machine that HuginnDB can unpack,
     /// so the download is on offer at all.
     pub mongosh_downloadable: bool,
+    /// Why the managed policy does not let this person download it, when it
+    /// does not (`allowToolDownloads`). The interface hides the download and
+    /// says so; the commands refuse regardless.
+    pub mongosh_download_blocked: Option<String>,
+    /// A download is running right now, in any window. A window that opened
+    /// (or reloaded) after it started cannot see its progress, only this.
+    pub mongosh_downloading: bool,
 }
 
 fn require_enabled(state: &AppState) -> AppResult<()> {
@@ -78,7 +85,10 @@ fn sink(channel: Channel<TerminalEvent>) -> terminal::session::Sink {
 }
 
 #[tauri::command]
-pub async fn terminal_environment(state: State<'_, AppState>) -> AppResult<TerminalEnvironment> {
+pub async fn terminal_environment(
+    state: State<'_, AppState>,
+    installer: State<'_, terminal::download::Installer>,
+) -> AppResult<TerminalEnvironment> {
     let (shell_override, mongosh_override) = {
         let prefs = state.prefs.read();
         (
@@ -116,6 +126,13 @@ pub async fn terminal_environment(state: State<'_, AppState>) -> AppResult<Termi
         mongosh_managed,
         mongosh_managed_version: terminal::download::downloaded_version(),
         mongosh_downloadable: terminal::download::target().is_some(),
+        mongosh_download_blocked: crate::commands::guard::tool_download(state.inner())
+            .err()
+            .map(|e| match e {
+                AppError::InvalidInput(reason) => reason,
+                other => other.to_string(),
+            }),
+        mongosh_downloading: installer.is_running(),
     })
 }
 
@@ -125,6 +142,7 @@ pub async fn terminal_environment(state: State<'_, AppState>) -> AppResult<Termi
 #[tauri::command]
 pub async fn terminal_mongosh_latest_version(state: State<'_, AppState>) -> AppResult<String> {
     require_enabled(state.inner())?;
+    crate::commands::guard::tool_download(state.inner())?;
     terminal::download::latest_version().await
 }
 
@@ -135,9 +153,10 @@ pub async fn terminal_mongosh_latest_version(state: State<'_, AppState>) -> AppR
 /// Which build, from where and against which checksum is decided in
 /// `terminal::download` — the interface can ask for this and for nothing more
 /// (ADR #88's rule for the theme registry, applied here). It touches no
-/// database and carries no credential, so the managed policy has nothing to
-/// say about it (`none` in `guard::HUMAN_POLICY`); it refuses while the
-/// terminal is switched off.
+/// database and carries no credential, but it does fetch and later run an
+/// executable from the internet, so a managed policy has a say
+/// (`guard::tool_download`, the role's `allowToolDownloads`); it also refuses
+/// while the terminal is switched off.
 #[tauri::command]
 pub async fn terminal_mongosh_download(
     state: State<'_, AppState>,
@@ -145,15 +164,26 @@ pub async fn terminal_mongosh_download(
     on_event: Channel<terminal::download::InstallEvent>,
 ) -> AppResult<Option<terminal::download::Installed>> {
     require_enabled(state.inner())?;
+    crate::commands::guard::tool_download(state.inner())?;
     let root = terminal::download::root()
         .ok_or_else(|| AppError::Terminal("no data directory available".into()))?;
-    let cancel = installer.begin()?;
-    let result = terminal::download::install_latest(&root, &cancel, &|event| {
+    // Released when this future ends — by finishing, failing, panicking or
+    // being dropped — so the installer cannot stay taken.
+    let claim = installer.begin()?;
+    terminal::download::install_latest(&root, claim.token(), &|event| {
         let _ = on_event.send(event);
     })
-    .await;
-    installer.finish();
-    result
+    .await
+}
+
+/// Whether a download is running — in any window. For a window that cannot
+/// see its progress (it opened or reloaded after the download began) to show
+/// "in progress" instead of offering the button, and to notice when it ends.
+#[tauri::command]
+pub fn terminal_mongosh_download_running(
+    installer: State<'_, terminal::download::Installer>,
+) -> bool {
+    installer.is_running()
 }
 
 /// Stop the download in progress, if there is one. Quiet when there is not:

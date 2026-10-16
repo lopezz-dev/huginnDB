@@ -3947,6 +3947,9 @@
       "cancel": "Cancel",
       "cancelling": "Cancelling…",
       "progress": "mongosh download progress",
+      "missing": "mongosh is not installed. Download it with one click, or set its path in Settings → Terminal.",
+      "elsewhere": "mongosh is being downloaded in another window…",
+      "dismiss": "Dismiss",
       "downloading": "Downloading mongosh {{version}} — {{received}} of {{total}}",
       "downloadingUnknown": "Downloading mongosh {{version}} — {{received}}",
       "step": {

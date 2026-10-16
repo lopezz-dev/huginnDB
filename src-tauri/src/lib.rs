@@ -591,6 +591,7 @@ pub fn run() {
             commands::terminal::terminal_mongosh_latest_version,
             commands::terminal::terminal_mongosh_download,
             commands::terminal::terminal_mongosh_cancel_download,
+            commands::terminal::terminal_mongosh_download_running,
         ])
         .build(context())
         .expect("error while building HuginnDB")

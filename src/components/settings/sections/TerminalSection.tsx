@@ -112,7 +112,12 @@ export function TerminalSection() {
   // without a click on "Detect again".
   const downloaded = useMongoshDownload((s) => s.revision);
   const downloading = useMongoshDownload((s) => s.status.phase === "running");
+  const attachDownload = useMongoshDownload((s) => s.attach);
   const [latest, setLatest] = useState<string | null>(null);
+  // A download another window (or the page before a reload) started.
+  useEffect(() => {
+    void attachDownload();
+  }, [attachDownload]);
 
   const detect = () => {
     setDetecting(true);
@@ -146,10 +151,19 @@ export function TerminalSection() {
   }, [managedVersion, downloaded]);
   const updateTo = latest && managedVersion && isNewerVersion(latest, managedVersion) ? latest : null;
 
+  /** The download is on offer: a build exists for this machine and the
+   *  managed policy, if any, lets this person fetch it. */
+  const canDownload = !!env?.mongoshDownloadable && env.mongoshDownloadBlocked === null;
   const mongoshStatus = !env ? (
     <ProgramStatus state="pending">{t("terminal.detecting")}</ProgramStatus>
   ) : env.mongoshError ? (
-    <ProgramStatus state="error">{env.mongoshError}</ProgramStatus>
+    <ProgramStatus state="error">
+      {env.mongoshMissing && canDownload
+        ? t("terminal.download.missing")
+        : env.mongoshDownloadBlocked && env.mongoshMissing
+          ? `${env.mongoshError} ${env.mongoshDownloadBlocked}`
+          : env.mongoshError}
+    </ProgramStatus>
   ) : (
     <ProgramStatus state="found" path={env.mongoshPath}>
       {t("settings.terminal.found", { version: env.mongoshVersion ?? "?" })}
@@ -161,7 +175,7 @@ export function TerminalSection() {
       {env?.mongoshManaged && (
         <p className="text-2xs text-muted-foreground">{t("settings.terminal.managed")}</p>
       )}
-      {env?.mongoshDownloadable && (env.mongoshMissing || downloading || updateTo) && (
+      {canDownload && (env.mongoshMissing || downloading || updateTo) && (
         <MongoshDownload
           align="start"
           variant="outline"

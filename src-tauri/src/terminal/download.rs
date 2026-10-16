@@ -36,13 +36,14 @@
 //! that the next attempt removes.
 
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::time::Duration;
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncWriteExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::app_identity::APP_DIR;
@@ -61,11 +62,27 @@ const ARCHIVE_MAX_BYTES: u64 = 256 * 1024 * 1024;
 /// there to stop a decompression bomb, not to be tight.
 const UNPACKED_MAX_BYTES: u64 = 1024 * 1024 * 1024;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const FEED_TIMEOUT: Duration = Duration::from_secs(30);
-/// How long a transfer may go without a single byte arriving. The download as
-/// a whole has no deadline — it is ~60–90 MB on a connection of unknown speed —
-/// but a stalled one should not hang until the user notices.
+/// How long a server may take to answer a request with its headers. `reqwest`'s
+/// own `connect_timeout` stops at the TCP handshake, so a proxy that accepts the
+/// connection and then says nothing would otherwise hang the request for good.
+const HEADERS_TIMEOUT: Duration = Duration::from_secs(30);
+/// How long a transfer may go without a single byte arriving — for the feed and
+/// for the archive alike. Neither has a deadline as a whole (the archive is
+/// ~60–90 MB, the feed ~1.5 MB, on a connection of unknown speed: a total
+/// timeout would fail a slow but healthy link every time), but a stalled one
+/// should not hang until the user notices.
 const STALL_TIMEOUT: Duration = Duration::from_secs(30);
+/// How many times placing the unpacked directory is tried. On Windows,
+/// Defender or the search indexer often has the freshly written
+/// `mongosh.exe` open for a moment, and the rename fails with "access denied"
+/// until they let go; `cargo` and `rustup` retry the same way.
+const PUBLISH_ATTEMPTS: u32 = 6;
+const PUBLISH_BACKOFF: Duration = Duration::from_millis(250);
+/// Redirects followed per request, all of them within the request's own host.
+const MAX_REDIRECTS: usize = 5;
+/// Written inside a version directory, last, just before it is renamed into
+/// place: its presence is what says the unpack finished.
+const COMPLETE_MARKER: &str = ".complete";
 /// Progress is reported at most once per this many bytes.
 const PROGRESS_STEP: u64 = 256 * 1024;
 
@@ -250,16 +267,76 @@ fn latest_release(feed: &Feed, target: Target) -> Option<Release> {
         .map(|(_, release)| release)
 }
 
-fn client() -> AppResult<reqwest::Client> {
+/// The HTTP client. HTTPS only, and a redirect is followed only while it stays
+/// on the host the request started on: `ensure_same_origin` vets the URL the
+/// feed *declares*, and this is what keeps the bytes that actually arrive from
+/// being fetched from somewhere else along the way. `https_only` is switched
+/// off by the tests alone, which talk to a loopback server.
+fn build_client(https_only: bool) -> AppResult<reqwest::Client> {
     reqwest::Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
+        .https_only(https_only)
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            let same_host = attempt
+                .previous()
+                .first()
+                .is_some_and(|first| first.host_str() == attempt.url().host_str());
+            if attempt.previous().len() >= MAX_REDIRECTS {
+                attempt.error("too many redirects")
+            } else if !same_host {
+                attempt.error("a redirect to another host")
+            } else {
+                attempt.follow()
+            }
+        }))
         .user_agent(concat!("HuginnDB/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(AppError::from)
 }
 
+fn client() -> AppResult<reqwest::Client> {
+    build_client(true)
+}
+
+/// GET `url` and wait for its headers — but not forever, and not past a
+/// cancel. A `send()` left bare would hang on a server or proxy that accepts
+/// the connection and stays silent, with Cancel doing nothing.
+async fn get(
+    client: &reqwest::Client,
+    url: &str,
+    cancel: &CancellationToken,
+) -> AppResult<reqwest::Response> {
+    let response = tokio::select! {
+        _ = cancel.cancelled() => return Err(cancelled()),
+        sent = tokio::time::timeout(HEADERS_TIMEOUT, client.get(url).send()) => sent
+            .map_err(|_| AppError::Terminal(
+                "MongoDB's download server did not answer; check the connection and try again"
+                    .into(),
+            ))??,
+    };
+    Ok(response.error_for_status()?)
+}
+
+/// The next chunk of a body, unless the transfer stalls or is cancelled.
+async fn next_chunk<S, B>(stream: &mut S, cancel: &CancellationToken) -> AppResult<Option<B>>
+where
+    S: futures_util::Stream<Item = reqwest::Result<B>> + Unpin,
+{
+    let next = tokio::select! {
+        _ = cancel.cancelled() => return Err(cancelled()),
+        next = tokio::time::timeout(STALL_TIMEOUT, stream.next()) => next,
+    };
+    match next {
+        Err(_) => Err(AppError::Terminal(
+            "the mongosh download stalled; check the connection and try again".into(),
+        )),
+        Ok(None) => Ok(None),
+        Ok(Some(chunk)) => Ok(Some(chunk?)),
+    }
+}
+
 /// The latest release for this machine, from the live feed.
-async fn fetch_latest(client: &reqwest::Client) -> AppResult<Release> {
+async fn fetch_latest(client: &reqwest::Client, cancel: &CancellationToken) -> AppResult<Release> {
     let target = target().ok_or_else(|| {
         AppError::Terminal(format!(
             "MongoDB publishes no mongosh download for {} on {} that HuginnDB can unpack; \
@@ -268,12 +345,7 @@ async fn fetch_latest(client: &reqwest::Client) -> AppResult<Release> {
             std::env::consts::ARCH,
         ))
     })?;
-    let response = client
-        .get(FEED_URL)
-        .timeout(FEED_TIMEOUT)
-        .send()
-        .await?
-        .error_for_status()?;
+    let response = get(client, FEED_URL, cancel).await?;
     if response
         .content_length()
         .is_some_and(|n| n > FEED_MAX_BYTES)
@@ -282,8 +354,7 @@ async fn fetch_latest(client: &reqwest::Client) -> AppResult<Release> {
     }
     let mut body = Vec::new();
     let mut stream = response.bytes_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk?;
+    while let Some(chunk) = next_chunk(&mut stream, cancel).await? {
         if body.len() as u64 + chunk.len() as u64 > FEED_MAX_BYTES {
             return Err(AppError::Terminal("the mongosh feed is too large".into()));
         }
@@ -306,13 +377,18 @@ async fn fetch_latest(client: &reqwest::Client) -> AppResult<Release> {
 
 /// The newest stable `mongosh` version MongoDB offers this machine.
 pub async fn latest_version() -> AppResult<String> {
-    Ok(fetch_latest(&client()?).await?.version)
+    Ok(fetch_latest(&client()?, &CancellationToken::new())
+        .await?
+        .version)
 }
 
 /// The newest version installed under `root`, and its executable.
 ///
-/// A directory counts only if it is named like a version *and* holds the
-/// executable, so a leftover from a failed prune or a stray folder is ignored.
+/// A directory counts only if it is named like a version, carries the marker
+/// written when its unpack finished, *and* still holds the executable — so a
+/// leftover from a failed prune, a stray folder, or an install an antivirus has
+/// since quarantined a file of, is not mistaken for a working one (and is
+/// reinstalled by the next download instead of staying broken for good).
 pub fn installed(root: &Path) -> Option<(String, PathBuf)> {
     let binary = target().map(|t| t.binary()).unwrap_or(if cfg!(windows) {
         "mongosh.exe"
@@ -326,7 +402,8 @@ pub fn installed(root: &Path) -> Option<(String, PathBuf)> {
             let name = entry.file_name().to_string_lossy().into_owned();
             let key = parse_version(&name)?;
             let exe = entry.path().join("bin").join(binary);
-            exe.is_file().then_some((key, name, exe))
+            let complete = entry.path().join(COMPLETE_MARKER).is_file();
+            (complete && exe.is_file()).then_some((key, name, exe))
         })
         .max_by_key(|(key, _, _)| *key)
         .map(|(_, name, exe)| (name, exe))
@@ -363,14 +440,17 @@ async fn download(
     cancel: &CancellationToken,
     sink: &(dyn Fn(InstallEvent) + Send + Sync),
 ) -> AppResult<String> {
-    let response = client.get(&release.url).send().await?.error_for_status()?;
+    let response = get(client, &release.url, cancel).await?;
     let total = response.content_length();
     if total.is_some_and(|n| n > ARCHIVE_MAX_BYTES) {
         return Err(AppError::Terminal(
             "the mongosh download is larger than HuginnDB accepts".into(),
         ));
     }
-    let mut file = fs::File::create(dest)?;
+    // Async file I/O (tokio runs it on its blocking pool): a chunk written
+    // synchronously would stall the runtime's worker for as long as the disk —
+    // or an antivirus scanning the new file — takes.
+    let mut file = tokio::fs::File::create(dest).await?;
     let mut hasher = Sha256::new();
     let mut received: u64 = 0;
     let mut reported: u64 = 0;
@@ -381,20 +461,7 @@ async fn download(
     };
     sink(event(0));
     let mut stream = response.bytes_stream();
-    loop {
-        let next = tokio::select! {
-            _ = cancel.cancelled() => return Err(cancelled()),
-            next = tokio::time::timeout(STALL_TIMEOUT, stream.next()) => next,
-        };
-        let chunk = match next {
-            Err(_) => {
-                return Err(AppError::Terminal(
-                    "the mongosh download stalled; check the connection and try again".into(),
-                ))
-            }
-            Ok(None) => break,
-            Ok(Some(chunk)) => chunk?,
-        };
+    while let Some(chunk) = next_chunk(&mut stream, cancel).await? {
         received += chunk.len() as u64;
         if received > ARCHIVE_MAX_BYTES {
             return Err(AppError::Terminal(
@@ -402,13 +469,13 @@ async fn download(
             ));
         }
         hasher.update(&chunk);
-        file.write_all(&chunk)?;
+        file.write_all(&chunk).await?;
         if received - reported >= PROGRESS_STEP {
             reported = received;
             sink(event(received));
         }
     }
-    file.flush()?;
+    file.flush().await?;
     sink(event(received));
     if total.is_some_and(|n| n != received) {
         return Err(AppError::Terminal(
@@ -579,6 +646,13 @@ fn remove_dir_quietly(dir: &Path) {
     }
 }
 
+/// [`remove_dir_quietly`] for async code: deleting ~200 MB of files takes real
+/// time, and doing it on a runtime worker would stall everything scheduled on it.
+async fn remove_dir_off_runtime(dir: &Path) {
+    let dir = dir.to_path_buf();
+    let _ = tokio::task::spawn_blocking(move || remove_dir_quietly(&dir)).await;
+}
+
 /// Older version directories, once a newer one is in place. Best effort: on
 /// Windows a `mongosh.exe` that a terminal tab is still running cannot be
 /// deleted, and that is fine — [`installed`] picks the newest, and the next
@@ -602,23 +676,48 @@ pub struct Installer {
     running: parking_lot::Mutex<Option<CancellationToken>>,
 }
 
+/// What an install refused to start says, and what the interface looks for to
+/// treat it as "already running" rather than as a failure.
+pub const ALREADY_RUNNING: &str = "mongosh is already being downloaded";
+
+/// The claim on the [`Installer`]. Released when dropped, so a command future
+/// that is cancelled, or that panics, cannot leave the installer taken until
+/// the app restarts.
+pub struct InstallGuard<'a> {
+    installer: &'a Installer,
+    token: CancellationToken,
+}
+
+impl InstallGuard<'_> {
+    pub fn token(&self) -> &CancellationToken {
+        &self.token
+    }
+}
+
+impl Drop for InstallGuard<'_> {
+    fn drop(&mut self) {
+        *self.installer.running.lock() = None;
+    }
+}
+
 impl Installer {
     /// Claim the installer, or refuse while another install holds it.
-    pub fn begin(&self) -> AppResult<CancellationToken> {
+    pub fn begin(&self) -> AppResult<InstallGuard<'_>> {
         let mut running = self.running.lock();
         if running.is_some() {
-            return Err(AppError::Terminal(
-                "mongosh is already being downloaded".into(),
-            ));
+            return Err(AppError::Terminal(ALREADY_RUNNING.into()));
         }
         let token = CancellationToken::new();
         *running = Some(token.clone());
-        Ok(token)
+        Ok(InstallGuard {
+            installer: self,
+            token,
+        })
     }
 
-    /// Release the claim made by [`Self::begin`].
-    pub fn finish(&self) {
-        *self.running.lock() = None;
+    /// Whether an install is running — in any window.
+    pub fn is_running(&self) -> bool {
+        self.running.lock().is_some()
     }
 
     /// Ask the running install, if any, to stop.
@@ -640,9 +739,9 @@ pub async fn install_latest(
 ) -> AppResult<Option<Installed>> {
     sink(InstallEvent::Checking);
     let client = client()?;
-    let release = tokio::select! {
-        _ = cancel.cancelled() => return Ok(None),
-        release = fetch_latest(&client) => release?,
+    let release = match fetch_latest(&client, cancel).await {
+        Err(AppError::Terminal(m)) if m == CANCELLED => return Ok(None),
+        other => other?,
     };
     install_release(root, &client, &release, cancel, sink).await
 }
@@ -657,7 +756,7 @@ async fn install_release(
     let binary = release.target.binary();
     let final_dir = root.join(&release.version);
     let final_exe = final_dir.join("bin").join(binary);
-    if final_exe.is_file() {
+    if final_exe.is_file() && final_dir.join(COMPLETE_MARKER).is_file() {
         return Ok(Some(Installed {
             version: release.version.clone(),
             path: final_exe.to_string_lossy().into_owned(),
@@ -665,13 +764,14 @@ async fn install_release(
     }
 
     let staging = root.join(".staging");
-    remove_dir_quietly(&staging);
-    fs::create_dir_all(&staging)?;
+    remove_dir_off_runtime(&staging).await;
+    tokio::fs::create_dir_all(&staging).await?;
     let result = stage_and_publish(root, &staging, client, release, cancel, sink).await;
-    remove_dir_quietly(&staging);
+    remove_dir_off_runtime(&staging).await;
     match result {
         Ok(()) => {
-            prune_older(root, &release.version);
+            let (root, keep) = (root.to_path_buf(), release.version.clone());
+            let _ = tokio::task::spawn_blocking(move || prune_older(&root, &keep)).await;
             Ok(Some(Installed {
                 version: release.version.clone(),
                 path: final_exe.to_string_lossy().into_owned(),
@@ -704,7 +804,7 @@ async fn stage_and_publish(
 
     sink(InstallEvent::Extracting);
     let unpacked = staging.join("unpacked");
-    fs::create_dir_all(&unpacked)?;
+    tokio::fs::create_dir_all(&unpacked).await?;
     {
         let (kind, archive, unpacked, cancel) = (
             release.target.kind,
@@ -729,16 +829,40 @@ async fn stage_and_publish(
         fs::set_permissions(&exe, fs::Permissions::from_mode(0o755))?;
     }
 
+    // The marker goes in last: from here on the directory is a whole install,
+    // and `installed()` will not count one that lacks it.
+    tokio::fs::write(unpacked.join(COMPLETE_MARKER), &release.sha256).await?;
+
     // Publish: one rename, so the version directory is complete or absent.
     let final_dir = root.join(&release.version);
-    remove_dir_quietly(&final_dir);
-    fs::rename(&unpacked, &final_dir).map_err(|e: io::Error| {
-        AppError::Terminal(format!(
-            "could not place mongosh in {}: {e}",
-            final_dir.display()
-        ))
-    })?;
-    Ok(())
+    remove_dir_off_runtime(&final_dir).await;
+    publish(&unpacked, &final_dir, cancel).await
+}
+
+/// Rename `from` to `to`, trying again a few times. A freshly written
+/// `mongosh.exe` is often held open for a moment by Defender or the search
+/// indexer, and Windows refuses to move a directory with an open file in it.
+async fn publish(from: &Path, to: &Path, cancel: &CancellationToken) -> AppResult<()> {
+    let mut attempt = 1;
+    loop {
+        match tokio::fs::rename(from, to).await {
+            Ok(()) => return Ok(()),
+            Err(e) if attempt >= PUBLISH_ATTEMPTS => {
+                return Err(AppError::Terminal(format!(
+                    "could not place mongosh in {}: {e}. An antivirus may be scanning it; \
+                     try again in a moment.",
+                    to.display()
+                )))
+            }
+            Err(_) => {
+                tokio::select! {
+                    _ = cancel.cancelled() => return Err(cancelled()),
+                    _ = tokio::time::sleep(PUBLISH_BACKOFF * attempt) => {}
+                }
+                attempt += 1;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -861,6 +985,12 @@ mod tests {
         assert!(strip_wrapper(Path::new("/etc/passwd")).is_err());
         #[cfg(windows)]
         assert!(strip_wrapper(Path::new(r"C:\Windows\evil.dll")).is_err());
+    }
+
+    /// The production client minus `https_only`, since the tests talk to a
+    /// loopback server.
+    fn test_client() -> reqwest::Client {
+        build_client(false).unwrap()
     }
 
     fn scratch(name: &str) -> PathBuf {
@@ -986,9 +1116,18 @@ mod tests {
             let bin = root.join(version).join("bin");
             fs::create_dir_all(&bin).unwrap();
             fs::write(bin.join(binary), b"x").unwrap();
+            fs::write(root.join(version).join(COMPLETE_MARKER), b"sha").unwrap();
         }
         // Newer, but empty: a half-removed prune, not an install.
         fs::create_dir_all(root.join("2.20.0")).unwrap();
+        // Newer, with the executable but never marked complete: an unpack
+        // that did not finish, or one something has since tampered with.
+        let unmarked = root.join("2.30.0").join("bin");
+        fs::create_dir_all(&unmarked).unwrap();
+        fs::write(unmarked.join(binary), b"x").unwrap();
+        // Marked complete, but the executable has gone (quarantined).
+        fs::create_dir_all(root.join("2.40.0").join("bin")).unwrap();
+        fs::write(root.join("2.40.0").join(COMPLETE_MARKER), b"sha").unwrap();
         // Not a version at all.
         fs::create_dir_all(root.join(".staging").join("bin")).unwrap();
         let (version, exe) = installed(&root).unwrap();
@@ -1070,7 +1209,7 @@ mod tests {
         let release = release_at(url, sha_of(&bytes));
         let done = install_release(
             &root,
-            &client().unwrap(),
+            &test_client(),
             &release,
             &CancellationToken::new(),
             &sink,
@@ -1096,7 +1235,7 @@ mod tests {
         // A second run finds it installed and does not touch the network.
         let again = install_release(
             &root,
-            &client().unwrap(),
+            &test_client(),
             &release_at("http://127.0.0.1:1/unreachable".into(), "00".into()),
             &CancellationToken::new(),
             &|_| {},
@@ -1117,7 +1256,7 @@ mod tests {
         let root = work.join("root");
         let err = install_release(
             &root,
-            &client().unwrap(),
+            &test_client(),
             &release_at(url, "0".repeat(64)),
             &CancellationToken::new(),
             &|_| {},
@@ -1142,7 +1281,7 @@ mod tests {
         cancel.cancel();
         let out = install_release(
             &root,
-            &client().unwrap(),
+            &test_client(),
             &release_at(url, sha_of(&bytes)),
             &cancel,
             &|_| {},
@@ -1152,6 +1291,139 @@ mod tests {
         assert!(out.is_none());
         assert!(!root.join("9.9.9").exists());
         assert!(!root.join(".staging").exists());
+        let _ = fs::remove_dir_all(work);
+    }
+
+    /// A server that answers each path with a canned raw HTTP response, and
+    /// one that accepts connections and then says nothing at all.
+    async fn serve_routes(routes: Vec<(&'static str, String)>) -> std::net::SocketAddr {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let routes = routes.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 2048];
+                    let n = socket.read(&mut buf).await.unwrap_or(0);
+                    let request = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let path = request.split_whitespace().nth(1).unwrap_or("/").to_string();
+                    let response = routes
+                        .iter()
+                        .find(|(p, _)| *p == path)
+                        .map(|(_, r)| r.clone())
+                        .unwrap_or_else(|| {
+                            "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".into()
+                        });
+                    let _ = socket.write_all(response.as_bytes()).await;
+                    let _ = socket.shutdown().await;
+                });
+            }
+        });
+        addr
+    }
+
+    async fn serve_silence() -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((socket, _)) = listener.accept().await {
+                held.push(socket);
+            }
+        });
+        format!("http://{addr}/never")
+    }
+
+    fn redirect(to: &str) -> String {
+        format!(
+            "HTTP/1.1 302 Found\r\nLocation: {to}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        )
+    }
+
+    #[tokio::test]
+    async fn cancel_works_while_waiting_for_a_server_that_never_answers() {
+        let url = serve_silence().await;
+        let cancel = CancellationToken::new();
+        let later = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            later.cancel();
+        });
+        // Bounded by the test's own clock, not by HEADERS_TIMEOUT: if `get`
+        // ignored the cancel this would sit for 30 seconds.
+        let result =
+            tokio::time::timeout(Duration::from_secs(5), get(&test_client(), &url, &cancel))
+                .await
+                .expect("get did not return after the cancel");
+        assert!(matches!(&result, Err(AppError::Terminal(m)) if m == CANCELLED));
+    }
+
+    #[tokio::test]
+    async fn a_redirect_to_another_host_is_refused_and_one_within_the_host_followed() {
+        // `localhost` and `127.0.0.1` are two hosts as far as the check goes.
+        let addr = serve_routes(vec![
+            ("/off", redirect("http://localhost:1/final")),
+            ("/within", redirect("/final")),
+            (
+                "/final",
+                "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok".into(),
+            ),
+        ])
+        .await;
+        let base = format!("http://{addr}");
+        let cancel = CancellationToken::new();
+        let refused = get(&test_client(), &format!("{base}/off"), &cancel).await;
+        assert!(refused.is_err(), "a redirect off the host was followed");
+        let followed = get(&test_client(), &format!("{base}/within"), &cancel)
+            .await
+            .unwrap();
+        assert_eq!(followed.text().await.unwrap(), "ok");
+    }
+
+    #[test]
+    fn the_installer_is_released_when_its_claim_is_dropped() {
+        let installer = Installer::default();
+        let first = installer.begin().unwrap();
+        assert!(installer.is_running());
+        let second = installer.begin();
+        assert!(matches!(second, Err(AppError::Terminal(ref m)) if m == ALREADY_RUNNING));
+        installer.cancel();
+        assert!(first.token().is_cancelled());
+        drop(first);
+        assert!(!installer.is_running());
+        // A claim whose future is abandoned releases it the same way.
+        let _again = installer.begin().unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_install_that_lost_its_marker_is_redone() {
+        let work = scratch("remark");
+        let zip_path = work.join("src.zip");
+        make_zip(&zip_path, &[("w/bin/mongosh.exe", b"fresh")]);
+        let bytes = fs::read(&zip_path).unwrap();
+        let url = serve(bytes.clone()).await;
+        let root = work.join("root");
+        // What an earlier, damaged install left: the executable and no marker.
+        let old = root.join("9.9.9").join("bin");
+        fs::create_dir_all(&old).unwrap();
+        fs::write(old.join("mongosh.exe"), b"stale").unwrap();
+
+        let done = install_release(
+            &root,
+            &test_client(),
+            &release_at(url, sha_of(&bytes)),
+            &CancellationToken::new(),
+            &|_| {},
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(fs::read(&done.path).unwrap(), b"fresh");
+        assert!(root.join("9.9.9").join(COMPLETE_MARKER).is_file());
         let _ = fs::remove_dir_all(work);
     }
 

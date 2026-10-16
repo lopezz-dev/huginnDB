@@ -33,7 +33,8 @@ mod source;
 
 pub use enforce::{
     access, enforce, filter_databases, filter_databases_for, filter_tables, filter_tables_for,
-    free_sql_blocked, relation_access, require, status, PolicyAccess, PolicyStatus, RelationAccess,
+    free_sql_blocked, relation_access, require, status, tool_downloads, PolicyAccess, PolicyStatus,
+    RelationAccess,
 };
 pub use model::Subject;
 pub use resolve::Need;

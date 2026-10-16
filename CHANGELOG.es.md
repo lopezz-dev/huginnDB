@@ -45,6 +45,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     Un `mongosh` que hayas instalado tú siempre tiene prioridad sobre el
     descargado, y cuando se usa la copia de HuginnDB, Ajustes ofrece
     **Actualizar a X** si MongoDB ha publicado una versión más nueva.
+  - **Con una política gestionada, está desactivado salvo que el rol lo
+    permita.** Un rol con `"allowToolDownloads": true` puede descargar
+    `mongosh`; sin él, el botón no aparece (el Terminal explica por qué) y
+    HuginnDB rechaza la petición. Véase `docs/POLICY.es.md`.
   - Con el foco en el terminal, teclas de shell como `Ctrl+R` o `Ctrl+B`
     llegan al shell en vez de a la app. Copiar y pegar son
     `Ctrl+Shift+C` / `Ctrl+Shift+V`.

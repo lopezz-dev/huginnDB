@@ -235,6 +235,23 @@ regla del rol del usuario:
 - `"allow"`: la política no la toca y solo se aplican los ajustes locales del
   usuario.
 
+### Descargar herramientas
+
+`"allowToolDownloads": true` en un **rol** permite a quienes lo tienen que
+HuginnDB les descargue una herramienta — hoy, el `mongosh` que el Terminal puede
+bajar de la web de descargas de MongoDB (véase `MONGODB.es.md`). **Está
+desactivado salvo que el rol lo diga**: un equipo gestionado no baja ni ejecuta
+un programa de internet solo porque nadie pensó en prohibirlo. Sin el permiso, el
+Terminal no muestra el botón **Descargar mongosh** y explica por qué, HuginnDB
+rechaza la petición aunque la interfaz la mostrara, y un `mongosh` que la persona
+haya instalado (o que tú despliegues) se usa igual que antes. Una política que
+aún se está leyendo, o que no se puede aplicar, también bloquea las descargas.
+Sin política, la descarga está permitida.
+
+```json
+"roles": { "analista": { "allowToolDownloads": true, "rules": [ … ] } }
+```
+
 ## Cada persona con su propio usuario de base de datos
 
 Para las personas, la política de la app es un guardarraíl, porque la propia

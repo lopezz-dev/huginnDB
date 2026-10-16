@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { Download, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { IconButton } from "@/components/ui/icon-button";
 import { cn, formatBytes } from "@/lib/utils";
 import { useMongoshDownload } from "@/stores/session/mongoshDownload";
 
@@ -34,6 +35,7 @@ export function MongoshDownload({
   const status = useMongoshDownload((s) => s.status);
   const start = useMongoshDownload((s) => s.start);
   const cancel = useMongoshDownload((s) => s.cancel);
+  const dismiss = useMongoshDownload((s) => s.dismiss);
 
   if (status.phase === "running") {
     const percent =
@@ -42,7 +44,9 @@ export function MongoshDownload({
         : null;
     const stepText = status.cancelling
       ? t("terminal.download.cancelling")
-      : status.step === "downloading"
+      : status.attached
+        ? t("terminal.download.elsewhere")
+        : status.step === "downloading"
         ? t(status.total ? "terminal.download.downloading" : "terminal.download.downloadingUnknown", {
             version: status.version ?? "",
             received: formatBytes(status.received),
@@ -97,9 +101,19 @@ export function MongoshDownload({
         {label ?? t("terminal.download.button")}
       </Button>
       {status.phase === "failed" && (
-        <p role="alert" className="max-w-sm break-words text-xs text-destructive">
-          {t("terminal.download.failed", { error: status.error })}
-        </p>
+        <div className="flex max-w-sm items-start gap-1">
+          <p role="alert" className="min-w-0 break-words text-xs text-destructive">
+            {t("terminal.download.failed", { error: status.error })}
+          </p>
+          <IconButton
+            size="xs"
+            flat
+            icon={X}
+            label={t("terminal.download.dismiss")}
+            side="top"
+            onClick={dismiss}
+          />
+        </div>
       )}
     </div>
   );

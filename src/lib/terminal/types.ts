@@ -33,6 +33,11 @@ export interface TerminalEnvironment {
   mongoshMissing: boolean;
   /** MongoDB publishes a build HuginnDB can unpack for this machine. */
   mongoshDownloadable: boolean;
+  /** Why the managed policy does not let this person download it, when it
+   *  does not (`allowToolDownloads`). */
+  mongoshDownloadBlocked: string | null;
+  /** A download is running right now, in any window. */
+  mongoshDownloading: boolean;
 }
 
 /** `InstallEvent` (Rust): what a `mongosh` download reports, in order.

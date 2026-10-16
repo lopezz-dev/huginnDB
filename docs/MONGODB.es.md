@@ -145,7 +145,8 @@ ni hacen falta permisos de administrador). Muestra el progreso y se puede
 cancelar. Siempre se prefiere uno que hayas instalado tú; cuando se usa la copia
 de HuginnDB, Ajustes ofrece **Actualizar a X** si hay una versión más nueva. En
 Linux hace falta una distribución con glibc (la versión oficial no está
-compilada para musl, p. ej. Alpine).
+compilada para musl, p. ej. Alpine). Con una política gestionada, la descarga se
+ofrece solo a los roles con `allowToolDownloads` (véase `POLICY.es.md`).
 
 **Cómo inicia sesión.** Con las credenciales de la propia conexión — el mismo
 usuario, contraseña y túnel SSH que usa su pool, incluido un usuario de base de
