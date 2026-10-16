@@ -135,6 +135,18 @@ sesiones de `mongosh` iniciadas en ella.
 dejan los instaladores oficiales; Ajustes → **Terminal** muestra cuál ha
 encontrado y su versión, y admite una ruta si se equivoca.
 
+**¿No tienes `mongosh`? Descárgalo.** Si no se encuentra ninguno, el estado
+vacío del Terminal, su menú **+** y Ajustes → **Terminal** ofrecen **Descargar
+mongosh**. Baja la última versión estable oficial para tu sistema desde la web de
+descargas de MongoDB, la verifica contra el SHA-256 que MongoDB publica para ese
+archivo y la descomprime en la carpeta de datos propia de HuginnDB
+(`%LOCALAPPDATA%HuginnDBmongosh` en Windows; no se instala nada en el sistema
+ni hacen falta permisos de administrador). Muestra el progreso y se puede
+cancelar. Siempre se prefiere uno que hayas instalado tú; cuando se usa la copia
+de HuginnDB, Ajustes ofrece **Actualizar a X** si hay una versión más nueva. En
+Linux hace falta una distribución con glibc (la versión oficial no está
+compilada para musl, p. ej. Alpine).
+
 **Cómo inicia sesión.** Con las credenciales de la propia conexión — el mismo
 usuario, contraseña y túnel SSH que usa su pool, incluido un usuario de base de
 datos personal —, así que la conexión tiene que estar abierta antes. La

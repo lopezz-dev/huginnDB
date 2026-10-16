@@ -1,0 +1,44 @@
+---
+id: 109
+type: adr
+status: accepted
+date: 2026-10-16
+tags: [terminal, mongodb, security]
+triggered_by_external_trap: false
+related: [26, 88, 95, 107]
+supersedes: []
+superseded_by: null
+amends: []
+---
+
+# ADR #109: `mongosh` is downloaded on request from MongoDB's own feed, verified against its published SHA-256, and kept in a per-user directory — never bundled in the installer
+
+The Terminal panel needs a `mongosh` (ADR #107), and a machine without one used to get a "not found" notice and a link to MongoDB's download page. HuginnDB still does not ship it. Instead, one click (**Download mongosh**, in the Terminal's empty state, its **+** menu and Settings → Terminal) makes the *backend* fetch the latest stable official build for the platform from MongoDB's download-centre feed, check it against the `sha256` the feed publishes for that file, unpack it into a per-user directory under `APP_DIR`, and let `mongosh::locate` find it as the last of its locations. The frontend can ask for "install", "cancel" and "what is the latest version"; it cannot name a URL.
+
+**Decision:** `terminal::download` reads `https://downloads.mongodb.com/compass/mongosh.json`, picks the highest stable version that has a self-contained build for this OS/arch, refuses an archive URL off the feed's own origin, streams it to a staging directory while hashing, compares the digest, unpacks (zip on Windows and macOS, tar.gz on Linux) with the wrapper directory stripped and every path refused if it could leave the destination, and publishes the result by renaming the staging directory to `<local data dir>/<APP_DIR>/mongosh/<version>`.
+
+**Alternatives rejected:**
+
+- **Bundling `mongosh` in the MSI / `.deb` / `.AppImage`** — rejected, and this is the one to remember because the question comes back every time someone hits the "not found" notice. The Windows zip alone is 63 MB and unpacks to ~205 MB (`mongosh.exe` is a 169 MB Node.js single-executable plus a 35 MB crypt library); the macOS zip is 81 MB and the Linux tgz 94 MB. HuginnDB's installers, and the updater's payload on every release, would roughly triple for a feature most connections (SQL ones) never touch, and every mongosh release (it ships far more often than HuginnDB) would either force a HuginnDB release or leave a stale copy inside the installer. The archive also carries its own licence files (`LICENSE-mongosh`, `LICENSE-crypt-library`), which would become ours to review and redistribute. On-demand download keeps the installer as it is and the copy current.
+- **Running MongoDB's MSI / `.deb` / `.rpm` for the user** — rejected: the MSI installs system-wide and asks for elevation, the Linux packages need root, and both leave entries in "Installed programs" / the package database that HuginnDB would then own the uninstall of. The zip / tgz needs nothing but a writable directory.
+- **A version pinned in the binary** — rejected in favour of the feed's latest stable: a pinned version is a release of HuginnDB per mongosh release, which is the cadence problem the download was meant to avoid. The cost is that what is fetched is decided by MongoDB at download time; the checksum and the stable-only filter are what bound that.
+- **GitHub releases of `mongodb-js/mongosh`** — rejected: the assets do not carry a published digest in a machine-readable manifest and the API is rate-limited per IP; the download-centre feed is what MongoDB's own download page is built from and lists a `sha256` per archive.
+- **Verifying a PGP `.sig` or an Authenticode signature** — not done, honestly: the Windows `mongosh.exe` is **not** Authenticode-signed (`Get-AuthenticodeSignature` reports `NotSigned` on 2.13.0), and checking MongoDB's PGP signatures would mean a PGP crate and shipping their key for one feature. The SHA-256 comes from the same host as the archive, so it proves "this is the file MongoDB published and it arrived intact", not "MongoDB's host was not compromised". A reviewer should read it that way.
+- **Letting the frontend pass the URL (or the version)** — rejected, ADR #88's rule for the theme registry: whatever the interface can name becomes a way to make the app download and then *execute* an arbitrary binary.
+- **Putting the copy under `state_file::path` (the config directory)** — rejected for the *location*, kept for the *rule*. That directory is `%APPDATA%` (Roaming) on Windows, which a domain's roaming profile copies to a file server at every sign-in; 205 MB of someone else's binary does not belong there. `dirs::data_local_dir()` joined with `APP_DIR` keeps what ADR #26 asks for — a canary build has its own copy — without the roaming cost.
+
+## Context
+
+Alex tried the 1.33 build on Windows with a MongoDB connection and no `mongosh`, and got the "mongosh was not found" notice; the question was why HuginnDB does not run its own. The answer is the size and cadence above, and the middle path is this: no bundle, no manual hunt either.
+
+## Consequences
+
+- **`locate` order** is now: configured path → `PATH` → the official installers' locations → HuginnDB's own copy. The downloaded copy is last on purpose — a `mongosh` the user installed is theirs to keep current, and which one runs must not change because the app also fetched one. A configured path that does not exist is still an error, never a silent fall-through, and the Download button is not offered then (`TerminalEnvironment::mongosh_missing` is true only when no path is configured *and* nothing was found).
+- **Platforms.** Windows x64, macOS x64/arm64, Linux x64/arm64. Windows ARM64 is `None` (MongoDB publishes no native build and the x64 one is not tried); other architectures fall back to the manual notice. Linux takes the plain `linux-*.tgz`, which bundles OpenSSL, not the `-openssl11`/`-openssl3` ones, which depend on the distribution; it needs glibc, so a musl distribution gets a build that will not start.
+- **Direct dependencies:** `tar` and `flate2` were declared in `Cargo.toml` (the Linux archive is a `.tgz`). Both were already in `Cargo.lock` through the Tauri updater, so no crate enters the tree; `zip`, `sha2` and `reqwest` (with `stream`) were already direct.
+- **Integrity of what is unpacked.** The archive is hashed while it streams and compared before a byte is extracted; extraction refuses `..`, absolute and drive-prefixed paths and symbolic or hard links, caps the archive at 256 MiB and the unpacked size at 1 GiB, and checks for cancellation between chunks. A stalled transfer (no byte for 30 s) fails instead of hanging; the download as a whole has no deadline.
+- **Atomic publication.** Everything is built in `mongosh/.staging` and renamed to `mongosh/<version>` in one step, so `installed()` — which only counts a directory named like a version *and* holding the executable — never sees a half-written install, and a cancelled or failed attempt leaves nothing but a staging directory the next attempt removes. Installing a newer version prunes older ones best-effort (a `mongosh.exe` a terminal tab still runs cannot be deleted on Windows; `installed()` picks the newest anyway).
+- **One download at a time** across windows (`terminal::download::Installer`, managed state; a second `begin` is refused), with cancellation through a `CancellationToken`. The frontend's `useMongoshDownload` store holds the state, so closing Settings or switching the dock does not read as cancelling.
+- **Update.** Settings asks the feed for the latest version only when the copy in use is HuginnDB's own (`mongosh_managed`), and shows **Update to X** only if it is strictly newer; a failed lookup (offline) is silent. Nothing checks in the background.
+- **Policy (ADR #95).** The three new commands (`terminal_mongosh_latest_version`, `terminal_mongosh_download`, `terminal_mongosh_cancel_download`) are `none` in `guard::HUMAN_POLICY`: they touch no database and carry no credential. Opening a session *as a connection* is still the guarded step (`guard::mongosh`). They refuse while the terminal is switched off in Settings. If a managed policy ever needs to forbid fetching executables, that is a new rule on these commands, not a change here.
+- **Tests.** The feed selection (stable only, system-OpenSSL builds excluded, per-platform fallback to an older version), path sanitising, both extractors, cancellation, version selection and pruning, and the whole install against a loopback HTTP server (success, checksum mismatch, cancel, already-installed) run in `cargo test`. `live_download_installs_a_working_mongosh` downloads the real archive and runs `mongosh --version`; it is `#[ignore]`d and run by hand.

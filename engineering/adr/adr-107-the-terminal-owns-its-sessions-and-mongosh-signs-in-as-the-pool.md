@@ -49,3 +49,7 @@ The dispatcher listens on `window`, so a shell's `Ctrl+B`/`Ctrl+K`/`Ctrl+R` woul
 
 ### Modules can be switched off, everywhere at once
 `lib/panelModules.ts::moduleEnabled` is the one answer for Pulse (`pulse.enabled`, new, default on — off also idles `pulse::sampler`, keeping the per-connection opt-ins), the AI (`ai.enabled`) and the terminal (`terminal.enabled`, default on). The rail, the View menu, the palette and the shortcut handlers (which return `false` to let the key fall through) all read it; `AppShell` calls `panelLayout.retirePanel` for a module turned off and closes every terminal tab. The commands refuse while the terminal is off, so the switch is an off, not a hidden icon. The bottom dock's `toggleConsole` now *switches* to the console when the terminal is showing rather than closing it; the persisted `consoleOpen` keeps its name, and a v2 layout blob gets `bottomTab: "console"` from the defaults.
+
+## Addendum (2026-10-16)
+
+`mongosh` is still not bundled, and the reason it is not belongs in the alternatives above: the official archive is 63–94 MB (205 MB unpacked on Windows) with its own, faster release cadence. What changed is that a machine without one is no longer sent away: ADR #109 adds an on-demand, checksum-verified download into the app's own data directory, found by `mongosh::locate` after the configured path, `PATH` and the official installers' locations.

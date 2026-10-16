@@ -2034,7 +2034,7 @@
       },
       "mongoshPath": {
         "label": "mongosh",
-        "desc": "Ruta completa al ejecutable de mongosh. Déjalo vacío para buscarlo en el PATH o donde lo instalan los instaladores oficiales. HuginnDB no incluye mongosh."
+        "desc": "Ruta completa al ejecutable de mongosh. Déjalo vacío para buscarlo en el PATH o donde lo instalan los instaladores oficiales. HuginnDB no incluye mongosh, pero puede descargar por ti la versión oficial."
       },
       "shellPath": {
         "label": "Shell",
@@ -2044,6 +2044,8 @@
       "found": "mongosh {{version}}",
       "shellFound": "Abre",
       "detect": "Volver a detectar",
+      "managed": "Descargado por HuginnDB desde la página oficial de descargas de MongoDB.",
+      "update": "Actualizar a {{version}}",
       "security": "mongosh inicia sesión con las credenciales de la propia conexión y, por SSH, a través de su túnel. La contraseña se le pasa en su entorno, nunca en la línea de comandos, donde otros usuarios podrían leerla. Con una política gestionada, mongosh solo se ofrece en conexiones donde puedes ejecutar consultas libres que lean y escriban cualquier cosa."
     }
   },
@@ -3939,6 +3941,22 @@
     "newSession": "Nuevo terminal",
     "closeTab": "Cerrar terminal",
     "openSettings": "Ajustes del terminal",
+    "download": {
+      "button": "Descargar mongosh",
+      "running": "Descargando mongosh…",
+      "cancel": "Cancelar",
+      "cancelling": "Cancelando…",
+      "progress": "Progreso de la descarga de mongosh",
+      "downloading": "Descargando mongosh {{version}} — {{received}} de {{total}}",
+      "downloadingUnknown": "Descargando mongosh {{version}} — {{received}}",
+      "step": {
+        "checking": "Buscando la última versión…",
+        "downloading": "Descargando…",
+        "verifying": "Verificando la suma de comprobación…",
+        "extracting": "Descomprimiendo…"
+      },
+      "failed": "No se pudo descargar mongosh: {{error}}"
+    },
     "empty": {
       "title": "Ningún terminal abierto",
       "hint": "Abre mongosh en la conexión MongoDB actual, o un shell.",

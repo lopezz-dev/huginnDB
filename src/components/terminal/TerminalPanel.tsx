@@ -16,7 +16,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Database, Plus, SquareTerminal, X } from "lucide-react";
+import { Database, Download, Plus, SquareTerminal, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
@@ -36,8 +36,10 @@ import type { TerminalEnvironment } from "@/lib/terminal/types";
 import { usePreferences, selectTerminalPrefs } from "@/stores/preferences/preferences";
 import { useConnections } from "@/stores/session/connections";
 import { useTabs } from "@/stores/session/tabs";
+import { useMongoshDownload } from "@/stores/session/mongoshDownload";
 import { useTerminals } from "@/stores/session/terminals";
 import { useUi } from "@/stores/session/ui";
+import { MongoshDownload } from "./MongoshDownload";
 import { TerminalView } from "./TerminalView";
 
 /** Free text with every verb is what `mongosh` asks of the policy
@@ -46,10 +48,12 @@ const MONGOSH_NEEDS = ["freeSql", "insert", "update", "delete", "ddl"] as const;
 
 /**
  * What this machine can start, fetched when the panel first shows and again
- * when the paths in Settings change. `null` while the first answer is pending.
+ * when the paths in Settings change or a `mongosh` download lands. `null`
+ * while the first answer is pending.
  */
 function useTerminalEnvironment(): TerminalEnvironment | null {
   const prefs = usePreferences(selectTerminalPrefs);
+  const downloaded = useMongoshDownload((s) => s.revision);
   const [env, setEnv] = useState<TerminalEnvironment | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -62,7 +66,7 @@ function useTerminalEnvironment(): TerminalEnvironment | null {
     return () => {
       cancelled = true;
     };
-  }, [prefs.mongoshPath, prefs.shellPath]);
+  }, [prefs.mongoshPath, prefs.shellPath, downloaded]);
   return env;
 }
 
@@ -108,6 +112,11 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
     !env || !offerMongosh ? null : (env.mongoshError ?? policyLock);
   const canMongosh = env !== null && offerMongosh && mongoshBlocker === null;
   const canShell = env !== null && env.shellError === null;
+  /** No `mongosh` anywhere and a build exists for this machine: offer to
+   *  fetch it, instead of only saying where to install it by hand. */
+  const canDownload = offerMongosh && env?.mongoshMissing === true && env.mongoshDownloadable;
+  const downloading = useMongoshDownload((s) => s.status.phase === "running");
+  const startDownload = useMongoshDownload((s) => s.start);
 
   const openMongosh = () => {
     if (!target) return;
@@ -153,7 +162,8 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
             >
               {shellLabel}
             </Button>
-            {offerMongosh && env?.mongoshError && (
+            {(canDownload || downloading) && <MongoshDownload />}
+            {offerMongosh && env?.mongoshError && !downloading && (
               <Button size="sm" variant="link" onClick={() => openSettings("terminal")}>
                 {t("terminal.openSettings")}
               </Button>
@@ -224,6 +234,12 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
               <SquareTerminal className="mr-2 h-4 w-4" />
               {shellLabel}
             </DropdownMenuItem>
+            {canDownload && (
+              <DropdownMenuItem disabled={downloading} onSelect={() => void startDownload()}>
+                <Download className="mr-2 h-4 w-4" />
+                {t(downloading ? "terminal.download.running" : "terminal.download.button")}
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
         {mongoshBlocker && (

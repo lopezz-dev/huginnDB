@@ -313,6 +313,8 @@ pub fn run() {
         .manage(AppState::new_with_args(parse_startup_args()))
         // The terminal panel's PTY sessions, across every window.
         .manage(terminal::TerminalRegistry::default())
+        // The one `mongosh` download that may run at a time.
+        .manage(terminal::download::Installer::default())
         // Background eviction of idle per-database pools. Started here rather
         // than lazily on first connect so the sweep also covers pools left
         // behind by a connection that was opened and closed again.
@@ -586,6 +588,9 @@ pub fn run() {
             commands::terminal::terminal_resize,
             commands::terminal::terminal_close,
             commands::terminal::terminal_close_window_sessions,
+            commands::terminal::terminal_mongosh_latest_version,
+            commands::terminal::terminal_mongosh_download,
+            commands::terminal::terminal_mongosh_cancel_download,
         ])
         .build(context())
         .expect("error while building HuginnDB")

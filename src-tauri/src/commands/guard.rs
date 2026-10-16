@@ -438,6 +438,12 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("terminal::terminal_resize", "none"),
     ("terminal::terminal_close", "none"),
     ("terminal::terminal_close_window_sessions", "none"),
+    // Fetching `mongosh` itself (ADR #109): a download from MongoDB's own host
+    // into the app's data directory. No database, no credential — the guarded
+    // step is still opening a session as a connection.
+    ("terminal::terminal_mongosh_latest_version", "none"),
+    ("terminal::terminal_mongosh_download", "none"),
+    ("terminal::terminal_mongosh_cancel_download", "none"),
     ("updater::get_auto_update_status", "none"),
     ("updater::note_update_check", "none"),
 ];

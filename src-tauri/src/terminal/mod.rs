@@ -11,6 +11,7 @@
 //! - [`mongosh`] — finding `mongosh` and the URI it signs in with.
 //! - [`utf8`] — decoding output read in arbitrary chunks.
 
+pub mod download;
 pub mod mongosh;
 pub mod session;
 pub mod shell;

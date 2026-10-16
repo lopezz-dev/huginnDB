@@ -2034,7 +2034,7 @@
       },
       "mongoshPath": {
         "label": "mongosh",
-        "desc": "Full path to the mongosh executable. Leave empty to find it on PATH or where the official installers put it. HuginnDB does not ship mongosh."
+        "desc": "Full path to the mongosh executable. Leave empty to find it on PATH or where the official installers put it. HuginnDB does not ship mongosh, but it can download the official build for you."
       },
       "shellPath": {
         "label": "Shell",
@@ -2044,6 +2044,8 @@
       "found": "mongosh {{version}}",
       "shellFound": "Starts",
       "detect": "Detect again",
+      "managed": "Downloaded by HuginnDB from MongoDB's official download page.",
+      "update": "Update to {{version}}",
       "security": "mongosh signs in with the connection's own credentials and, over SSH, through its tunnel. The password is handed to it in its environment, never on the command line where other users could read it. Under a managed policy, mongosh is only offered on connections where you may run free queries that read and write anything."
     }
   },
@@ -3939,6 +3941,22 @@
     "newSession": "New terminal",
     "closeTab": "Close terminal",
     "openSettings": "Terminal settings",
+    "download": {
+      "button": "Download mongosh",
+      "running": "Downloading mongosh…",
+      "cancel": "Cancel",
+      "cancelling": "Cancelling…",
+      "progress": "mongosh download progress",
+      "downloading": "Downloading mongosh {{version}} — {{received}} of {{total}}",
+      "downloadingUnknown": "Downloading mongosh {{version}} — {{received}}",
+      "step": {
+        "checking": "Looking up the latest version…",
+        "downloading": "Downloading…",
+        "verifying": "Verifying the checksum…",
+        "extracting": "Unpacking…"
+      },
+      "failed": "Could not download mongosh: {{error}}"
+    },
     "empty": {
       "title": "No terminal open",
       "hint": "Open mongosh on the current MongoDB connection, or a shell.",

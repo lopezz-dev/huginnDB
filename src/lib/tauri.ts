@@ -21,6 +21,8 @@ import type {
   VsixPayload,
 } from "@/lib/vscodeTheme/types";
 import type {
+  MongoshInstallEvent,
+  MongoshInstalled,
   TerminalEnvironment,
   TerminalEvent,
 } from "@/lib/terminal/types";
@@ -1867,4 +1869,27 @@ export const api = {
    *  once, since the previous page's channels died with it. */
   terminalCloseWindowSessions: () =>
     invoke<number>("terminal_close_window_sessions"),
+
+  /** The newest stable `mongosh` MongoDB offers this machine. One request to
+   *  MongoDB's download feed — ask when it is worth making. */
+  terminalMongoshLatestVersion: () =>
+    invoke<string>("terminal_mongosh_latest_version"),
+
+  /**
+   * Download, verify and install the latest stable `mongosh` into HuginnDB's
+   * own data directory. The backend chooses what is fetched, from where and
+   * against which checksum; the interface cannot name a URL. Resolves with
+   * `null` when cancelled.
+   */
+  terminalMongoshDownload: (onEvent: (event: MongoshInstallEvent) => void) => {
+    const channel = new Channel<MongoshInstallEvent>();
+    channel.onmessage = onEvent;
+    return invoke<MongoshInstalled | null>("terminal_mongosh_download", {
+      onEvent: channel,
+    });
+  },
+
+  /** Stop the download in progress, if any. */
+  terminalMongoshCancelDownload: () =>
+    invoke<void>("terminal_mongosh_cancel_download"),
 };
