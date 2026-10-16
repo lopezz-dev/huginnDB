@@ -216,6 +216,7 @@ pub fn terminal_open_shell(
             window: window.label().to_string(),
             connection_id: None,
         },
+        None,
         sink(on_event),
     )
 }
@@ -290,6 +291,7 @@ pub fn terminal_open_mongosh(
             window: window.label().to_string(),
             connection_id: Some(connection_id),
         },
+        terminal::mongosh::startup_answer(),
         sink(on_event),
     )
 }

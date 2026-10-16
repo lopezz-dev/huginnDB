@@ -28,7 +28,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - `mongosh` signs in with the connection's own user, password and SSH
     tunnel, so the connection has to be open first. The password is passed in
     `mongosh`'s environment, never on its command line, and is removed before
-    the prompt appears. Disconnecting closes the `mongosh` sessions on that
+    the prompt appears. On Windows it goes straight to the connection's
+    prompt, without the question for a connection string that `mongosh` asks
+    when it believes it was opened by a double-click. Disconnecting closes the `mongosh` sessions on that
     connection.
   - `mongosh` is not bundled. HuginnDB uses the one you installed, found on
     `PATH` or where the official installers put it; Settings → **Terminal**

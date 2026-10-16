@@ -29,7 +29,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   - `mongosh` inicia sesión con el usuario, la contraseña y el túnel SSH de la
     propia conexión, así que la conexión tiene que estar abierta antes. La
     contraseña se le pasa en el entorno de `mongosh`, nunca en su línea de
-    comandos, y se borra antes de que aparezca el prompt. Al desconectar se
+    comandos, y se borra antes de que aparezca el prompt. En Windows entra directamente
+    en el prompt de la conexión, sin la pregunta por una cadena de conexión
+    que hace `mongosh` cuando cree que lo han abierto con doble clic. Al desconectar se
     cierran las sesiones de `mongosh` de esa conexión.
   - `mongosh` no viene incluido. HuginnDB usa el que tengas instalado, que
     busca en el `PATH` o donde lo dejan los instaladores oficiales; Ajustes →

@@ -24,6 +24,7 @@ use std::time::Duration;
 
 use portable_pty::CommandBuilder;
 
+use super::answer::Answer;
 use super::shell::find_on_path;
 use crate::error::{AppError, AppResult};
 use crate::state::ConnectionProfile;
@@ -33,6 +34,24 @@ use crate::state::ConnectionProfile;
 pub const URI_ENV: &str = "HUGINNDB_MONGOSH_URI";
 /// The database to switch to after connecting, when one was asked for.
 pub const DB_ENV: &str = "HUGINNDB_MONGOSH_DB";
+
+/// What a `mongosh` session answers on its own at startup, if anything.
+///
+/// On Windows `mongosh` asks for a connection string whenever it is the only
+/// process on its console — its test for "started by a double-click" — and
+/// inside a ConPTY it always is, `--nodb` or not (the check in `cli-repl`'s
+/// `run.ts` looks at the connection string, the TTYs and
+/// `GetConsoleProcessList`, never at `--nodb`). An empty answer leaves the
+/// connection string unset, so it carries on to the bootstrap below. The
+/// text is matched exactly as `mongosh` 2.x prints it; if a later version
+/// rewords it, the prompt is simply shown again and the user can press Enter.
+/// See [`super::answer`].
+pub fn startup_answer() -> Option<Answer> {
+    cfg!(windows).then_some(Answer {
+        prompt: "Please enter a MongoDB connection string (Default: mongodb://localhost/): ",
+        reply: "\r",
+    })
+}
 
 /// Run by `mongosh --eval` before the prompt appears. Ends in `void 0` because
 /// `--eval` prints the value of its last expression, and the `delete` before
@@ -511,6 +530,7 @@ mod tests {
                     window: "main".into(),
                     connection_id: Some("m".into()),
                 },
+                startup_answer(),
                 Arc::new(move |e| {
                     let _ = tx.lock().send(e);
                 }),
@@ -542,6 +562,72 @@ mod tests {
             .unwrap();
         wait_for("leak=undefined", &mut out);
         assert!(!out.contains(&password), "the password reached the screen");
+        registry.close_connection("m");
+    }
+
+    /// Windows' half of the above, and the reason it exists: there `mongosh`
+    /// asks for a connection string whenever it is alone on its console, which
+    /// inside a ConPTY it always is (see [`startup_answer`]). Needs no server —
+    /// the command is `--nodb` with a marker instead of the sign-in bootstrap,
+    /// since the question is asked before either runs. `#[ignore]`d because it
+    /// needs `mongosh` where `locate` finds it:
+    ///
+    /// ```text
+    /// cargo test --lib -- --ignored live_mongosh_on_windows
+    /// ```
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "needs mongosh where locate() finds it; run by hand"]
+    fn live_mongosh_on_windows_is_not_asked_for_a_connection_string() {
+        use crate::terminal::{Owner, TerminalEvent, TerminalRegistry};
+        use std::sync::{mpsc, Arc};
+        use std::time::{Duration, Instant};
+
+        let program = locate("").expect("mongosh installed or downloaded");
+        let mut cmd = CommandBuilder::new(&program);
+        cmd.args(["--nodb", "--shell", "--eval", "print('huginn' + '_ready')"]);
+        crate::terminal::prepare(&mut cmd);
+
+        let (tx, rx) = mpsc::channel::<TerminalEvent>();
+        let tx = parking_lot::Mutex::new(tx);
+        let registry = TerminalRegistry::default();
+        let id = registry
+            .spawn(
+                cmd,
+                120,
+                30,
+                Owner {
+                    window: "main".into(),
+                    connection_id: Some("m".into()),
+                },
+                startup_answer(),
+                Arc::new(move |e| {
+                    let _ = tx.lock().send(e);
+                }),
+            )
+            .unwrap();
+
+        let mut out = String::new();
+        let deadline = Instant::now() + Duration::from_secs(30);
+        while !out.contains("huginn_ready") {
+            let left = deadline.saturating_duration_since(Instant::now());
+            match rx.recv_timeout(left) {
+                Ok(TerminalEvent::Output { data }) => {
+                    // ConPTY asks where the cursor is before it renders
+                    // anything; xterm.js answers in the app, so answer here.
+                    if data.contains("\x1b[6n") {
+                        registry.write(&id, b"\x1b[1;1R").unwrap();
+                    }
+                    out.push_str(&data);
+                }
+                Ok(TerminalEvent::Exit { code }) => panic!("exited ({code:?}): {out:?}"),
+                Err(_) => panic!("never got past startup: {out:?}"),
+            }
+        }
+        assert!(
+            !out.contains("connection string"),
+            "the prompt reached the screen: {out:?}"
+        );
         registry.close_connection("m");
     }
 }

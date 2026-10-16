@@ -31,6 +31,7 @@ use parking_lot::{Condvar, Mutex};
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use serde::Serialize;
 
+use super::answer::{Answer, Answerer};
 use super::utf8::Utf8Stream;
 use crate::error::{AppError, AppResult};
 
@@ -109,12 +110,16 @@ fn pty_error(what: &str, e: impl std::fmt::Display) -> AppError {
 
 impl TerminalRegistry {
     /// Start `command` in a new PTY of `cols`×`rows` and return the session id.
+    ///
+    /// `answer` is a question the child asks at startup that the session
+    /// answers for it and keeps off the screen — see [`super::answer`].
     pub fn spawn(
         &self,
         command: CommandBuilder,
         cols: u16,
         rows: u16,
         owner: Owner,
+        answer: Option<Answer>,
         sink: Sink,
     ) -> AppResult<String> {
         let pair = native_pty_system()
@@ -138,13 +143,14 @@ impl TerminalRegistry {
             .take_writer()
             .map_err(|e| pty_error("could not write to the terminal", e))?;
         let killer = child.clone_killer();
+        let writer = Arc::new(Mutex::new(writer));
 
         let id = uuid::Uuid::new_v4().to_string();
         self.sessions.lock().insert(
             id.clone(),
             Session {
                 master: pair.master,
-                writer: Arc::new(Mutex::new(writer)),
+                writer: Arc::clone(&writer),
                 killer,
                 owner,
             },
@@ -168,12 +174,25 @@ impl TerminalRegistry {
         };
         let reader_loop = move || {
             let mut decoder = Utf8Stream::default();
+            let mut answerer = answer.as_ref().map(Answerer::new);
             let mut buf = vec![0u8; READ_CHUNK];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        let text = decoder.push(&buf[..n]);
+                        let mut text = decoder.push(&buf[..n]);
+                        if let (Some(answerer), Some(answer)) = (answerer.as_mut(), answer) {
+                            let step = answerer.push(&text);
+                            if step.reply {
+                                // Best effort: if the write fails the prompt
+                                // simply waits for the user, as it did before.
+                                let mut writer = writer.lock();
+                                let _ = writer
+                                    .write_all(answer.reply.as_bytes())
+                                    .and_then(|()| writer.flush());
+                            }
+                            text = step.emit;
+                        }
                         if !text.is_empty() {
                             sink(TerminalEvent::Output { data: text });
                         }
@@ -184,7 +203,8 @@ impl TerminalRegistry {
                     Err(_) => break,
                 }
             }
-            let tail = decoder.finish();
+            let mut tail = answerer.as_mut().map(Answerer::finish).unwrap_or_default();
+            tail.push_str(&decoder.finish());
             if !tail.is_empty() {
                 sink(TerminalEvent::Output { data: tail });
             }
@@ -343,6 +363,7 @@ mod tests {
                 80,
                 24,
                 owner("main", None),
+                None,
                 sink,
             )
             .unwrap();
@@ -368,6 +389,7 @@ mod tests {
                 80,
                 24,
                 owner("main", None),
+                None,
                 sink,
             )
             .unwrap();
@@ -383,7 +405,14 @@ mod tests {
         let registry = TerminalRegistry::default();
         let (sink, rx) = sink();
         let id = registry
-            .spawn(sh("read _; stty size"), 80, 24, owner("main", None), sink)
+            .spawn(
+                sh("read _; stty size"),
+                80,
+                24,
+                owner("main", None),
+                None,
+                sink,
+            )
             .unwrap();
         registry.resize(&id, 132, 40).unwrap();
         registry.write(&id, b"\r").unwrap();
@@ -396,7 +425,7 @@ mod tests {
         let registry = TerminalRegistry::default();
         let (sink, rx) = sink();
         let id = registry
-            .spawn(sh("sleep 60"), 80, 24, owner("main", None), sink)
+            .spawn(sh("sleep 60"), 80, 24, owner("main", None), None, sink)
             .unwrap();
         registry.close(&id);
         let (_, _code) = drain(&rx);
@@ -419,7 +448,9 @@ mod tests {
             owner("second", Some("conn-b")),
         ] {
             let (sink, rx) = sink();
-            registry.spawn(sh("sleep 60"), 80, 24, o, sink).unwrap();
+            registry
+                .spawn(sh("sleep 60"), 80, 24, o, None, sink)
+                .unwrap();
             receivers.push(rx);
         }
         assert_eq!(registry.close_connection("conn-a"), 2);
@@ -440,6 +471,7 @@ mod tests {
                 80,
                 24,
                 owner("main", None),
+                None,
                 sink,
             )
             .unwrap_err();
