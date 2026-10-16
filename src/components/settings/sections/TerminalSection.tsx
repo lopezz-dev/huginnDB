@@ -11,10 +11,11 @@
 
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RefreshCw } from "lucide-react";
+import { CheckCircle2, RefreshCw, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { api } from "@/lib/tauri";
 import type { TerminalEnvironment } from "@/lib/terminal/types";
@@ -59,6 +60,45 @@ function PathInput({
   );
 }
 
+/**
+ * What detection found for one program, under its row. A found program is a
+ * quiet line — a check, the label and the path in mono, which is what a user
+ * comparing it against their install reads; a missing one is a boxed warning,
+ * the same treatment the Terminal panel's empty state gives it, since it is
+ * the thing on this page the user has to act on.
+ */
+function ProgramStatus({
+  state,
+  path,
+  children,
+}: {
+  state: "pending" | "found" | "error";
+  path?: string | null;
+  children: React.ReactNode;
+}) {
+  if (state === "error") {
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-foreground/90">
+        <TriangleAlert aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+        <span className="min-w-0 break-words">{children}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-w-0 items-start gap-1.5 text-xs text-muted-foreground">
+      {state === "found" ? (
+        <CheckCircle2 aria-hidden className="h-3.5 w-3.5 shrink-0 text-success" />
+      ) : (
+        <Spinner className="shrink-0" />
+      )}
+      <span className="shrink-0">{children}</span>
+      {path && (
+        <code className="min-w-0 break-all font-mono text-2xs text-foreground/80">{path}</code>
+      )}
+    </div>
+  );
+}
+
 export function TerminalSection() {
   const { t } = useTranslation();
   const terminal = usePreferences(selectTerminalPrefs);
@@ -78,17 +118,24 @@ export function TerminalSection() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(detect, [terminal.mongoshPath, terminal.shellPath]);
 
-  const mongoshStatus = !env
-    ? t("terminal.detecting")
-    : env.mongoshError
-      ? env.mongoshError
-      : t("settings.terminal.found", {
-          version: env.mongoshVersion ?? "?",
-          path: env.mongoshPath,
-        });
-  const shellStatus = !env
-    ? t("terminal.detecting")
-    : (env.shellError ?? t("settings.terminal.shellFound", { path: env.shellPath }));
+  const mongoshStatus = !env ? (
+    <ProgramStatus state="pending">{t("terminal.detecting")}</ProgramStatus>
+  ) : env.mongoshError ? (
+    <ProgramStatus state="error">{env.mongoshError}</ProgramStatus>
+  ) : (
+    <ProgramStatus state="found" path={env.mongoshPath}>
+      {t("settings.terminal.found", { version: env.mongoshVersion ?? "?" })}
+    </ProgramStatus>
+  );
+  const shellStatus = !env ? (
+    <ProgramStatus state="pending">{t("terminal.detecting")}</ProgramStatus>
+  ) : env.shellError ? (
+    <ProgramStatus state="error">{env.shellError}</ProgramStatus>
+  ) : (
+    <ProgramStatus state="found" path={env.shellPath}>
+      {t("settings.terminal.shellFound")}
+    </ProgramStatus>
+  );
 
   return (
     <div className="space-y-5 text-sm">
@@ -108,52 +155,11 @@ export function TerminalSection() {
         </PrefRow>
       </PrefGroup>
 
-      <PrefGroup title={t("settings.rowGroups.programs")}>
-        <PrefRow
-          label={t("settings.terminal.mongoshPath.label")}
-          prefId="terminal.mongoshPath"
-          description={t("settings.terminal.mongoshPath.desc")}
-          htmlFor="prefs-terminal-mongosh"
-        >
-          <PathInput
-            id="prefs-terminal-mongosh"
-            value={terminal.mongoshPath}
-            placeholder={t("settings.terminal.auto")}
-            onCommit={(v) => updateTerminal({ mongoshPath: v })}
-          />
-        </PrefRow>
-        <p
-          className={
-            env?.mongoshError
-              ? "text-xs text-warning"
-              : "break-all text-xs text-muted-foreground"
-          }
-        >
-          {mongoshStatus}
-        </p>
-
-        <PrefRow
-          label={t("settings.terminal.shellPath.label")}
-          prefId="terminal.shellPath"
-          description={t("settings.terminal.shellPath.desc")}
-          htmlFor="prefs-terminal-shell"
-        >
-          <PathInput
-            id="prefs-terminal-shell"
-            value={terminal.shellPath}
-            placeholder={t("settings.terminal.auto")}
-            onCommit={(v) => updateTerminal({ shellPath: v })}
-          />
-        </PrefRow>
-        <p
-          className={
-            env?.shellError ? "text-xs text-warning" : "break-all text-xs text-muted-foreground"
-          }
-        >
-          {shellStatus}
-        </p>
-
-        <div>
+      <PrefGroup
+        title={t("settings.rowGroups.programs")}
+        action={
+          // Acts on both rows, so it sits on the group's title line rather than
+          // under the last row, where it read as belonging to the shell alone.
           <Button
             size="xs"
             variant="outline"
@@ -163,7 +169,37 @@ export function TerminalSection() {
           >
             {t("settings.terminal.detect")}
           </Button>
-        </div>
+        }
+      >
+        <PrefRow
+          label={t("settings.terminal.mongoshPath.label")}
+          prefId="terminal.mongoshPath"
+          description={t("settings.terminal.mongoshPath.desc")}
+          htmlFor="prefs-terminal-mongosh"
+          footer={mongoshStatus}
+        >
+          <PathInput
+            id="prefs-terminal-mongosh"
+            value={terminal.mongoshPath}
+            placeholder={t("settings.terminal.auto")}
+            onCommit={(v) => updateTerminal({ mongoshPath: v })}
+          />
+        </PrefRow>
+
+        <PrefRow
+          label={t("settings.terminal.shellPath.label")}
+          prefId="terminal.shellPath"
+          description={t("settings.terminal.shellPath.desc")}
+          htmlFor="prefs-terminal-shell"
+          footer={shellStatus}
+        >
+          <PathInput
+            id="prefs-terminal-shell"
+            value={terminal.shellPath}
+            placeholder={t("settings.terminal.auto")}
+            onCommit={(v) => updateTerminal({ shellPath: v })}
+          />
+        </PrefRow>
       </PrefGroup>
 
       <p className="text-xs text-muted-foreground">{t("settings.terminal.security")}</p>

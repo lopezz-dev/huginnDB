@@ -2041,8 +2041,8 @@
         "desc": "Full path to the shell a plain terminal starts. Leave empty for PowerShell 7 (or Windows PowerShell) on Windows, and your $SHELL elsewhere."
       },
       "auto": "Detect automatically",
-      "found": "mongosh {{version}} — {{path}}",
-      "shellFound": "Starts {{path}}",
+      "found": "mongosh {{version}}",
+      "shellFound": "Starts",
       "detect": "Detect again",
       "security": "mongosh signs in with the connection's own credentials and, over SSH, through its tunnel. The password is handed to it in its environment, never on the command line where other users could read it. Under a managed policy, mongosh is only offered on connections where you may run free queries that read and write anything."
     }
@@ -3934,7 +3934,6 @@
   "terminal": {
     "exited": "[process exited with code {{code}}]",
     "detecting": "Looking for mongosh and your shell…",
-    "newMongosh": "New mongosh session",
     "newMongoshOn": "mongosh on {{name}}",
     "newShell": "New {{shell}} terminal",
     "newSession": "New terminal",
@@ -3942,12 +3941,8 @@
     "openSettings": "Terminal settings",
     "empty": {
       "title": "No terminal open",
-      "hint": "Open mongosh on the current MongoDB connection, or a shell."
-    },
-    "mongosh": {
-      "noConnection": "Select a MongoDB connection to open mongosh on it.",
-      "notMongo": "mongosh is for MongoDB connections; the current one is not.",
-      "notConnected": "Connect to this MongoDB connection to open mongosh on it."
+      "hint": "Open mongosh on the current MongoDB connection, or a shell.",
+      "hintShell": "Open a shell. Connect to a MongoDB connection to open mongosh on it too."
     }
   }
 }
