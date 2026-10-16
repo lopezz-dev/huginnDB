@@ -50,6 +50,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Las pantallas vacías se leen mejor.** Los puntos de trama cubrían todo el
+  panel y pasaban por debajo del título y de la pista; en un panel bajo y
+  ancho como el Terminal se estiraban en una franja plana de puntos. Ahora
+  son un halo redondo y más tenue solo detrás del logo, igual en todos los
+  paneles y en la pantalla de inicio. El motivo por el que algo no se puede
+  hacer (no se encuentra `mongosh`, no hay una conexión MongoDB
+  seleccionada) aparece ahora en su propio recuadro bajo el mensaje en vez
+  de sustituir a la pista.
 - **El panel de Esquema responde igual tenga la base de datos las tablas que
   tenga.** Al abrir una sección con 10.000 tablas se montaban las 10.000
   filas a la vez, cada una con su menú contextual, y el panel se quedaba

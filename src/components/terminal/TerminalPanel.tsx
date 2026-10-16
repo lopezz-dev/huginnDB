@@ -134,11 +134,9 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
         size="sm"
         icon={SquareTerminal}
         title={t("terminal.empty.title")}
-        hint={
-          env === null
-            ? t("terminal.detecting")
-            : (mongoshBlocker ?? t("terminal.empty.hint"))
-        }
+        hint={env === null ? t("terminal.detecting") : t("terminal.empty.hint")}
+        notice={mongoshBlocker}
+        noticeTone={env?.mongoshError ? "warning" : "info"}
         action={
           <div className="flex flex-wrap items-center justify-center gap-2">
             <Button size="sm" icon={Database} disabled={!canMongosh} onClick={openMongosh}>

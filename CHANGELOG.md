@@ -46,6 +46,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Empty screens are easier to read.** The halftone dots used to cover the
+  whole panel and ran under the title and the hint; in a short, wide panel
+  such as the Terminal they stretched into a flat band of dots. They are now
+  a fainter, round halo behind the logo only, the same in every panel and on
+  the start screen. A reason something cannot be done (`mongosh` not found,
+  no MongoDB connection selected) now appears in its own box under the
+  message instead of replacing the hint.
 - **The Schema panel stays responsive however many tables a database has.**
   Opening a section with 10,000 tables used to mount all 10,000 rows at
   once, each with its own context menu, and the panel froze. The tree is now
