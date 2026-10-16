@@ -39,6 +39,14 @@ interface Props {
   htmlFor?: string;
   /** Stable id making this row a jump target for the command palette. */
   prefId?: PrefId;
+  /**
+   * Full-width line under the label and the control, inside the row: what the
+   * setting currently resolves to ("found mongosh 2.3 at …") or why it does
+   * not. It belongs to the row, so it gets the row's inset and sits above the
+   * hairline — a status rendered as a sibling of the row ran edge to edge of
+   * the group card, with no padding, under the wrong divider.
+   */
+  footer?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -47,6 +55,7 @@ export function PrefRow({
   description,
   htmlFor,
   prefId,
+  footer,
   children,
 }: Props) {
   const { t } = useTranslation();
@@ -103,7 +112,7 @@ export function PrefRow({
       data-pref-id={prefId}
       data-modified={modified || undefined}
       className={cn(
-        "flex items-start justify-between gap-4 border-b border-border/60 py-3 last:border-b-0",
+        "border-b border-border/60 py-3 last:border-b-0",
         inGroup && "px-4",
         // One blue pulse on arrival (`animate-brand-flash`, ~0.5s) settling
         // into the persistent ring — the "small blue spark when an action
@@ -117,36 +126,39 @@ export function PrefRow({
             : "-mx-2 animate-brand-flash rounded-md bg-brand/10 px-2 ring-1 ring-brand/60 transition-colors"),
       )}
     >
-      <div className="flex-1">
-        <div className="flex items-center gap-1.5">
-          {modified && (
-            <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
-          )}
-          <Label htmlFor={htmlFor} className="text-sm font-medium">
-            {label}
-          </Label>
-          {modified && <span className="sr-only">{t("settings.changed")}</span>}
-        </div>
-        {description && (
-          <div className="mt-0.5 text-2xs leading-snug text-muted-foreground">
-            {description}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1">
+          <div className="flex items-center gap-1.5">
+            {modified && (
+              <span aria-hidden className="h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+            )}
+            <Label htmlFor={htmlFor} className="text-sm font-medium">
+              {label}
+            </Label>
+            {modified && <span className="sr-only">{t("settings.changed")}</span>}
           </div>
-        )}
+          {description && (
+            <div className="mt-0.5 text-2xs leading-snug text-muted-foreground">
+              {description}
+            </div>
+          )}
+        </div>
+        <div className="flex shrink-0 items-start gap-1">
+          {modified && prefId && (
+            <IconButton
+              size="xs"
+              icon={RotateCcw}
+              label={resetLabel}
+              tone="brand"
+              flat
+              className="mt-0.5"
+              onClick={() => resetPrefs([prefId])}
+            />
+          )}
+          {children}
+        </div>
       </div>
-      <div className="flex shrink-0 items-start gap-1">
-        {modified && prefId && (
-          <IconButton
-            size="xs"
-            icon={RotateCcw}
-            label={resetLabel}
-            tone="brand"
-            flat
-            className="mt-0.5"
-            onClick={() => resetPrefs([prefId])}
-          />
-        )}
-        {children}
-      </div>
+      {footer && <div className="mt-2">{footer}</div>}
     </div>
   );
 }

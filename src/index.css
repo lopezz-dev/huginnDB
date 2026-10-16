@@ -191,8 +191,8 @@ input[type="password"]::-ms-clear {
     );
   }
 
-  /* Same lattice, centred — for a mark sitting in the middle of an empty state
-     or the splash screen. `farthest-side` + a late fade keeps the field lit all
+  /* Same lattice, centred — for a mark sitting in the middle of the splash
+     screen or a banner (empty states use `halftone-spot` below). `farthest-side` + a late fade keeps the field lit all
      the way into the corners instead of dying in a small circle around the
      mark; the dots are also brighter than the corner variant, since here they
      are the only texture on the surface. */
@@ -212,6 +212,37 @@ input[type="password"]::-ms-clear {
       farthest-side,
       #000 0%,
       #000 45%,
+      transparent 100%
+    );
+  }
+
+  /* The lattice as a halo behind one mark — the empty states' variant. The
+     full-surface wash above stretched its `farthest-side` ellipse to the box,
+     so a short, wide dock panel turned it into a flat lens of dots, and at 70%
+     it ran straight under the title and hint. This one is a *circle* of a
+     fixed size (the call site sets the element's box, square), so its shape no
+     longer depends on the panel's aspect ratio; it fades out gradually from
+     its centre, which is what keeps it from reading as the hard-edged patch
+     the earlier ring did; and it is fainter, because it is accompaniment, not
+     the surface. `background-position: center` puts a dot on the mark's centre
+     so the halo is symmetric around it instead of offset by a partial tile. */
+  .halftone-spot {
+    background-image: radial-gradient(
+      color-mix(in srgb, var(--brand) 45%, transparent) 1px,
+      transparent 1.5px
+    );
+    background-size: var(--halftone-pitch, 8px) var(--halftone-pitch, 8px);
+    background-position: center;
+    -webkit-mask-image: radial-gradient(
+      circle closest-side,
+      #000 0%,
+      #000 20%,
+      transparent 100%
+    );
+    mask-image: radial-gradient(
+      circle closest-side,
+      #000 0%,
+      #000 20%,
       transparent 100%
     );
   }

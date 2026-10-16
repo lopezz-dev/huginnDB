@@ -23,6 +23,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     estabas, o tu propio shell: PowerShell 7 (si no, Windows PowerShell) en
     Windows, y tu `$SHELL` (si no, `bash`) en el resto. Cada sesión es una
     pestaña, y siguen en marcha con el panel plegado.
+  - `mongosh` solo se ofrece mientras estás en una conexión MongoDB abierta.
+    Sin conexión, con una SQL o con una MongoDB cerrada, el panel ofrece solo
+    el shell y no dice nada de `mongosh`, ni siquiera que no está instalado.
   - `mongosh` inicia sesión con el usuario, la contraseña y el túnel SSH de la
     propia conexión, así que la conexión tiene que estar abierta antes. La
     contraseña se le pasa en el entorno de `mongosh`, nunca en su línea de
@@ -50,6 +53,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Las pantallas vacías se leen mejor.** Los puntos de trama cubrían todo el
+  panel y pasaban por debajo del título y de la pista; en un panel bajo y
+  ancho como el Terminal se estiraban en una franja plana de puntos. Ahora
+  son un halo redondo y más tenue solo detrás del logo, igual en todos los
+  paneles y en la pantalla de inicio. El motivo por el que algo no se puede
+  hacer (no se encuentra `mongosh`, una política que no lo permite)
+  aparece ahora en su propio recuadro bajo el mensaje en vez de sustituir a
+  la pista.
 - **El panel de Esquema responde igual tenga la base de datos las tablas que
   tenga.** Al abrir una sección con 10.000 tablas se montaban las 10.000
   filas a la vez, cada una con su menú contextual, y el panel se quedaba

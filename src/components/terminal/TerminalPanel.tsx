@@ -31,7 +31,7 @@ import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { usePolicyLocker } from "@/lib/policy/access";
-import { mongoshTarget, type MongoshUnavailable } from "@/lib/terminal/target";
+import { mongoshTarget } from "@/lib/terminal/target";
 import type { TerminalEnvironment } from "@/lib/terminal/types";
 import { usePreferences, selectTerminalPrefs } from "@/stores/preferences/preferences";
 import { useConnections } from "@/stores/session/connections";
@@ -43,12 +43,6 @@ import { TerminalView } from "./TerminalView";
 /** Free text with every verb is what `mongosh` asks of the policy
  *  (`guard::mongosh`); the first of these that is locked is the reason. */
 const MONGOSH_NEEDS = ["freeSql", "insert", "update", "delete", "ddl"] as const;
-
-const UNAVAILABLE_KEY: Record<MongoshUnavailable, string> = {
-  noConnection: "terminal.mongosh.noConnection",
-  notMongo: "terminal.mongosh.notMongo",
-  notConnected: "terminal.mongosh.notConnected",
-};
 
 /**
  * What this machine can start, fetched when the panel first shows and again
@@ -100,15 +94,19 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
     ? (MONGOSH_NEEDS.map((need) => lockOf(need)).find((reason) => reason !== null) ?? null)
     : null;
 
-  /** Why `mongosh` cannot be offered right now, in words; `null` if it can. */
-  const mongoshBlocker: string | null = !env
-    ? null
-    : env.mongoshError
-      ? env.mongoshError
-      : "unavailable" in resolved
-        ? t(UNAVAILABLE_KEY[resolved.unavailable])
-        : policyLock;
-  const canMongosh = env !== null && mongoshBlocker === null && target !== null;
+  /**
+   * `mongosh` is offered at all only while the workspace is on a connected
+   * MongoDB connection. With nothing selected, a SQL connection or a MongoDB
+   * one that is closed, the button, the menu item and every word about
+   * mongosh (a missing binary included) stay out of the way: they used to
+   * show as a disabled button plus a reason, which on a SQL connection read
+   * as an error about a tool the user never asked for.
+   */
+  const offerMongosh = target !== null;
+  /** Why the offered `mongosh` cannot start, in words; `null` if it can. */
+  const mongoshBlocker: string | null =
+    !env || !offerMongosh ? null : (env.mongoshError ?? policyLock);
+  const canMongosh = env !== null && offerMongosh && mongoshBlocker === null;
   const canShell = env !== null && env.shellError === null;
 
   const openMongosh = () => {
@@ -123,9 +121,7 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
   const openShell = () =>
     open({ kind: "shell", connectionId: null, database: null, title: env?.shell ?? "shell" });
 
-  const mongoshLabel = target
-    ? t("terminal.newMongoshOn", { name: target.title })
-    : t("terminal.newMongosh");
+  const mongoshLabel = target ? t("terminal.newMongoshOn", { name: target.title }) : null;
   const shellLabel = t("terminal.newShell", { shell: env?.shell ?? "shell" });
 
   if (tabs.length === 0) {
@@ -137,23 +133,27 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
         hint={
           env === null
             ? t("terminal.detecting")
-            : (mongoshBlocker ?? t("terminal.empty.hint"))
+            : t(offerMongosh ? "terminal.empty.hint" : "terminal.empty.hintShell")
         }
+        notice={mongoshBlocker}
+        noticeTone={env?.mongoshError ? "warning" : "info"}
         action={
           <div className="flex flex-wrap items-center justify-center gap-2">
-            <Button size="sm" icon={Database} disabled={!canMongosh} onClick={openMongosh}>
-              {mongoshLabel}
-            </Button>
+            {offerMongosh && (
+              <Button size="sm" icon={Database} disabled={!canMongosh} onClick={openMongosh}>
+                {mongoshLabel}
+              </Button>
+            )}
             <Button
               size="sm"
-              variant="outline"
+              variant={offerMongosh ? "outline" : "default"}
               icon={SquareTerminal}
               disabled={!canShell}
               onClick={openShell}
             >
               {shellLabel}
             </Button>
-            {env?.mongoshError && (
+            {offerMongosh && env?.mongoshError && (
               <Button size="sm" variant="link" onClick={() => openSettings("terminal")}>
                 {t("terminal.openSettings")}
               </Button>
@@ -214,10 +214,12 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
             <IconButton size="xs" flat icon={Plus} label={t("terminal.newSession")} side="top" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem disabled={!canMongosh} onSelect={openMongosh}>
-              <Database className="mr-2 h-4 w-4" />
-              {mongoshLabel}
-            </DropdownMenuItem>
+            {offerMongosh && (
+              <DropdownMenuItem disabled={!canMongosh} onSelect={openMongosh}>
+                <Database className="mr-2 h-4 w-4" />
+                {mongoshLabel}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem disabled={!canShell} onSelect={openShell}>
               <SquareTerminal className="mr-2 h-4 w-4" />
               {shellLabel}

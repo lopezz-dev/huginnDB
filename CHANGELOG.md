@@ -21,6 +21,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     your own shell: PowerShell 7 (else Windows PowerShell) on Windows, your
     `$SHELL` (else `bash`) elsewhere. Each session is a tab, and they keep
     running while the dock is collapsed.
+  - `mongosh` is offered only while you are on a MongoDB connection that is
+    open. With no connection, a SQL one or a closed MongoDB one, the panel
+    offers just the shell and says nothing about `mongosh`, not even that it
+    is not installed.
   - `mongosh` signs in with the connection's own user, password and SSH
     tunnel, so the connection has to be open first. The password is passed in
     `mongosh`'s environment, never on its command line, and is removed before
@@ -46,6 +50,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **Empty screens are easier to read.** The halftone dots used to cover the
+  whole panel and ran under the title and the hint; in a short, wide panel
+  such as the Terminal they stretched into a flat band of dots. They are now
+  a fainter, round halo behind the logo only, the same in every panel and on
+  the start screen. A reason something cannot be done (`mongosh` not found,
+  a policy that does not allow it) now appears in its own box under the
+  message instead of replacing the hint.
 - **The Schema panel stays responsive however many tables a database has.**
   Opening a section with 10,000 tables used to mount all 10,000 rows at
   once, each with its own context menu, and the panel froze. The tree is now
