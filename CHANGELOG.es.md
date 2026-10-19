@@ -164,6 +164,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     5 segundos al principio, duplicando hasta 5 minutos. Mientras tanto las
     consultas fallan al momento e indican cuándo será el siguiente intento.
     Reconectar a mano sigue intentándolo en el acto.
+- **El conector MCP podía abrir la misma conexión varias veces a la vez.**
+  - Cuando la IA lanzaba varias herramientas juntas y el conector trabajaba
+    sin la app de HuginnDB abierta, cada herramienta abría su propia conexión
+    al servidor. A través de un túnel SSH eso eran varios inicios de sesión
+    SSH contra el mismo servidor en menos de un segundo, algo que los
+    servidores que limitan las conexiones SSH nuevas por minuto pueden tratar
+    como un ataque y bloquear.
+  - Ahora las herramientas esperan a que la primera abra la conexión y la
+    comparten, como ya hace la propia app desde la 1.32.0.
 
 ## [1.33.0] — 2026-10-14
 

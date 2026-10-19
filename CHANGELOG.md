@@ -154,6 +154,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     at first, doubling up to 5 minutes. Meanwhile queries fail straight away and
     say when the next attempt will be. Reconnecting by hand still tries at
     once.
+- **The MCP connector could open the same connection several times at once.**
+  - When the AI ran several tools together and the connector was working
+    without the HuginnDB app, each tool opened its own connection to the
+    server. Through an SSH tunnel that meant several SSH logins to the same
+    server within a second, which servers that limit new SSH connections per
+    minute can treat as an attack and block.
+  - The tools now wait for the first one to open the connection and share it,
+    as the app itself has done since 1.32.0.
 
 ## [1.33.0] — 2026-10-14
 

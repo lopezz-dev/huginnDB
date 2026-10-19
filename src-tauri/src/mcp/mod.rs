@@ -1113,6 +1113,28 @@ impl Huginn {
             .into_iter()
             .find(|p| p.id == id)
             .ok_or_else(|| crate::error::AppError::NotFound(format!("profile {id}")))?;
+        self.open_local(profile).await
+    }
+
+    /// The half of [`Self::ensure_connected`] that runs when this process owns
+    /// its pools: reuse the one it holds for `profile`, or open one.
+    ///
+    /// **Single-flight per id**, through the same [`AppState::open_lock`] the
+    /// app's `connect_inner` takes (ADR #104). `rmcp` serves every request on
+    /// its own task, and a model routinely calls several tools at once — three
+    /// `describe_table`s, say — each of which starts here. Without the lock all
+    /// of them found the id absent and all of them dialled: for a tunnelled
+    /// connection, that many SSH handshakes against the same bastion inside a
+    /// second, which is precisely what a "new connections per minute" rule on
+    /// port 22 bans. Each later insert then replaced the earlier pool with a bare
+    /// `Drop`. Now the second caller waits and finds the first one's pool.
+    ///
+    /// Split out from `ensure_connected` so it can be tested without reading the
+    /// real `profiles.json` (convention #52).
+    async fn open_local(&self, profile: crate::state::ConnectionProfile) -> AppResult<()> {
+        let id = profile.id.as_str();
+        let open_lock = self.state.open_lock(id);
+        let _opening = open_lock.lock().await;
         // As the app does: the person's own database user, when one is in force.
         let profile = crate::credentials::effective_profile(&self.state.policy, &profile);
         let target = profile.dial_target();
@@ -2804,6 +2826,51 @@ mod tests {
             // running app and send these requests to it.
             Arc::new(crate::bridge::client::BridgeSlot::never()),
         )
+    }
+
+    /// A model calling several tools at once used to open one pool — and, over
+    /// SSH, one tunnel — per call, because each found the id absent before any
+    /// of them had inserted. A local open now waits for one already in flight
+    /// for the same id and then reuses its pool.
+    ///
+    /// Holds the lock itself rather than racing two opens: two SQLite opens are
+    /// too fast to overlap reliably, and the question is only whether
+    /// `open_local` takes the per-id lock at all.
+    #[tokio::test]
+    async fn a_local_open_waits_for_one_already_in_flight_for_the_same_id() {
+        // Its own temp file: tests in this module run concurrently.
+        let path = std::env::temp_dir().join("huginndb_mcp_single_flight_test.db");
+        let _ = std::fs::remove_file(&path);
+        std::fs::File::create(&path).unwrap();
+        let id = "single-flight";
+        let huginn = huginn_with_policy(id, McpWritePolicy::default(), true);
+        let profile = crate::state::ConnectionProfile {
+            driver: crate::state::Driver::Sqlite,
+            host: String::new(),
+            port: 0,
+            username: String::new(),
+            database: path.to_string_lossy().into_owned(),
+            ..crate::testkit::profile(id)
+        };
+
+        let lock = huginn.state.open_lock(id);
+        let in_flight = lock.lock().await;
+        let opening = huginn.open_local(profile.clone());
+        tokio::pin!(opening);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut opening)
+                .await
+                .is_err(),
+            "a second opener must wait for the first instead of dialling its own pool"
+        );
+        assert!(!huginn.state.connections.read().contains(id));
+
+        drop(in_flight);
+        opening.await.unwrap();
+        assert!(huginn.state.connections.read().contains(id));
+
+        huginn.close_local(id).await;
+        let _ = std::fs::remove_file(&path);
     }
 
     /// The bug this guards: with the bridge attached and the app gone, every
