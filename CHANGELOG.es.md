@@ -130,6 +130,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   sugerencias fijo es ahora el viewport. Ninguna de las dos decisiones
   cambia.
 
+### Corregido
+
+- **Un túnel SSH podía dejar más de una sesión abierta en el servidor.**
+  - Cuando un servidor tardaba en abrir una conexión a través del túnel,
+    HuginnDB daba la sesión SSH por muerta y volvía a iniciar sesión, aunque la
+    sesión seguía funcionando. Tampoco cerraba la antigua: seguía abierta en el
+    servidor mientras alguna conexión a la base de datos la usara, hasta media
+    hora.
+  - En servidores que solo permiten unas pocas sesiones SSH a la vez, esas
+    sesiones sobrantes podían agotar el cupo.
+  - Ahora una conexión lenta se informa como lenta, y HuginnDB solo vuelve a
+    iniciar sesión cuando la sesión de verdad ha caído. Cuando lo hace, cierra
+    primero la antigua.
+
 ## [1.33.0] — 2026-10-14
 
 ### Corregido
