@@ -132,6 +132,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Conectar a través de un servidor SSH que no respondía podía quedarse
+  colgado para siempre.**
+  - Si el servidor SSH aceptaba la conexión y luego no respondía nunca (un
+    servidor sobrecargado, o un cortafuegos que retiene las conexiones en
+    vez de rechazarlas), HuginnDB se quedaba esperando indefinidamente en
+    «Conectando…».
+  - Si pasaba mientras un túnel se reconectaba solo, todas las consultas de
+    esa conexión esperaban detrás, y después cada una volvía a iniciar sesión
+    en el servidor.
+  - Ahora abrir la sesión SSH se da por perdido a los 15 segundos y se indica
+    qué servidor SSH no respondió.
 - **Un túnel SSH podía dejar más de una sesión abierta en el servidor.**
   - Cuando un servidor tardaba en abrir una conexión a través del túnel,
     HuginnDB daba la sesión SSH por muerta y volvía a iniciar sesión, aunque la
