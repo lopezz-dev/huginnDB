@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.34.0] — 2026-10-19
+
 ### Added
 
 - **A terminal in the bottom dock, with `mongosh` signed in as your MongoDB

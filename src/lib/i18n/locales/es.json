@@ -2631,6 +2631,31 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_34_0": {
+        "tagline": "Un terminal en el panel inferior ejecuta mongosh con la sesión de tu conexión MongoDB, los esquemas grandes se abren al momento y los túneles SSH dejan de insistir con un servidor que no responde.",
+        "items": {
+          "terminalMongosh": {
+            "title": "Un terminal con mongosh, ya con la sesión iniciada",
+            "body": "El icono Terminal (o Mod+Shift+`) abre un terminal junto a la Consola. Su menú + arranca mongosh en la conexión MongoDB actual, con su usuario, contraseña y túnel SSH, así que los scripts que te da una IA funcionan tal cual. También tienes tu propio shell."
+          },
+          "mongoshDownload": {
+            "title": "¿Sin mongosh? Un clic y lo tienes",
+            "body": "Si no tienes mongosh instalado, Descargar mongosh baja la versión oficial de MongoDB para tu sistema, comprueba su checksum y la guarda en la carpeta de HuginnDB, sin permisos de administrador. Un mongosh que hayas instalado tú siempre tiene prioridad."
+          },
+          "largeSchemas": {
+            "title": "Miles de tablas, sin bloqueos",
+            "body": "Los nombres de las tablas aparecen al instante en todos los drivers y el número de filas y los tamaños llegan un momento después, y el panel Esquema solo dibuja las filas cercanas a lo que estás viendo, así que una base de datos con 10.000 tablas se abre sin atascarse."
+          },
+          "sshGentler": {
+            "title": "Los túneles SSH tratan mejor a tus servidores",
+            "body": "Un servidor SSH que no responde se abandona a los 15 segundos en vez de quedarse colgado, un túnel lento ya no se confunde con uno muerto y, tras un inicio de sesión fallido, el túnel espera antes de reintentar. Los servidores que bloquean inicios de sesión repetidos dejan de recibir una ráfaga de ellos, ni desde la app ni desde el conector MCP."
+          },
+          "hidePanels": {
+            "title": "Oculta lo que no uses",
+            "body": "Pulse, el panel de IA y el Terminal tienen cada uno un interruptor en Ajustes que los quita de la barra de actividad, los menús y la paleta de comandos. Apagar Pulse además detiene su muestreo en segundo plano."
+          }
+        }
+      },
       "1_33_0": {
         "tagline": "El conector MCP sigue funcionando con los AppImage de Linux, sigue a una conexión que editas, y una conexión abierta que editas ahora te avisa de que hay que reconectarla.",
         "items": {

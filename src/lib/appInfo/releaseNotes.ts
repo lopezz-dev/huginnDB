@@ -37,6 +37,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  EyeOff,
   FilePen,
   FolderTree,
   ImagePlus,
@@ -100,6 +101,38 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.34.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_34_0.tagline",
+    highlights: [
+      {
+        icon: SquareTerminal,
+        titleKey: "whatsNew.releases.1_34_0.items.terminalMongosh.title",
+        bodyKey: "whatsNew.releases.1_34_0.items.terminalMongosh.body",
+      },
+      {
+        icon: Download,
+        titleKey: "whatsNew.releases.1_34_0.items.mongoshDownload.title",
+        bodyKey: "whatsNew.releases.1_34_0.items.mongoshDownload.body",
+      },
+      {
+        icon: ListTree,
+        titleKey: "whatsNew.releases.1_34_0.items.largeSchemas.title",
+        bodyKey: "whatsNew.releases.1_34_0.items.largeSchemas.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_34_0.items.sshGentler.title",
+        bodyKey: "whatsNew.releases.1_34_0.items.sshGentler.body",
+      },
+      {
+        icon: EyeOff,
+        titleKey: "whatsNew.releases.1_34_0.items.hidePanels.title",
+        bodyKey: "whatsNew.releases.1_34_0.items.hidePanels.body",
+      },
+    ],
+  },
   {
     version: "1.33.0",
     major: true,

@@ -2631,6 +2631,31 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_34_0": {
+        "tagline": "A terminal in the bottom dock runs mongosh signed in as your MongoDB connection, big schemas open at once, and SSH tunnels stop knocking on a server that is not answering.",
+        "items": {
+          "terminalMongosh": {
+            "title": "A terminal with mongosh, signed in for you",
+            "body": "The Terminal icon (or Mod+Shift+`) opens a terminal next to the Console. Its + menu starts mongosh on the current MongoDB connection, with its user, password and SSH tunnel, so the scripts an AI hands you run as written. Your own shell is there too."
+          },
+          "mongoshDownload": {
+            "title": "No mongosh? One click gets it",
+            "body": "With no mongosh installed, Download mongosh fetches MongoDB's official build for your system, checks its checksum and keeps it in HuginnDB's own folder, with no admin rights. A mongosh you installed yourself always wins."
+          },
+          "largeSchemas": {
+            "title": "Thousands of tables, no freeze",
+            "body": "Table names now show right away on every driver and row counts and sizes follow a moment later, and the Schema panel only draws the rows near what you are looking at, so a database with 10,000 tables opens without stalling."
+          },
+          "sshGentler": {
+            "title": "SSH tunnels are gentler on your servers",
+            "body": "A silent SSH server is given up on after 15 seconds instead of hanging, a slow tunnel is no longer mistaken for a dead one, and after a failed login the tunnel waits before trying again. Servers that ban repeated logins stop seeing a stream of them, from the app or the MCP connector."
+          },
+          "hidePanels": {
+            "title": "Hide what you don't use",
+            "body": "Pulse, the AI panel and the Terminal each have a switch in Settings that removes them from the activity bar, menus and command palette. Turning Pulse off also stops its background sampler."
+          }
+        }
+      },
       "1_33_0": {
         "tagline": "The MCP connector keeps working on Linux AppImages, follows a connection you edit, and an open connection you edit now tells you it needs a reconnect.",
         "items": {

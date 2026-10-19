@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.34.0] — 2026-10-19
+
 ### Añadido
 
 - **Un terminal en el panel inferior, con `mongosh` iniciado en tu conexión
