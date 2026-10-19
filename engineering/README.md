@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-110 entries: 88 ADRs, 13 gotchas, 9 conventions.
+111 entries: 89 ADRs, 13 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -150,4 +150,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 108 | ADR | [The schema tree is one flat, virtualised list, and its side effects follow the expanded structure, not mounted components](adr/adr-108-the-schema-tree-is-one-flat-virtualised-list.md) | accepted | 2026-10-15 |
 | 109 | ADR | [`mongosh` is downloaded on request from MongoDB's own feed, verified against its published SHA-256, and kept in a per-user directory — never bundled in the installer](adr/adr-109-mongosh-is-downloaded-on-request-from-mongodb-not-bundled.md) | accepted | 2026-10-16 |
 | 110 | ADR | [a tunnel holds one SSH session — a slow channel is not a dead session, and a replaced session is closed](adr/adr-110-a-tunnel-holds-one-ssh-session.md) | accepted | 2026-10-19 |
+| 111 | ADR | [a tunnel whose redial failed waits before dialling again, and fails every channel at once meanwhile](adr/adr-111-a-failed-redial-backs-off.md) | accepted | 2026-10-19 |
 <!-- index:end -->

@@ -309,6 +309,66 @@ impl Dialer {
 struct TunnelSession {
     current: tokio::sync::Mutex<Arc<Handle<Client>>>,
     dialer: Dialer,
+    /// Read and written only while `current` is held.
+    backoff: Mutex<Backoff>,
+}
+
+/// Wait after the first failed redial; each further failure doubles it.
+const REDIAL_BACKOFF_BASE: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Longest wait between redials of a tunnel whose server keeps failing them.
+///
+/// Five minutes: long enough that a server which bans an address for repeated
+/// logins (fail2ban, an `iptables recent` rule) sees a handful of attempts an
+/// hour instead of one per query, short enough that a bastion that comes back
+/// is found again within a coffee break without anyone clicking Reconnect.
+const REDIAL_BACKOFF_MAX: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// When a tunnel whose redial failed may try again.
+///
+/// Without it every connection through a dead tunnel dialled the bastion: the
+/// heartbeat's retries and then one every 30 s, Pulse once a minute, MongoDB's
+/// monitor every 10 s — every 0.5 s while a query waited — and each click. A
+/// connection queued behind a failing dial dialled again the moment it got the
+/// lock. Against a server that refuses or bans, that kept knocking for as long
+/// as the connection stayed open in the app, and a ban that counts attempts
+/// never expired. Now one dial fails, and until the backoff runs out every
+/// other channel fails at once, without touching the network.
+#[derive(Debug, Default)]
+struct Backoff {
+    failures: u32,
+    until: Option<std::time::Instant>,
+    last_error: String,
+}
+
+impl Backoff {
+    /// The wait after `failures` consecutive failed redials.
+    fn delay(failures: u32) -> std::time::Duration {
+        let doublings = failures.saturating_sub(1).min(16);
+        REDIAL_BACKOFF_BASE
+            .saturating_mul(1 << doublings)
+            .min(REDIAL_BACKOFF_MAX)
+    }
+
+    /// How long until a redial may be attempted, if one may not be yet.
+    fn remaining(&self, now: std::time::Instant) -> Option<std::time::Duration> {
+        self.until
+            .filter(|until| *until > now)
+            .map(|until| until - now)
+    }
+
+    /// Record a failed redial and return the wait it earned.
+    fn failed(&mut self, now: std::time::Instant, error: &AppError) -> std::time::Duration {
+        self.failures = self.failures.saturating_add(1);
+        let wait = Self::delay(self.failures);
+        self.until = Some(now + wait);
+        self.last_error = error.to_string();
+        wait
+    }
+
+    fn succeeded(&mut self) {
+        *self = Self::default();
+    }
 }
 
 impl TunnelSession {
@@ -366,15 +426,42 @@ impl TunnelSession {
         let mut current = self.current.lock().await;
         // Someone else may have redialled while we waited for the lock.
         if Arc::ptr_eq(&current, &session) {
-            eprintln!(
-                "[ssh] session to {}:{} is gone; reconnecting",
-                self.dialer.tunnel.host, self.dialer.tunnel.port
-            );
+            let (host, port) = (&self.dialer.tunnel.host, self.dialer.tunnel.port);
+            // A redial failed a moment ago: fail now, without dialling. Checked
+            // under the lock, so the connections queued behind a failing dial
+            // fail with it instead of each dialling in turn.
+            let pending = {
+                let backoff = self.backoff.lock();
+                backoff
+                    .remaining(std::time::Instant::now())
+                    .map(|wait| (wait, backoff.last_error.clone()))
+            };
+            if let Some((wait, last)) = pending {
+                return Err(AppError::Ssh(format!(
+                    "the SSH session to {host}:{port} is down and reconnecting failed ({last}); \
+                     next attempt in {}s",
+                    wait.as_secs().max(1)
+                )));
+            }
+            eprintln!("[ssh] session to {host}:{port} is gone; reconnecting");
             // Closed before the new one is dialled, not after: if the server
             // still counts it, a limit on concurrent sessions has room for the
             // replacement. On a session that is already gone this is a no-op.
             retire(&current).await;
-            *current = Arc::new(self.dialer.dial().await?);
+            match self.dialer.dial().await {
+                Ok(fresh) => {
+                    self.backoff.lock().succeeded();
+                    *current = Arc::new(fresh);
+                }
+                Err(e) => {
+                    let wait = self.backoff.lock().failed(std::time::Instant::now(), &e);
+                    eprintln!(
+                        "[ssh] reconnecting to {host}:{port} failed ({e}); next attempt in {}s",
+                        wait.as_secs()
+                    );
+                    return Err(e);
+                }
+            }
         }
         let session = current.clone();
         drop(current);
@@ -551,6 +638,7 @@ pub async fn open_tunnel(
     let session = Arc::new(TunnelSession {
         current: tokio::sync::Mutex::new(Arc::new(session)),
         dialer,
+        backoff: Mutex::new(Backoff::default()),
     });
     let remote_host_owned = remote_host.to_string();
 
@@ -686,6 +774,30 @@ PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
         /// pings — which is what a session the network dropped looks like from
         /// the client.
         stall_next: AtomicBool,
+        /// Every password login attempted, accepted or not: what a rule that
+        /// bans an address for repeated logins counts.
+        attempts: AtomicUsize,
+        /// Reject every login while set — a bastion that has banned us.
+        refuse_logins: AtomicBool,
+        /// The server side of every session, so a test can end them.
+        sessions: parking_lot::Mutex<Vec<server::Handle>>,
+    }
+
+    impl Seen {
+        /// End every session from the server side, as a bastion restart or a
+        /// firewall reset would.
+        async fn drop_every_session(&self) {
+            let sessions: Vec<_> = self.sessions.lock().drain(..).collect();
+            for session in sessions {
+                let _ = session
+                    .disconnect(
+                        russh::Disconnect::ByApplication,
+                        "going away".into(),
+                        "en".into(),
+                    )
+                    .await;
+            }
+        }
     }
 
     /// Longer than [`CHANNEL_OPEN_TIMEOUT`] plus [`PING_TIMEOUT`], so the
@@ -714,6 +826,10 @@ PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
             _user: &str,
             _password: &str,
         ) -> Result<Auth, Self::Error> {
+            self.seen.attempts.fetch_add(1, Ordering::SeqCst);
+            if self.seen.refuse_logins.load(Ordering::SeqCst) {
+                return Ok(Auth::reject());
+            }
             self.authenticated = true;
             self.seen.logins.fetch_add(1, Ordering::SeqCst);
             self.seen.live.fetch_add(1, Ordering::SeqCst);
@@ -776,8 +892,10 @@ PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
                     authenticated: false,
                 };
                 let config = config.clone();
+                let seen = for_server.clone();
                 tokio::spawn(async move {
                     if let Ok(running) = server::run_stream(config, socket, handler).await {
+                        seen.sessions.lock().push(running.handle());
                         let _ = running.await;
                     }
                 });
@@ -925,5 +1043,117 @@ PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
         };
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
         assert!(!e.to_string().contains("no answer"), "{e}");
+    }
+
+    #[test]
+    fn the_redial_wait_doubles_up_to_its_ceiling_and_a_success_clears_it() {
+        let waits: Vec<u64> = (1..=9).map(|n| Backoff::delay(n).as_secs()).collect();
+        assert_eq!(waits, [5, 10, 20, 40, 80, 160, 300, 300, 300]);
+        // Never overflows, however long the server stays down.
+        assert_eq!(Backoff::delay(u32::MAX), REDIAL_BACKOFF_MAX);
+
+        let now = std::time::Instant::now();
+        let mut backoff = Backoff::default();
+        assert_eq!(
+            backoff.remaining(now),
+            None,
+            "a tunnel that never failed waits for nothing"
+        );
+        let wait = backoff.failed(now, &AppError::Ssh("refused".into()));
+        assert_eq!(wait, REDIAL_BACKOFF_BASE);
+        assert_eq!(backoff.remaining(now), Some(REDIAL_BACKOFF_BASE));
+        assert_eq!(backoff.remaining(now + REDIAL_BACKOFF_BASE), None);
+        assert_eq!(
+            backoff.failed(now, &AppError::Ssh("refused".into())),
+            REDIAL_BACKOFF_BASE * 2
+        );
+        backoff.succeeded();
+        assert_eq!(backoff.remaining(now), None);
+        assert_eq!(backoff.failures, 0);
+    }
+
+    /// Opens a connection through the tunnel and reports whether the tunnel
+    /// closed it — which is what it does when it cannot get a channel.
+    async fn tunnel_refuses(local_port: u16) -> bool {
+        let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", local_port))
+            .await
+            .unwrap();
+        let mut buf = [0u8; 1];
+        matches!(
+            tokio::time::timeout(Duration::from_secs(30), socket.read(&mut buf)).await,
+            Ok(Ok(0) | Err(_))
+        )
+    }
+
+    /// The finding behind this: once a redial failed, every connection
+    /// through the tunnel dialled the bastion again — the heartbeat, Pulse,
+    /// MongoDB's monitor, each click — so a server that bans an address for
+    /// repeated logins saw a steady stream of them and the ban never expired.
+    ///
+    /// The bastion drops every session and starts refusing logins. The first
+    /// connection after that redials once and is refused; the next five, all
+    /// at once, must not reach the bastion at all. After the wait one more
+    /// attempt goes out, and once the bastion lets us in the tunnel works and
+    /// the slate is clean. About twenty seconds: two real backoff waits.
+    #[tokio::test]
+    async fn a_failed_redial_holds_off_the_next_ones_instead_of_one_per_connection() {
+        let (port, seen) = bastion().await;
+        let tunnel = SshTunnel {
+            host: "127.0.0.1".into(),
+            port,
+            username: "u".into(),
+            auth: SshAuth::Password,
+            local_port: 0,
+            host_key_policy: HostKeyPolicy::AcceptAny,
+        };
+        let handle = open_tunnel(
+            &tunnel,
+            Some("p".into()),
+            "127.0.0.1",
+            1,
+            Default::default(),
+        )
+        .await
+        .unwrap();
+        let local = handle.local_port;
+        assert_eq!(seen.attempts.load(Ordering::SeqCst), 1);
+
+        seen.refuse_logins.store(true, Ordering::SeqCst);
+        seen.drop_every_session().await;
+
+        // The first connection after the loss redials, and is refused.
+        assert!(tunnel_refuses(local).await);
+        assert_eq!(seen.attempts.load(Ordering::SeqCst), 2);
+
+        // Five more at once fail without a single login reaching the bastion.
+        let burst = futures_util::future::join_all((0..5).map(|_| tunnel_refuses(local))).await;
+        assert!(burst.into_iter().all(|refused| refused));
+        assert_eq!(
+            seen.attempts.load(Ordering::SeqCst),
+            2,
+            "connections inside the backoff must not dial the bastion"
+        );
+
+        // Once the wait is over, exactly one more attempt.
+        tokio::time::sleep(REDIAL_BACKOFF_BASE + Duration::from_millis(500)).await;
+        assert!(tunnel_refuses(local).await);
+        assert_eq!(seen.attempts.load(Ordering::SeqCst), 3);
+
+        // The bastion lets us back in: after the doubled wait the tunnel
+        // works again, through a fresh session.
+        seen.refuse_logins.store(false, Ordering::SeqCst);
+        tokio::time::sleep(REDIAL_BACKOFF_BASE * 2 + Duration::from_millis(500)).await;
+        let mut socket = tokio::net::TcpStream::connect(("127.0.0.1", local))
+            .await
+            .unwrap();
+        socket.write_all(b"back").await.unwrap();
+        let mut echoed = [0u8; 4];
+        tokio::time::timeout(Duration::from_secs(10), socket.read_exact(&mut echoed))
+            .await
+            .expect("the tunnel should carry traffic again")
+            .unwrap();
+        assert_eq!(&echoed, b"back");
+        assert_eq!(seen.live.load(Ordering::SeqCst), 1);
+        drop(handle);
     }
 }

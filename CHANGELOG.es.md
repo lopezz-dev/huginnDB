@@ -154,6 +154,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   - Ahora una conexión lenta se informa como lenta, y HuginnDB solo vuelve a
     iniciar sesión cuando la sesión de verdad ha caído. Cuando lo hace, cierra
     primero la antigua.
+- **Un túnel SSH caído volvía a iniciar sesión en el servidor una y otra vez.**
+  - Cuando la sesión de un túnel se caía y volver a iniciarla fallaba, cada
+    conexión que lo usaba lo intentaba de nuevo por su cuenta: la comprobación
+    de conexión, Pulse, MongoDB, cada consulta. Un servidor que bloquea
+    direcciones tras inicios de sesión SSH repetidos recibía un goteo constante,
+    así que el bloqueo podía durar tanto como HuginnDB siguiera abierto.
+  - Tras un intento fallido, el túnel ahora espera antes de volver a intentarlo:
+    5 segundos al principio, duplicando hasta 5 minutos. Mientras tanto las
+    consultas fallan al momento e indican cuándo será el siguiente intento.
+    Reconectar a mano sigue intentándolo en el acto.
 
 ## [1.33.0] — 2026-10-14
 
