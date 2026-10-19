@@ -144,6 +144,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - A slow connection is now reported as slow, and HuginnDB only logs in again
     when the session really is gone. When it does, it closes the old session
     first.
+- **A lost SSH tunnel kept logging in to the server again and again.**
+  - When a tunnel's session dropped and logging in again failed, every
+    connection using it tried again on its own: the connection check, Pulse,
+    MongoDB, each query. A server that bans addresses after repeated SSH logins
+    saw a steady stream of them, so the ban could last as long as HuginnDB stayed
+    open.
+  - After a failed attempt the tunnel now waits before trying again: 5 seconds
+    at first, doubling up to 5 minutes. Meanwhile queries fail straight away and
+    say when the next attempt will be. Reconnecting by hand still tries at
+    once.
 
 ## [1.33.0] — 2026-10-14
 
