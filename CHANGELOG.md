@@ -133,6 +133,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     the server again.
   - Opening the SSH session now gives up after 15 seconds and says which SSH
     server did not answer.
+- **An SSH tunnel could keep more than one session open on the server.**
+  - When a server was slow to open a connection through the tunnel, HuginnDB
+    took the SSH session for dead and logged in again, even though the session
+    was still working. The old session was not closed either: it stayed open
+    on the server for as long as any database connection was using it, up to
+    half an hour.
+  - On servers that allow only a few SSH sessions at once, those leftover
+    sessions could use up the allowance.
+  - A slow connection is now reported as slow, and HuginnDB only logs in again
+    when the session really is gone. When it does, it closes the old session
+    first.
 
 ## [1.33.0] — 2026-10-14
 

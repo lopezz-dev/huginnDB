@@ -319,6 +319,18 @@ impl TunnelSession {
     /// live session (the remote port is closed, `AllowTcpForwarding no`) is a
     /// real answer and is returned as the error; dialling again would only get
     /// the same answer more slowly.
+    ///
+    /// **One session per tunnel, always.** A channel that does not open in
+    /// [`CHANNEL_OPEN_TIMEOUT`] used to be enough to dial a second session, but
+    /// a slow channel is not a dead session: a bastion under load, or one whose
+    /// forwarding target is slow to accept, answers late on a session that is
+    /// perfectly alive. The session is now asked directly ([`answers_ping`])
+    /// and only one that does not answer is replaced. And a replaced session
+    /// is now closed: it used to be dropped, which in `russh` closes nothing
+    /// while a channel on it is still open — a pooled database connection
+    /// keeps its channel for up to [`crate::db::pool::MAX_LIFETIME`], MongoDB's
+    /// monitor for as long as the client lives — so every redial against a
+    /// slow bastion left one more session counting against its limit.
     async fn channel(
         &self,
         remote_host: &str,
@@ -327,11 +339,27 @@ impl TunnelSession {
     ) -> AppResult<russh::Channel<client::Msg>> {
         let session = self.current.lock().await.clone();
         if !session.is_closed() {
-            match open_channel(&session, remote_host, remote_port, local_port).await {
+            let failure = match open_channel(&session, remote_host, remote_port, local_port).await {
                 Ok(channel) => return Ok(channel),
-                Err(ChannelError::Refused(e)) if !session.is_closed() => return Err(e),
-                // Closed under us, or never answered: presumed dead.
-                Err(_) => {}
+                Err(failure) => failure,
+            };
+            let answered = match failure {
+                // Only a channel that never answered needs the question asked.
+                ChannelError::TimedOut if !session.is_closed() => answers_ping(&session).await,
+                _ => false,
+            };
+            match verdict(&failure, session.is_closed(), answered) {
+                Verdict::Report => return Err(failure.into_app()),
+                Verdict::Slow => {
+                    return Err(AppError::Ssh(format!(
+                        "open-channel: the SSH server {}:{} is up but did not open a channel to \
+                         {remote_host}:{remote_port} within {}s",
+                        self.dialer.tunnel.host,
+                        self.dialer.tunnel.port,
+                        CHANNEL_OPEN_TIMEOUT.as_secs()
+                    )))
+                }
+                Verdict::Redial => {}
             }
         }
 
@@ -342,6 +370,10 @@ impl TunnelSession {
                 "[ssh] session to {}:{} is gone; reconnecting",
                 self.dialer.tunnel.host, self.dialer.tunnel.port
             );
+            // Closed before the new one is dialled, not after: if the server
+            // still counts it, a limit on concurrent sessions has room for the
+            // replacement. On a session that is already gone this is a no-op.
+            retire(&current).await;
             *current = Arc::new(self.dialer.dial().await?);
         }
         let session = current.clone();
@@ -350,6 +382,75 @@ impl TunnelSession {
             .await
             .map_err(ChannelError::into_app)
     }
+}
+
+/// What [`TunnelSession::channel`] does about a channel that did not open.
+#[derive(Debug, PartialEq, Eq)]
+enum Verdict {
+    /// The server refused the channel on a live session: its answer, returned
+    /// as is. Dialling again would only get the same answer more slowly.
+    Report,
+    /// The channel never opened but the session answers a ping: the server is
+    /// slow, not gone. Reported, never redialled — a second session would add
+    /// to the load and to the count of a server that is already struggling.
+    Slow,
+    /// The session is gone: closed under us, or silent to a ping as well.
+    Redial,
+}
+
+/// The decision, kept pure so the table is testable without an SSH server.
+fn verdict(failure: &ChannelError, closed: bool, answered_ping: bool) -> Verdict {
+    match failure {
+        _ if closed => Verdict::Redial,
+        ChannelError::Refused(_) => Verdict::Report,
+        ChannelError::TimedOut if answered_ping => Verdict::Slow,
+        ChannelError::TimedOut => Verdict::Redial,
+    }
+}
+
+/// How long a session suspected dead has to answer a ping.
+///
+/// Asked only after a channel open has already waited out
+/// [`CHANNEL_OPEN_TIMEOUT`], so this is the extra cost of telling "slow" from
+/// "gone" before a redial. A live session answers in one round trip.
+const PING_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Whether `session` is alive: it answers a ping, and is still open after.
+///
+/// `send_ping` resolves on the server's reply, including the
+/// `SSH_MSG_REQUEST_FAILURE` OpenSSH sends for a keepalive request — but it
+/// also resolves, quietly, if the session ends while waiting, hence the
+/// `is_closed` check after it.
+async fn answers_ping(session: &Handle<Client>) -> bool {
+    matches!(
+        tokio::time::timeout(PING_TIMEOUT, session.send_ping()).await,
+        Ok(Ok(()))
+    ) && !session.is_closed()
+}
+
+/// Upper bound on handing a session its disconnect. The message only has to
+/// reach the session's own task, which writes it and ends; a task that cannot
+/// take it within this is past saving and will end with its socket anyway.
+const RETIRE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Close a session being replaced, channels and all.
+///
+/// Dropping the handle is not enough: `russh` ends a session when its handle
+/// *and every channel* opened on it are gone, and a channel lives as long as
+/// the pooled connection riding it. `SSH_MSG_DISCONNECT` ends it now, so the
+/// server stops counting it now. Connections still riding it fail and are
+/// replaced by their pools through the new session — they were riding a
+/// session we had already given up on.
+async fn retire(session: &Handle<Client>) {
+    let _ = tokio::time::timeout(
+        RETIRE_TIMEOUT,
+        session.disconnect(
+            russh::Disconnect::ByApplication,
+            "replaced by a new session",
+            "en",
+        ),
+    )
+    .await;
 }
 
 /// Why a channel did not open: the server said no, or nothing answered.
@@ -537,6 +638,223 @@ async fn proxy_one(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use russh::server::{self, Auth};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[test]
+    fn only_a_session_that_is_gone_is_redialled() {
+        let refused = || ChannelError::Refused(AppError::Ssh("administratively prohibited".into()));
+        // The server said no on a live session: its answer, not a redial.
+        assert_eq!(verdict(&refused(), false, false), Verdict::Report);
+        // A slow channel on a session that answers a ping: slow, not gone.
+        assert_eq!(verdict(&ChannelError::TimedOut, false, true), Verdict::Slow);
+        // Silent to the channel and to the ping: gone.
+        assert_eq!(
+            verdict(&ChannelError::TimedOut, false, false),
+            Verdict::Redial
+        );
+        // Closed under us, whatever the channel said.
+        assert_eq!(verdict(&refused(), true, false), Verdict::Redial);
+        assert_eq!(
+            verdict(&ChannelError::TimedOut, true, true),
+            Verdict::Redial
+        );
+    }
+
+    /// Throwaway host key for the in-process bastion below. Generated for this
+    /// test with `ssh-keygen -t ed25519 -N ""`; it guards nothing.
+    const TEST_HOST_KEY: &str = "-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACBFkhDXVHVxBY2Lq6uttRuneDzRuqu1wqwpP5niwBH08gAAAJgN86qNDfOq
+jQAAAAtzc2gtZWQyNTUxOQAAACBFkhDXVHVxBY2Lq6uttRuneDzRuqu1wqwpP5niwBH08g
+AAAEBV/5ZmRKBjAklL1FiZULZi3LH5rPONK0LklzJJdjvUcEWSENdUdXEFjYurq621G6d4
+PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
+-----END OPENSSH PRIVATE KEY-----
+";
+
+    /// What the in-process bastion has seen: how many logins it accepted, and
+    /// how many of those sessions are still alive — the number a server-side
+    /// limit on SSH sessions counts.
+    #[derive(Default)]
+    struct Seen {
+        logins: AtomicUsize,
+        live: AtomicUsize,
+        /// Stall the next `direct-tcpip` open for [`STALL`]. The stall holds
+        /// the server's session loop, so the session also stops answering
+        /// pings — which is what a session the network dropped looks like from
+        /// the client.
+        stall_next: AtomicBool,
+    }
+
+    /// Longer than [`CHANNEL_OPEN_TIMEOUT`] plus [`PING_TIMEOUT`], so the
+    /// client has given the session up by the time the stall ends.
+    const STALL: Duration = Duration::from_secs(16);
+
+    struct BastionSession {
+        seen: Arc<Seen>,
+        forward_to: u16,
+        authenticated: bool,
+    }
+
+    impl Drop for BastionSession {
+        fn drop(&mut self) {
+            if self.authenticated {
+                self.seen.live.fetch_sub(1, Ordering::SeqCst);
+            }
+        }
+    }
+
+    impl server::Handler for BastionSession {
+        type Error = russh::Error;
+
+        async fn auth_password(
+            &mut self,
+            _user: &str,
+            _password: &str,
+        ) -> Result<Auth, Self::Error> {
+            self.authenticated = true;
+            self.seen.logins.fetch_add(1, Ordering::SeqCst);
+            self.seen.live.fetch_add(1, Ordering::SeqCst);
+            Ok(Auth::Accept)
+        }
+
+        async fn channel_open_direct_tcpip(
+            &mut self,
+            channel: russh::Channel<server::Msg>,
+            _host_to_connect: &str,
+            _port_to_connect: u32,
+            _originator_address: &str,
+            _originator_port: u32,
+            _session: &mut server::Session,
+        ) -> Result<bool, Self::Error> {
+            if self.seen.stall_next.swap(false, Ordering::SeqCst) {
+                tokio::time::sleep(STALL).await;
+            }
+            let port = self.forward_to;
+            tokio::spawn(async move {
+                if let Ok(mut upstream) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await
+                {
+                    let mut stream = channel.into_stream();
+                    let _ = copy_bidirectional(&mut stream, &mut upstream).await;
+                }
+            });
+            Ok(true)
+        }
+    }
+
+    /// An echo server standing in for the database, and an SSH bastion in
+    /// front of it. Returns the bastion's port and what it has seen.
+    async fn bastion() -> (u16, Arc<Seen>) {
+        let echo = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let echo_port = echo.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = echo.accept().await {
+                tokio::spawn(async move {
+                    let (mut r, mut w) = socket.split();
+                    let _ = tokio::io::copy(&mut r, &mut w).await;
+                });
+            }
+        });
+
+        let key = russh::keys::decode_secret_key(TEST_HOST_KEY, None).unwrap();
+        let config = Arc::new(server::Config {
+            keys: vec![key],
+            auth_rejection_time: Duration::from_millis(0),
+            ..Default::default()
+        });
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let seen = Arc::new(Seen::default());
+        let for_server = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let handler = BastionSession {
+                    seen: for_server.clone(),
+                    forward_to: echo_port,
+                    authenticated: false,
+                };
+                let config = config.clone();
+                tokio::spawn(async move {
+                    if let Ok(running) = server::run_stream(config, socket, handler).await {
+                        let _ = running.await;
+                    }
+                });
+            }
+        });
+        (port, seen)
+    }
+
+    async fn eventually(what: &str, check: impl Fn() -> bool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(40);
+        while !check() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "timed out waiting for {what}"
+            );
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
+    /// The finding behind this: a redial dropped the old session instead of
+    /// closing it, and `russh` keeps a session alive while any channel on it
+    /// is open. A pooled connection holds its channel for up to half an hour,
+    /// so the bastion went on counting the old session next to the new one.
+    ///
+    /// A connection is held open on the first session, then the session goes
+    /// silent (the bastion stalls on the next channel), the tunnel gives up on
+    /// it and redials — and the bastion must end up with one live session, not
+    /// two. About twenty seconds: the stall has to outlast the channel timeout
+    /// and the ping that confirms the session is gone.
+    #[tokio::test]
+    async fn a_redial_closes_the_session_it_replaces_even_with_a_channel_open_on_it() {
+        let (port, seen) = bastion().await;
+        let tunnel = SshTunnel {
+            host: "127.0.0.1".into(),
+            port,
+            username: "u".into(),
+            auth: SshAuth::Password,
+            local_port: 0,
+            host_key_policy: HostKeyPolicy::AcceptAny,
+        };
+        let handle = open_tunnel(
+            &tunnel,
+            Some("p".into()),
+            "127.0.0.1",
+            1,
+            Default::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(seen.live.load(Ordering::SeqCst), 1);
+
+        // A connection riding the first session, kept open throughout — the
+        // pooled database connection of the finding.
+        let mut held = tokio::net::TcpStream::connect(("127.0.0.1", handle.local_port))
+            .await
+            .unwrap();
+        held.write_all(b"ping").await.unwrap();
+        let mut echoed = [0u8; 4];
+        held.read_exact(&mut echoed).await.unwrap();
+        assert_eq!(&echoed, b"ping");
+
+        // The next channel finds the session silent, and the tunnel redials.
+        seen.stall_next.store(true, Ordering::SeqCst);
+        let _next = tokio::net::TcpStream::connect(("127.0.0.1", handle.local_port))
+            .await
+            .unwrap();
+        eventually("the tunnel to log in again", || {
+            seen.logins.load(Ordering::SeqCst) == 2
+        })
+        .await;
+        eventually("the bastion to be left with one live session", || {
+            seen.live.load(Ordering::SeqCst) == 1
+        })
+        .await;
+        drop(held);
+        drop(handle);
+    }
 
     fn dialer_to(port: u16, timeout: std::time::Duration) -> Dialer {
         Dialer {
