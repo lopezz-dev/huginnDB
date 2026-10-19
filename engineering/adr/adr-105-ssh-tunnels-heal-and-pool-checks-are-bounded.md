@@ -62,3 +62,11 @@ amends: []
 - It no longer ends at the first loss: it rechecks every `LOST_RECHECK` (30 s) and emits `connection-restored` when the connection answers.
 - The frontend bridge then clears the lost state and calls `notify.dismissGroup` to retire the card, whose Reconnect button is no longer true.
 - Recovery is usually automatic, because the pool replaces dead sockets and the tunnel redials.
+
+## Follow-up (2026-10-19): the dial itself is bounded
+
+- **`russh` bounds no part of a dial.** `client::connect` waits on the TCP connect for as long as the operating system does (about 21 s on Windows against a host that drops packets), and on a server that accepts and never sends its banner it waits forever. Authentication has no bound either.
+- **Under the redial that was worse than slow.** `TunnelSession::channel` redials while holding the session mutex. A dial that never ended parked every later channel behind it, and each of them, once the lock came free with the session still dead, dialled the bastion again in turn.
+- **`Dialer::dial` is now `dial_unbounded` inside `SSH_DIAL_TIMEOUT` (15 s)**, which covers connect, key exchange, host-key check and authentication. A timeout is an `AppError::Ssh` naming the SSH server, so it reads as the tunnel failing rather than the database.
+- **The bound is a ceiling, not a delay.** A refused connect still fails at once with its own error. Both cases have tests in `db::ssh::tests`; the silent-server one uses a local listener that accepts and never writes, and fails (30 s) with the bound removed.
+- **Not `russh::client::Config::inactivity_timeout`.** It would also bound an idle *established* session, which the 30 s keepalive already supervises; the problem is only the dial.

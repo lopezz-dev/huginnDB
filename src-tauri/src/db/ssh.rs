@@ -179,6 +179,21 @@ const SSH_KEEPALIVE_MAX: usize = 3;
 /// in one round trip, so ten seconds only ever expires on a dead one.
 const CHANNEL_OPEN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// How long dialling a session may take, end to end: the TCP connect, the key
+/// exchange, the host-key check and authentication.
+///
+/// `russh` bounds none of it. A TCP connect to a host behind a firewall that
+/// drops packets lasts until the operating system gives up (about 21 s on
+/// Windows), and a server that accepts the connection and then never speaks —
+/// a tarpit, an `sshd` stalled under load, a port-22 rate limit that holds
+/// rather than refuses — never ends at all. That mattered twice over. A first
+/// connect sat on "Connecting…" with nothing to report. And a *redial* runs
+/// under [`TunnelSession`]'s lock, so every connection the pool tried to open
+/// through the tunnel queued behind it, and each of them dialled the bastion
+/// again in turn once the lock was released. Fifteen seconds is several times
+/// what a healthy bastion takes over a VPN, including a slow password check.
+const SSH_DIAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Everything needed to dial and authenticate the SSH session again, kept so
 /// the tunnel can replace a dead session on its own rather than failing every
 /// connection through it until the user reconnects by hand.
@@ -186,15 +201,32 @@ struct Dialer {
     tunnel: SshTunnel,
     secret: Option<String>,
     store: SharedKnownHosts,
+    /// [`SSH_DIAL_TIMEOUT`] outside tests, which shorten it.
+    timeout: std::time::Duration,
 }
 
 impl Dialer {
-    /// Connect to the SSH server, verify its host key and authenticate.
+    /// Connect to the SSH server, verify its host key and authenticate, within
+    /// [`Dialer::timeout`].
     ///
     /// Host-key verification runs on every dial, the reconnect included: a
     /// server that answers with a different key after the tunnel dropped is
     /// exactly the case the policy exists for, and it is refused the same way.
     async fn dial(&self) -> AppResult<Handle<Client>> {
+        match tokio::time::timeout(self.timeout, self.dial_unbounded()).await {
+            Ok(dialled) => dialled,
+            Err(_) => Err(AppError::Ssh(format!(
+                "connect: no answer from the SSH server {}:{} within {}s — the host may be \
+                 unreachable, or something between here and it is holding the connection open \
+                 without answering",
+                self.tunnel.host,
+                self.tunnel.port,
+                self.timeout.as_secs()
+            ))),
+        }
+    }
+
+    async fn dial_unbounded(&self) -> AppResult<Handle<Client>> {
         let tunnel = &self.tunnel;
         let outcome = Arc::new(Mutex::new(VerifyOutcome::default()));
         let host_port = format!("{}:{}", tunnel.host, tunnel.port);
@@ -370,6 +402,7 @@ pub async fn open_tunnel(
         tunnel: tunnel.clone(),
         secret,
         store,
+        timeout: SSH_DIAL_TIMEOUT,
     };
     let session = dialer.dial().await?;
 
@@ -498,5 +531,81 @@ async fn proxy_one(
         result = copy_bidirectional(&mut socket, &mut stream) => {
             result.map(|_| ()).map_err(|e| ssh_err("proxy", e))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dialer_to(port: u16, timeout: std::time::Duration) -> Dialer {
+        Dialer {
+            tunnel: SshTunnel {
+                host: "127.0.0.1".into(),
+                port,
+                username: "u".into(),
+                auth: SshAuth::Password,
+                local_port: 0,
+                host_key_policy: HostKeyPolicy::AcceptAny,
+            },
+            secret: None,
+            store: Default::default(),
+            timeout,
+        }
+    }
+
+    /// A server that accepts the TCP connection and then never speaks — a
+    /// tarpit, or an `sshd` stalled under load — used to hold a dial forever,
+    /// and a redial holds the tunnel's lock while it waits. It must give up.
+    #[tokio::test]
+    async fn a_server_that_accepts_and_never_answers_fails_the_dial_in_bounded_time() {
+        let silent = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = silent.local_addr().unwrap().port();
+        // Accept and keep the socket open without writing a byte.
+        let held = tokio::spawn(async move {
+            let (socket, _) = silent.accept().await.unwrap();
+            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            drop(socket);
+        });
+
+        let started = std::time::Instant::now();
+        let outcome = dialer_to(port, std::time::Duration::from_millis(300))
+            .dial()
+            .await;
+        let Err(e) = outcome else {
+            panic!("a server that never answers must not produce a session");
+        };
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "the dial must give up at its bound, not wait on the server"
+        );
+        assert!(matches!(e, AppError::Ssh(_)));
+        let rendered = e.to_string();
+        assert!(
+            rendered.contains(&format!("127.0.0.1:{port}")),
+            "{rendered}"
+        );
+        assert!(rendered.contains("no answer"), "{rendered}");
+        held.abort();
+    }
+
+    /// The bound is a ceiling, not a delay: a refused connection still fails
+    /// at once and as itself.
+    #[tokio::test]
+    async fn a_refused_connection_fails_at_once_and_as_itself() {
+        // Bind and drop to get a port nothing listens on.
+        let port = {
+            let l = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let started = std::time::Instant::now();
+        let Err(e) = dialer_to(port, std::time::Duration::from_secs(15))
+            .dial()
+            .await
+        else {
+            panic!("nothing is listening");
+        };
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(!e.to_string().contains("no answer"), "{e}");
     }
 }
