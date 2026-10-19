@@ -121,6 +121,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   1.28.0, and the fixed suggestion panel's containing block is now the
   viewport. Neither decision changed.
 
+### Fixed
+
+- **Connecting through an SSH server that did not answer could hang for
+  good.**
+  - If the SSH server accepted the connection and then never answered (an
+    overloaded server, or a firewall that holds connections instead of
+    refusing them), HuginnDB waited forever on "Connecting…".
+  - When it happened while a tunnel was reconnecting by itself, every query
+    on that connection waited behind it, and then each one tried to log in to
+    the server again.
+  - Opening the SSH session now gives up after 15 seconds and says which SSH
+    server did not answer.
+
 ## [1.33.0] — 2026-10-14
 
 ### Fixed
