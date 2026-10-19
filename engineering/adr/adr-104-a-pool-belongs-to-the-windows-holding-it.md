@@ -41,3 +41,9 @@ All windows share one process and one `ActiveConnections` map, so a window closi
   - `connect_inner` and `open_database_view_inner` used to check the map, await a connect, then insert, with nothing held across the await. Two openers of one id could both find it absent and both dial: a window and the bridge, two sidecars, or the tree's expand effect and a context-menu action.
   - `ActiveConnections::insert` then replaced the first pool with a bare `Drop`, so the server briefly saw both.
   - Each opener now takes `open_lock(id)` before the check, so the second one waits and then finds the first one's pool. The locks are never removed: there is one per id ever opened, which costs bytes, and removing one safely would need to know that nobody is waiting on it.
+
+## Follow-up (2026-10-19): the sidecar's own opens were not single-flight
+
+- **The lock covered the app, not the sidecar's local path.** With no app to borrow from, `Huginn::ensure_connected` checked its own map, awaited `open_pool` and inserted, with nothing held across the await. `rmcp` serves each request on its own task and models call tools in parallel, so three tools on one tunnelled connection were three SSH logins to the same bastion inside a second, and two of the three pools were then replaced by a bare `Drop`.
+- **Same fix, same lock.** The local half is now `Huginn::open_local`, which takes `AppState::open_lock(id)` before the check exactly as `connect_inner` does. It is split out so a test can call it with an in-memory SQLite profile instead of reading the real `profiles.json` (convention #52).
+- **Why it mattered here.** A server that rate-limits new connections to port 22 (`iptables recent`, `hashlimit`, fail2ban) reads a burst of logins as an attack. The app had been single-flight since this ADR; the connector, running without the app, was the one path still bursting.
