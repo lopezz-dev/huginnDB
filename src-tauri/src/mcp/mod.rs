@@ -717,9 +717,17 @@ fn bridged_connection_id(request: &BridgeRequest) -> Option<String> {
 }
 
 /// Serialise a backend DTO into a text tool result.
+///
+/// **Compact, never pretty-printed.** The reader is a model, and every byte of
+/// this lands in its context and is billed against the user's plan. Pretty
+/// printing put each cell of `rows: [[…]]` on its own indented line, so a
+/// result set paid a newline-and-indent run per *cell* — a 50-row, 6-column
+/// page came out ~43% larger than the same JSON compact, with nothing gained
+/// for a reader that does not need the whitespace to parse it. The AI panel's
+/// tool results (`ai::exec`) were already compact for the same reason.
 fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> {
-    let text = serde_json::to_string_pretty(value)
-        .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+    let text =
+        serde_json::to_string(value).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
     Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
 }
 
@@ -2587,6 +2595,26 @@ mod tests {
             "the sidecar must default well below the desktop app: it is one of \
              several processes sharing the user's connection budget"
         );
+    }
+
+    /// Every tool answers through `ok_json`, and what it writes is billed to
+    /// the user's plan by the token: a pretty-printed result set spent one
+    /// newline-and-indent run per cell.
+    #[test]
+    fn tool_results_are_compact_json() {
+        let result = query::QueryResult::rows(
+            vec![query::ColumnMeta {
+                name: "id".into(),
+                data_type: "INTEGER".into(),
+            }],
+            vec![vec![serde_json::json!(1)], vec![serde_json::json!(2)]],
+            0,
+        );
+        let call = ok_json(&result).expect("serialises");
+        let wire = serde_json::to_value(&call).expect("CallToolResult serialises");
+        let text = wire["content"][0]["text"].as_str().expect("one text block");
+        assert!(!text.contains('\n'), "pretty-printed tool result: {text}");
+        assert!(text.contains(r#""rows":[[1],[2]]"#), "{text}");
     }
 
     #[test]

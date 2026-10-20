@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **The MCP connector's answers cost fewer tokens.** Every tool used to reply
+  with pretty-printed JSON, which puts each cell of a result set on its own
+  indented line. An AI client reads that whitespace into its context and the
+  user's plan pays for it: a 50-row page came out around 40% larger than it
+  needed to be. Replies are now compact JSON, with the same content.
+
 ## [1.34.0] — 2026-10-19
 
 ### Added

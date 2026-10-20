@@ -8,6 +8,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **Las respuestas del conector MCP gastan menos tokens.** Todas las
+  herramientas respondían con JSON indentado, que pone cada celda de un
+  resultado en su propia línea con sangría. Un cliente de IA mete ese espacio
+  en blanco en su contexto y lo paga el plan del usuario: una página de 50
+  filas ocupaba en torno a un 40 % más de lo necesario. Ahora las respuestas
+  son JSON compacto, con el mismo contenido.
+
 ## [1.34.0] — 2026-10-19
 
 ### Añadido
