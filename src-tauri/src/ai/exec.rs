@@ -515,20 +515,7 @@ pub fn brief_for(state: &AppState, reference: &str) -> Option<String> {
 /// model writes out of habit when it thinks it has to select a database first,
 /// and the useful answer is that it does not.
 fn session_statement(sql: &str) -> bool {
-    let head = sql.trim_start().to_ascii_lowercase();
-    [
-        "use ",
-        "set ",
-        "begin",
-        "start transaction",
-        "commit",
-        "rollback",
-        "savepoint ",
-        "lock ",
-        "unlock ",
-    ]
-    .iter()
-    .any(|verb| head.starts_with(verb))
+    crate::db::sql::is_session_statement(sql)
 }
 
 /// The row cap actually applied: the user's preference, bounded below by 1 and

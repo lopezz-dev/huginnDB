@@ -353,7 +353,7 @@ Codex.
 | Flag | Por defecto | Significado |
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(ninguna)* | Fija este cliente exactamente a estos IDs de perfil, ignorando las casillas de Ajustes → MCP. Sin el flag, el servidor se remite a esas casillas y las relee en cada llamada, que es el montaje normal. `--connections ""` fija un conjunto vacío — un "no expongas nada" explícito. |
-| `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `run_write` / `browse_table`, para que una llamada no vuelque una tabla entera en el contexto del modelo. |
+| `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `run_write` / `browse_table` — y por toda una lista de `run_queries` o de `verify` en conjunto —, para que una llamada no vuelque una tabla entera en el contexto del modelo. Un resultado recortado lo indica con `"truncated": true`. |
 | `--read-only[=true\|false]` | `false` | Kill-switch global: fuerza **todas** las conexiones a solo lectura sin importar su nivel de escritura guardado. Una forma rápida de exponer el conector en modo garantizado-seguro sin tocar ningún perfil. |
 | `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
@@ -445,6 +445,8 @@ datos a demanda.
 | `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. En MongoDB cada entrada lleva además un objeto `mongo` con la definición completa — dirección y tipo de cada clave, `sparse`, TTL, filtro parcial, colación, pesos, tamaño y uso. Léelo antes de recrear un índice: la lista de columnas por sí sola no distingue `{createdAt: -1}` de `{createdAt: 1}`. |
 | `run_query` | Ejecuta una única sentencia de **solo lectura** (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Cualquier cosa que escriba se rechaza aquí diga lo que diga el nivel. |
 | `run_write` *(escritura)* | Ejecuta una única sentencia que **cambia** la base de datos. El DML necesita `data`, el DDL `full`. Una lectura también se rechaza aquí — va en `run_query`, que no necesita permiso de escritura. |
+| `run_queries` | Ejecuta varias sentencias **de solo lectura** en una llamada, cada una como lo haría `run_query`. La que falla se informa en su propio hueco y las demás se ejecutan igual. Las filas comparten un único presupuesto de `--max-rows`. |
+| `run_writes` *(escritura)* | Aplica varias escrituras de fila (`INSERT`/`UPDATE`/`DELETE`) en **una transacción**: o entran todas o ninguna. Cada escritura puede llevar `expect_rows`; las lecturas de `verify` se ejecutan tras el commit y vuelven en la misma respuesta. Necesita `data` o `full`. Ver [Lotes](#lotes-menos-llamadas-menos-tokens). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
 | `list_users` / `list_privileges` | Usuarios/roles del servidor y sus permisos. |
@@ -467,8 +469,8 @@ datos a demanda.
 para que el asistente sepa de antemano qué puede hacer.
 
 Cada herramienta lleva además un **título** y **anotaciones** MCP:
-`readOnlyHint` en las diecisiete que solo leen, y `destructiveHint` /
-`idempotentHint` en las ocho que escriben (`insert_row` y `create_index` se
+`readOnlyHint` en las dieciocho que solo leen, y `destructiveHint` /
+`idempotentHint` en las nueve que escriben (`insert_row` y `create_index` se
 marcan como aditivas, no destructivas). Los clientes las usan para decidir
 cuánta fricción merece una llamada, así que un `list_tables` ya no parece tan
 arriesgado como un `delete_rows`.
@@ -481,6 +483,47 @@ describiera el más peligroso de los dos tiers. Separadas, ambas son constantes
 honestas que ningún cambio de nivel puede dejar obsoletas: `run_query` es
 `readOnlyHint`, `run_write` es `destructiveHint`. Cada una rechaza el tráfico
 de la otra y dice qué herramienta usar en su lugar.
+
+### Lotes: menos llamadas, menos tokens
+
+Cada llamada a una herramienta es un turno del modelo, y cada turno vuelve a
+pagar toda la conversación hasta ese punto; en un plan de suscripción pesa más
+el número de llamadas que lo que devuelve cada una. Un agente que cambia unas
+cuantas filas de configuración con un `run_write` por fila, y luego relee cada
+una para comprobar que se aplicó, gasta casi todo su presupuesto en idas y
+vueltas. Dos herramientas hacen ese mismo trabajo con una llamada cada una:
+
+- **`run_queries`** recibe una lista de lecturas y devuelve un resultado por
+  lectura, en orden. Una lectura que falla vuelve como `{"error": "…"}` en su
+  hueco sin parar las demás; una sentencia que escribe se rechaza en su hueco y
+  no se ejecuta.
+- **`run_writes`** recibe una lista de escrituras de fila y las ejecuta en
+  **una transacción** sobre una sola sesión: o se aplican todas o ninguna, así
+  que nunca queda una lista a medio aplicar que haya que ir a revisar.
+  - `expect_rows` en una escritura indica cuántas filas debe tocar. Un `UPDATE`
+    cuyo `WHERE` no encuentra nada (una clave mal escrita, el motivo habitual
+    para releer) deshace todo el lote con un mensaje que dice qué escritura y
+    cuántas filas tocó.
+  - `verify` es una lista de lecturas que se ejecutan **después del commit** y
+    vuelven en la misma respuesta, así que comprobar el resultado no cuesta una
+    llamada más. Se ejecutan igual que con `run_query`, transacción de solo
+    lectura incluida, y si una falla la respuesta nunca se convierte en error:
+    las escrituras sí se aplicaron.
+  - Se rechaza, con el motivo: más de 50 escrituras, una entrada con más de una
+    sentencia, `BEGIN`/`COMMIT`/`SET`/`USE` y similares (la transacción la abre
+    la herramienta), una lectura (va en `verify`), un cambio de esquema (MySQL
+    hace commit alrededor de cada sentencia DDL, así que no podría ser atómico;
+    usa `run_write`) y un `UPDATE`/`DELETE` sin predicado.
+  - **MongoDB** ejecuta las escrituras en orden, sin transacción, y se para en
+    el primer fallo; la respuesta dice `"atomic": false` y el error indica qué
+    escrituras ya se habían aplicado. En **MySQL** la atomicidad es tan real
+    como el motor de almacenamiento de la tabla: InnoDB la respeta, MyISAM no.
+
+Una respuesta de `run_writes` tiene esta forma:
+
+```json
+{"atomic":true,"rows_affected":[1,1],"total_affected":2,"verify":[{"columns":[{"name":"v","data_type":"TEXT"}],"rows":[["on"]],"rows_affected":1,"elapsed_ms":0,"total":null,"truncated":false}]}
+```
 
 ### Índices: por qué las dos herramientas de escritura son solo de MongoDB
 
@@ -540,7 +583,8 @@ nombre de la base de datos mediante:
 
 - `schema` en `list_tables`, `describe_table`, `list_indexes`,
   `browse_table`, `save_view` y `drop_view`.
-- `database` en `run_query` / `run_write` (su `sql` a secas no tiene campo para esto).
+- `database` en `run_query` / `run_write` / `run_queries` / `run_writes` (su
+  `sql` a secas no tiene campo para esto).
 
 El servidor lo resuelve igual que el explorador de esquema de la app de
 escritorio cuando expandes una base de datos — reutilizando el mismo cliente
@@ -564,7 +608,7 @@ conexión son baratas. Una conexión de una sola base de datos (con
     escritura se rechaza.
   - **`data`** — añade DML a nivel de fila: `INSERT`/`UPDATE`/`DELETE` vía
     `run_write`, más las herramientas `insert_row` / `update_cell` /
-    `delete_rows`. Sin cambios de esquema.
+    `delete_rows` / `run_writes`. Sin cambios de esquema.
   - **`full`** — añade DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) vía
     `run_write`, más las herramientas `save_view` / `drop_view` /
     `create_index` / `drop_index`. En MongoDB este es también el nivel de

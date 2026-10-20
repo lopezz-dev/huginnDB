@@ -333,7 +333,7 @@ The tools then show up under the `huginndb` server inside Codex.
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(none)* | Pin this client to exactly these profile ids, ignoring the Settings → MCP checkboxes. Without the flag the server defers to those checkboxes and re-reads them per call, which is the normal setup. `--connections ""` pins an empty set — an explicit "expose nothing". |
-| `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `run_write` / `browse_table` call, so a tool call can't dump a whole table into the model's context. |
+| `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `run_write` / `browse_table` call — and by a whole `run_queries` list or `verify` list together — so a tool call can't dump a whole table into the model's context. A result cut short says `"truncated": true`. |
 | `--max-connections <n>` | `2` | Budget per **server**, within this process. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A connection that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
 | `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy, and take the eight write tools off `tools/list` entirely — they could only refuse, and a tool the model never sees is a turn it never wastes. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
@@ -436,6 +436,8 @@ connector — leaving only the connections you opened yourself.
 | `list_indexes` | Indexes on a table and the columns each covers. On MongoDB each entry also carries a `mongo` object with the full definition — per-key direction and type, `sparse`, TTL, partial filter, collation, weights, size and usage. Read it before recreating an index: the column list alone cannot tell `{createdAt: -1}` from `{createdAt: 1}`. |
 | `run_query` | Run a single **read-only** statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Anything that writes is refused here whatever the policy says. |
 | `run_write` *(write)* | Run a single statement that **changes** the database. DML needs `data`, DDL needs `full`. A read is refused here too — it belongs in `run_query`, which needs no write permission. |
+| `run_queries` | Run several **read-only** statements in one call, each as `run_query` would. One that fails is reported in its own slot and the rest still run. Rows share one `--max-rows` budget. |
+| `run_writes` *(write)* | Apply several row writes (`INSERT`/`UPDATE`/`DELETE`) in **one transaction** — all land or none do. Each write can carry `expect_rows`; `verify` reads run after the commit and come back in the same reply. Requires `data` or `full`. See [Batching](#batching-fewer-calls-fewer-tokens). |
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
@@ -458,8 +460,8 @@ connector — leaving only the connections you opened yourself.
 assistant knows up front what it may do.
 
 Every tool also carries a **title** and MCP **annotations** — `readOnlyHint`
-for the seventeen that only read, and `destructiveHint` / `idempotentHint` on
-the eight that write (`insert_row` and `create_index` are marked additive
+for the eighteen that only read, and `destructiveHint` / `idempotentHint` on
+the nine that write (`insert_row` and `create_index` are marked additive
 rather than destructive). Clients use these to decide how much friction a call
 deserves, so a `list_tables` no longer looks as risky as a `delete_rows`.
 
@@ -470,6 +472,45 @@ impossible to express, and forced the annotation to describe the more dangerous
 of the two tiers. Split, both are honest constants that no policy change can
 make stale: `run_query` is `readOnlyHint`, `run_write` is `destructiveHint`.
 Each refuses the other's traffic and names the tool to use instead.
+
+### Batching: fewer calls, fewer tokens
+
+Every tool call is a model turn, and every turn pays again for the whole
+conversation so far — so on a subscription plan, the number of calls weighs
+more than what each one returns. An agent that changes a few settings rows one
+`run_write` at a time, and then re-reads each one to check it landed, spends
+most of its budget on the round trips. Two tools do the same work in one call
+each:
+
+- **`run_queries`** takes a list of reads and returns one result per read, in
+  order. A read that fails comes back as `{"error": "…"}` in its slot without
+  stopping the others; a statement that writes is refused in its slot and not
+  run.
+- **`run_writes`** takes a list of row writes and runs them in **one
+  transaction** on one session: either every write is applied or none is, so
+  there is never a half-applied list to go and inspect.
+  - `expect_rows` on a write states how many rows it must touch. An `UPDATE`
+    whose `WHERE` matches nothing — a mistyped key, the usual reason to re-read
+    — rolls the whole batch back with a message naming the write and the count.
+  - `verify` is a list of reads run **after the commit** and returned in the
+    same reply, so checking the result costs no extra call. They run exactly as
+    `run_query` would, read-only transaction included, and one that fails never
+    turns the reply into an error — the writes did land.
+  - Refused, with the reason: more than 50 writes, an entry holding more than
+    one statement, `BEGIN`/`COMMIT`/`SET`/`USE` and the like (the tool owns the
+    transaction), a read (it goes in `verify`), a schema change (MySQL commits
+    around every DDL statement, so it could not be atomic — use `run_write`), and
+    an `UPDATE`/`DELETE` with no predicate.
+  - **MongoDB** runs the writes in order with no transaction and stops at the
+    first failure; the reply says `"atomic": false` and an error says which
+    writes had already been applied. On **MySQL** the atomicity is as real as
+    the table's storage engine: InnoDB honours it, MyISAM does not.
+
+A reply from `run_writes` looks like this:
+
+```json
+{"atomic":true,"rows_affected":[1,1],"total_affected":2,"verify":[{"columns":[{"name":"v","data_type":"TEXT"}],"rows":[["on"]],"rows_affected":1,"elapsed_ms":0,"total":null,"truncated":false}]}
+```
 
 ### Indexes: why the two write tools are MongoDB-only
 
@@ -521,7 +562,8 @@ SQL catalog to fall back to. Pass the database name via:
 
 - `schema` on `list_tables`, `describe_table`, `list_indexes`,
   `browse_table`, `save_view` and `drop_view`.
-- `database` on `run_query` / `run_write` (their bare `sql` has no field for this).
+- `database` on `run_query` / `run_write` / `run_queries` / `run_writes` (their
+  bare `sql` has no field for this).
 
 The server resolves this the same way the desktop app's schema explorer does
 when you expand a database — reusing the same MongoDB client and re-tagging
@@ -541,8 +583,8 @@ only needed when `list_connections` shows an empty `database`.
     plain-SQL keyword match, so mongosh reads aren't mistaken for writes. Every
     write tool is refused.
   - **`data`** — adds row-level DML: `INSERT`/`UPDATE`/`DELETE` through
-    `run_write`, plus the `insert_row` / `update_cell` / `delete_rows` tools.
-    No schema changes.
+    `run_write`, plus the `insert_row` / `update_cell` / `delete_rows` /
+    `run_writes` tools. No schema changes.
   - **`full`** — adds DDL (`CREATE`/`DROP`/`ALTER`/`TRUNCATE`/…) through
     `run_write`, plus the `save_view` / `drop_view` / `create_index` /
     `drop_index` tools. On MongoDB this is also the tier for

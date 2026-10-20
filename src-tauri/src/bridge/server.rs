@@ -332,6 +332,7 @@ pub(crate) fn connection_id_of(request: &BridgeRequest) -> String {
         | GetTableStructure { connection_id, .. }
         | ListIndexes { connection_id, .. }
         | RunStatement { connection_id, .. }
+        | RunWriteBatch { connection_id, .. }
         | FetchTableData { connection_id, .. }
         | InsertRow { connection_id, .. }
         | UpdateCell { connection_id, .. }
@@ -357,6 +358,7 @@ fn policy_id_of(request: &BridgeRequest) -> Option<&str> {
     use BridgeRequest::*;
     match request {
         RunStatement { policy_id, .. }
+        | RunWriteBatch { policy_id, .. }
         | FetchTableData { policy_id, .. }
         | InsertRow { policy_id, .. }
         | UpdateCell { policy_id, .. }
@@ -390,6 +392,10 @@ fn verbs_of_request(request: &BridgeRequest) -> Option<Verbs> {
         // would have let a `data` one drop a collection. One classifier, shared
         // with the sidecar's own check — see `crate::db::classify`.
         BridgeRequest::RunStatement { sql, .. } => Some(crate::db::classify::verbs_of(sql)),
+        // Whatever any of the writes does, through the same classifier.
+        BridgeRequest::RunWriteBatch { writes, .. } => {
+            Some(crate::commands::write_batch::verbs_of_writes(writes))
+        }
         BridgeRequest::FetchTableData { .. } => Some(Verbs::SELECT),
         BridgeRequest::InsertRow { .. } => Some(Verbs::INSERT),
         BridgeRequest::UpdateCell { .. } => Some(Verbs::UPDATE),
@@ -770,6 +776,37 @@ mod tests {
         // SQL is untouched.
         assert_eq!(run("SELECT 1"), Some(StmtClass::Read));
         assert_eq!(run("DROP TABLE t"), Some(StmtClass::Ddl));
+    }
+
+    /// `run_writes` reaches the app as one request carrying several statements.
+    /// It must be policy-checked at all, and needs what its strictest write
+    /// needs — both decided in `_ => None` matches, so neither is a compile
+    /// error.
+    #[test]
+    fn a_write_batch_is_policy_checked_as_its_strictest_write() {
+        use crate::commands::write_batch::BatchWrite;
+        let batch = |sqls: &[&str]| BridgeRequest::RunWriteBatch {
+            connection_id: "c".into(),
+            policy_id: "p".into(),
+            writes: sqls
+                .iter()
+                .map(|s| BatchWrite {
+                    sql: s.to_string(),
+                    expect_rows: None,
+                })
+                .collect(),
+        };
+        let rows = batch(&["UPDATE t SET a = 1 WHERE id = 1", "db.t.insertOne({a: 1})"]);
+        assert_eq!(policy_id_of(&rows), Some("p"));
+        assert_eq!(class_of(&rows), Some(StmtClass::DataWrite));
+        assert!(!McpWritePolicy::ReadOnly.allows(verbs_of_request(&rows).unwrap()));
+        assert!(McpWritePolicy::Data.allows(verbs_of_request(&rows).unwrap()));
+        // The executor refuses a schema change in the list, but the policy
+        // must not rely on it: a `data` connection is refused before that.
+        let ddl = batch(&["UPDATE t SET a = 1 WHERE id = 1", "DROP TABLE t"]);
+        assert_eq!(class_of(&ddl), Some(StmtClass::Ddl));
+        // An empty list is not a free pass.
+        assert_eq!(class_of(&batch(&[])), Some(StmtClass::DataWrite));
     }
 
     /// The two index variants must be `Ddl` and must be policy-checked at all —

@@ -6,6 +6,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Batch tools in the MCP connector: several reads, or several writes, in one
+  call.**
+  - Every tool call is a turn of the AI model, and every turn pays again for
+    the conversation so far. An agent that changed a few settings rows one
+    `run_write` at a time, and re-read each one to check it, spent most of the
+    user's plan on round trips.
+  - **`run_queries`** runs a list of read-only statements and returns one
+    result per statement, in order. One that fails is reported in its own slot
+    and the others still run.
+  - **`run_writes`** applies a list of row writes (`INSERT`/`UPDATE`/`DELETE`)
+    in **one transaction**: either all of them land or none does. A write can
+    say how many rows it must touch (`expect_rows`), and if it touches another
+    number the whole batch is rolled back — which catches the `UPDATE` whose
+    `WHERE` matched nothing. Reads listed in `verify` run after the commit and
+    come back in the same reply, so checking the result costs no extra call.
+  - `run_writes` needs the connection's MCP write policy at `data` or above,
+    takes up to 50 writes, and refuses schema changes, `BEGIN`/`COMMIT` and
+    similar, and an `UPDATE`/`DELETE` with no `WHERE`, saying why. On MongoDB
+    the writes run in order with no transaction and stop at the first failure;
+    the reply says so.
+  - The connector's instructions now tell the AI to batch, so it uses these
+    tools without being asked.
+
 ### Changed
 
 - **The MCP connector's answers cost fewer tokens.** Every tool used to reply
@@ -13,6 +38,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   indented line. An AI client reads that whitespace into its context and the
   user's plan pays for it: a 50-row page came out around 40% larger than it
   needed to be. Replies are now compact JSON, with the same content.
+
+### Fixed
+
+- **A result cut to the MCP connector's `--max-rows` now says it was cut.**
+  The rows were dropped but `truncated` stayed `false`, so the AI could not
+  tell a page from a whole table. On MongoDB the per-cell types were not cut
+  with the rows and stopped lining up with them.
 
 ## [1.34.0] — 2026-10-19
 

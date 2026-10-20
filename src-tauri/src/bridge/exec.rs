@@ -257,6 +257,21 @@ pub async fn execute(
                 crate::commands::query::execute_with_state(sink, state, connection_id, sql).await?
             })?
         }
+        // Unbounded, like every statement the AI writes itself: a timeout that
+        // fired mid-transaction would only leave the batch to be rolled back.
+        RunWriteBatch {
+            connection_id,
+            writes,
+            ..
+        } => serde_json::to_value(
+            crate::commands::write_batch::execute_write_batch_inner(
+                sink,
+                state,
+                connection_id,
+                writes,
+            )
+            .await?,
+        )?,
         FetchTableData {
             connection_id,
             schema,

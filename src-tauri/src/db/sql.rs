@@ -450,6 +450,49 @@ impl std::ops::BitOr for Verbs {
     }
 }
 
+/// Whether `sql` sets session or transaction state instead of reading or
+/// writing data: `USE`, `SET`, `LOCK`, and every way the engines spell
+/// opening, ending or marking a transaction.
+///
+/// Two consumers, two reasons. The AI panel refuses these with their own
+/// message, because a model writes them out of habit when it believes it has
+/// to select a database first. The MCP connector's `run_writes` refuses them
+/// because it owns the transaction its writes run in: a `COMMIT` inside the
+/// list would make everything before it permanent and leave the rest outside
+/// the promise the tool makes.
+///
+/// A prefix check on the first statement only — callers that accept text from
+/// a model split it first and refuse more than one statement.
+pub fn is_session_statement(sql: &str) -> bool {
+    let head = sql.trim_start().to_ascii_lowercase();
+    let bare = head.trim_end().trim_end_matches(';').trim_end();
+    // PostgreSQL's `END` and `ABORT` are `COMMIT` and `ROLLBACK` under other
+    // names; matched whole so no other statement that starts with the letters
+    // is caught.
+    if matches!(bare, "end" | "abort") {
+        return true;
+    }
+    [
+        "use ",
+        "set ",
+        "begin",
+        "start transaction",
+        "commit",
+        "rollback",
+        "savepoint ",
+        "release ",
+        "save tran",
+        "end transaction",
+        "end work",
+        "abort ",
+        "xa ",
+        "lock ",
+        "unlock ",
+    ]
+    .iter()
+    .any(|verb| head.starts_with(verb))
+}
+
 /// Best-effort classification of a statement as DDL (schema/privilege change).
 ///
 /// Mostly the same first-keyword heuristic as [`is_read_only`]. `TRUNCATE` is

@@ -49,7 +49,9 @@ use serde_json::Value;
 /// so the sidecar would surface it to the AI client instead of falling back to
 /// its own pool. The handshake check is the only place that mismatch degrades
 /// correctly, so every new request variant bumps this.
-pub const PROTOCOL_VERSION: u32 = 3;
+///
+/// `4`: [`BridgeRequest`] gained `RunWriteBatch` (the `run_writes` tool).
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// Opening frame. Sent once, before any request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,6 +206,23 @@ pub enum BridgeRequest {
         policy_id: String,
         sql: String,
     },
+    /// Run several row writes as one transaction — the `run_writes` tool.
+    ///
+    /// Its own variant rather than a loop of [`BridgeRequest::RunStatement`]s,
+    /// because the loop cannot keep the promise: each `RunStatement` takes a
+    /// connection from the pool, so the writes would land on whichever sessions
+    /// were free and no transaction could span them. One request is one
+    /// session and one `BEGIN … COMMIT`.
+    ///
+    /// Writes only. The tool's `verify` reads are sent afterwards as ordinary
+    /// `RunStatement`s, so they keep the read-only transaction every AI read
+    /// runs in (ADR #93) instead of running inside a write transaction where a
+    /// misclassified write would execute.
+    RunWriteBatch {
+        connection_id: String,
+        policy_id: String,
+        writes: Vec<crate::commands::write_batch::BatchWrite>,
+    },
     FetchTableData {
         connection_id: String,
         policy_id: String,
@@ -325,6 +344,7 @@ impl BridgeRequest {
             // on the other side, and guessing here would be exactly the kind of
             // cleverness that double-writes.
             BridgeRequest::RunStatement { .. }
+            | BridgeRequest::RunWriteBatch { .. }
             | BridgeRequest::InsertRow { .. }
             | BridgeRequest::UpdateCell { .. }
             | BridgeRequest::DeleteRows { .. }
@@ -378,6 +398,7 @@ impl BridgeRequest {
             BridgeRequest::PulseSessions { .. } => "pulse_sessions",
             BridgeRequest::PulseIndexUsage { .. } => "pulse_index_usage",
             BridgeRequest::RunStatement { .. } => "run_query",
+            BridgeRequest::RunWriteBatch { .. } => "run_writes",
             BridgeRequest::FetchTableData { .. } => "browse_table",
             BridgeRequest::InsertRow { .. } => "insert_row",
             BridgeRequest::UpdateCell { .. } => "update_cell",
@@ -560,6 +581,11 @@ mod tests {
                 policy_id: "c".into(),
                 schema: None,
                 view: "v".into(),
+            },
+            BridgeRequest::RunWriteBatch {
+                connection_id: "c".into(),
+                policy_id: "c".into(),
+                writes: vec![],
             },
         ] {
             assert!(req.is_mutating(), "{} must be mutating", req.label());
