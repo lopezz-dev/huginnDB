@@ -1,0 +1,90 @@
+# Muninn · columna «Para el agente» (ADR-0032 de lopezz-dev/muninn).
+#
+# Cópialo en el repo vinculado como .github/workflows/muninn-agent.yml. Cuando mueves una tarea de GitHub a la
+# columna del agente, Muninn pone la etiqueta `muninn:agent` en su issue; este workflow la resuelve con Claude
+# Code en una rama `agent/issue-<n>` y abre un PR contra `develop` con `Closes #<n>`. Nunca fusiona: eso lo
+# haces tú. Al terminar quita la etiqueta; si no hubo PR, Muninn devuelve la tarea a «Por hacer».
+# Sacar la tarea de la columna quita la etiqueta, y eso cancela la ejecución en curso (job `stop`).
+#
+# Hace falta, una vez por repo: instalar la GitHub App de Claude (https://github.com/apps/claude) y el secreto
+# CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) o ANTHROPIC_API_KEY. Los PRs que abre la App sí lanzan la CI
+# del repo (los de GITHUB_TOKEN no).
+
+name: Muninn · agente
+
+on:
+  issues:
+    types: [labeled, unlabeled]
+
+jobs:
+  agent:
+    # Solo la etiqueta del agente, en una issue abierta y puesta por el dueño del repo (es el token de la
+    # sincronización de Muninn): nadie más gasta tu cuota.
+    if: >-
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'muninn:agent' &&
+      github.event.issue.state == 'open' &&
+      github.event.sender.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Una ejecución por issue. El job `stop` entra en el mismo grupo y la cancela.
+    concurrency:
+      group: muninn-agent-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          base_branch: develop
+          branch_prefix: agent/
+          prompt: |
+            Resuelve la issue #${{ github.event.issue.number }} de ${{ github.repository }}.
+            Léela entera con `gh issue view ${{ github.event.issue.number }} --comments` y sigue el CLAUDE.md del repo.
+
+            1. Crea la rama `agent/issue-${{ github.event.issue.number }}` desde `develop`.
+            2. Haz el cambio más pequeño que resuelva la issue, con sus tests si el repo los tiene, y pasa lo que
+               puedas de las comprobaciones del repo (lint, tipos, tests).
+            3. Commits con Conventional Commits y `git push -u origin agent/issue-${{ github.event.issue.number }}`.
+            4. Abre el PR con `gh pr create --base develop --head agent/issue-${{ github.event.issue.number }}`,
+               un título claro y en la descripción `Closes #${{ github.event.issue.number }}`, qué cambia y cómo
+               se ha probado.
+
+            No fusiones nada ni toques `main`. Si la issue no está clara o no se puede resolver con seguridad,
+            no abras PR: deja un comentario en la issue explicando qué falta.
+          claude_args: >-
+            --max-turns 40
+            --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(pnpm:*),Bash(cargo:*)"
+
+      # Pase lo que pase (también si se cancela), la etiqueta se va: así Muninn sabe que el agente ha
+      # terminado. Con GITHUB_TOKEN no lanza otros workflows (no se cancela a sí mismo).
+      - name: Quitar la etiqueta del agente
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh issue edit ${{ github.event.issue.number }} --repo ${{ github.repository }}
+          --remove-label muninn:agent || true
+
+  stop:
+    if: >-
+      github.event.action == 'unlabeled' &&
+      github.event.label.name == 'muninn:agent' &&
+      github.event.sender.login == github.repository_owner
+    runs-on: ubuntu-latest
+    concurrency:
+      group: muninn-agent-${{ github.event.issue.number }}
+      cancel-in-progress: true
+    permissions: {}
+    steps:
+      - run: echo "La tarea salió de la columna del agente en Muninn; se cancela la ejecución en curso."
