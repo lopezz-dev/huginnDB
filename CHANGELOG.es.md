@@ -8,6 +8,34 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Herramientas de lote en el conector MCP: varias lecturas, o varias
+  escrituras, en una sola llamada.**
+  - Cada llamada a una herramienta es un turno del modelo de IA, y cada turno
+    vuelve a pagar la conversación hasta ese punto. Un agente que cambiaba unas
+    cuantas filas de configuración con un `run_write` por fila, y releía cada
+    una para comprobarla, se gastaba casi todo el plan del usuario en idas y
+    vueltas.
+  - **`run_queries`** ejecuta una lista de sentencias de solo lectura y
+    devuelve un resultado por sentencia, en orden. La que falla se informa en
+    su propio hueco y las demás se ejecutan igual.
+  - **`run_writes`** aplica una lista de escrituras de fila
+    (`INSERT`/`UPDATE`/`DELETE`) en **una transacción**: o entran todas o
+    ninguna. Una escritura puede indicar cuántas filas debe tocar
+    (`expect_rows`), y si toca otro número se deshace todo el lote, lo que
+    detecta el `UPDATE` cuyo `WHERE` no encontró nada. Las lecturas de
+    `verify` se ejecutan tras el commit y vuelven en la misma respuesta, así
+    que comprobar el resultado no cuesta otra llamada.
+  - `run_writes` necesita que la política de escritura MCP de la conexión sea
+    `data` o superior, admite hasta 50 escrituras y rechaza, explicando el
+    motivo, los cambios de esquema, `BEGIN`/`COMMIT` y similares, y un
+    `UPDATE`/`DELETE` sin `WHERE`. En MongoDB las escrituras se ejecutan en
+    orden, sin transacción, y se paran en el primer fallo; la respuesta lo
+    indica.
+  - Las instrucciones del conector ahora le dicen a la IA que agrupe, así que
+    usa estas herramientas sin que haya que pedírselo.
+
 ### Cambiado
 
 - **Las respuestas del conector MCP gastan menos tokens.** Todas las
@@ -16,6 +44,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   en blanco en su contexto y lo paga el plan del usuario: una página de 50
   filas ocupaba en torno a un 40 % más de lo necesario. Ahora las respuestas
   son JSON compacto, con el mismo contenido.
+
+### Corregido
+
+- **Un resultado recortado por el `--max-rows` del conector MCP ahora dice que
+  se recortó.** Las filas se descartaban pero `truncated` seguía en `false`,
+  así que la IA no distinguía una página de la tabla entera. En MongoDB los
+  tipos por celda no se recortaban con las filas y dejaban de cuadrar con
+  ellas.
 
 ## [1.34.0] — 2026-10-19
 

@@ -42,6 +42,10 @@ fn needs_of(request: &BridgeRequest) -> Vec<Need> {
         // Free text: its verbs are whatever the classifier finds in it, and a
         // scoped rule refuses it whatever they are (D3).
         RunStatement { sql, .. } => vec![Need::FreeSql(crate::db::classify::verbs_of(sql))],
+        // Several free-text writes: whatever any of them does.
+        RunWriteBatch { writes, .. } => vec![Need::FreeSql(
+            crate::commands::write_batch::verbs_of_writes(writes),
+        )],
         // Other people's statements, the server's sessions, its accounts.
         ListUsers { .. }
         | ListPrivileges { .. }

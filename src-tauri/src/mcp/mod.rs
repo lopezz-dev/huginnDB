@@ -329,6 +329,56 @@ mod args {
         pub database: Option<String>,
     }
 
+    // The batch tools' doc comments are their schema descriptions, sent to the
+    // client in `tools/list` and carried in its context for the whole session:
+    // kept short on purpose, since saving tokens is what these tools are for.
+
+    /// Arguments for `run_queries`.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct Queries {
+        /// Connection name (or id) from `list_connections`.
+        pub connection_id: String,
+        /// Read-only statements, each run as `run_query` would. Results come
+        /// back in the same order.
+        pub queries: Vec<String>,
+        /// MongoDB only: database to target when the connection has none
+        /// bound.
+        #[serde(default)]
+        pub database: Option<String>,
+    }
+
+    /// One entry of `run_writes`.
+    ///
+    /// `#[schemars(inline)]` for the reason [`RowValueArg`] gives (issue #83).
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    #[schemars(inline)]
+    pub struct WriteArg {
+        /// One INSERT / UPDATE / DELETE (or MongoDB insert/update/replace/
+        /// delete).
+        pub sql: String,
+        /// Rows this write must affect; any other count rolls back the whole
+        /// batch.
+        #[serde(default)]
+        pub expect_rows: Option<u64>,
+    }
+
+    /// Arguments for `run_writes`.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct Writes {
+        /// Connection name (or id) from `list_connections`.
+        pub connection_id: String,
+        /// Row writes, applied in order inside one transaction.
+        pub writes: Vec<WriteArg>,
+        /// Read-only statements run after the commit, to check the result in
+        /// the same call. Results come back in the same order.
+        #[serde(default)]
+        pub verify: Vec<String>,
+        /// MongoDB only: database to target when the connection has none
+        /// bound.
+        #[serde(default)]
+        pub database: Option<String>,
+    }
+
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Browse {
         /// The connection to work on: its **name** as shown in HuginnDB
@@ -701,6 +751,7 @@ fn audit_entry(request: &BridgeRequest, error: Option<&str>) -> LogEntry {
 fn bridged_connection_id(request: &BridgeRequest) -> Option<String> {
     match request {
         BridgeRequest::RunStatement { policy_id, .. }
+        | BridgeRequest::RunWriteBatch { policy_id, .. }
         | BridgeRequest::InsertRow { policy_id, .. }
         | BridgeRequest::UpdateCell { policy_id, .. }
         | BridgeRequest::DeleteRows { policy_id, .. }
@@ -737,8 +788,9 @@ fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> 
 /// Kept as one list because three separate places need exactly it and would
 /// otherwise each keep their own copy: the `--read-only` gate below, and the
 /// two tests that pin down their annotations.
-const WRITE_TOOLS: [&str; 8] = [
+const WRITE_TOOLS: [&str; 9] = [
     "run_write",
+    "run_writes",
     "insert_row",
     "update_cell",
     "delete_rows",
@@ -1697,6 +1749,185 @@ impl Huginn {
         self.run_statement(a, StatementKind::Write).await
     }
 
+    /// Run each of `queries` as `run_query` would, against `target` under
+    /// `policy_id`'s policy — the body `run_queries` and `run_writes`' `verify`
+    /// list share.
+    ///
+    /// One after another, not concurrently: concurrent reads would each take a
+    /// connection, and on a tunnelled server a burst of new sessions is the
+    /// thing ADRs #104 and #105 exist to avoid. The saving these tools are for
+    /// is model turns, not milliseconds. The rows share one `--max-rows`
+    /// budget across the list, so ten queries cannot put ten times the cap in
+    /// the model's context.
+    async fn read_many(
+        &self,
+        target: &str,
+        policy_id: &str,
+        queries: &[String],
+    ) -> Vec<ReadOutcome> {
+        let mut left = self.config.max_rows.max(0);
+        let mut out = Vec::with_capacity(queries.len());
+        for sql in queries {
+            out.push(match self.read_one(target, policy_id, sql, left).await {
+                Ok(result) => {
+                    left -= result.rows.len() as i64;
+                    ReadOutcome::Rows(result)
+                }
+                Err(error) => ReadOutcome::Failed { error },
+            });
+        }
+        out
+    }
+
+    /// One read of [`Self::read_many`]: the same tier check and the same
+    /// `RunStatement` `run_query` sends, so it runs in the read-only
+    /// transaction every AI read gets (ADR #93).
+    async fn read_one(
+        &self,
+        target: &str,
+        policy_id: &str,
+        sql: &str,
+        max_rows: i64,
+    ) -> Result<crate::commands::query::QueryResult, String> {
+        let verbs = crate::db::classify::verbs_of(sql);
+        if verbs.class() != StmtClass::Read {
+            return Err("this statement writes; only reads run here — writes go in \
+                        `run_writes`"
+                .to_string());
+        }
+        self.require_verbs(policy_id, verbs)
+            .map_err(|e| e.message.to_string())?;
+        let value = self
+            .call(
+                BridgeRequest::RunStatement {
+                    connection_id: target.to_string(),
+                    policy_id: policy_id.to_string(),
+                    sql: sql.to_string(),
+                },
+                false,
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+        let mut result: crate::commands::query::QueryResult =
+            serde_json::from_value(value).map_err(|e| e.to_string())?;
+        truncate_rows(&mut result, max_rows);
+        Ok(result)
+    }
+
+    #[tool(
+        title = "Run several read-only statements",
+        annotations(read_only_hint = true, open_world_hint = true),
+        description = "Run several READ-ONLY statements in one call — prefer \
+                      this to consecutive `run_query` calls. Each runs as \
+                      `run_query` would; one that fails is reported in its \
+                      slot (`{\"error\": …}`) without stopping the rest. \
+                      Returns one result per statement, in order. Rows share \
+                      one --max-rows budget."
+    )]
+    async fn run_queries(
+        &self,
+        Parameters(mut a): Parameters<args::Queries>,
+    ) -> Result<CallToolResult, ErrorData> {
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
+        if a.queries.is_empty() || a.queries.len() > MAX_BATCH_READS {
+            return Err(ErrorData::invalid_params(
+                format!(
+                    "run_queries takes 1 to {MAX_BATCH_READS} queries ({} given)",
+                    a.queries.len()
+                ),
+                None,
+            ));
+        }
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.database.as_deref())
+            .await?;
+        ok_json(&self.read_many(&target, &a.connection_id, &a.queries).await)
+    }
+
+    #[tool(
+        title = "Run several writes as one transaction",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        ),
+        description = "Apply several row writes (INSERT/UPDATE/DELETE) in ONE \
+                      transaction: all land or none do. Prefer this to \
+                      consecutive `run_write` calls. A write's `expect_rows` \
+                      rolls everything back if it touches a different number \
+                      of rows. `verify` reads run after the commit and come \
+                      back in the same reply — no separate re-read needed. \
+                      Needs MCP write policy 'data' or above. Schema changes \
+                      and BEGIN/COMMIT are refused (use `run_write`). MongoDB \
+                      has no transaction here: writes run in order and stop at \
+                      the first failure (`atomic: false`). Recorded in the MCP \
+                      audit log."
+    )]
+    async fn run_writes(
+        &self,
+        Parameters(mut a): Parameters<args::Writes>,
+    ) -> Result<CallToolResult, ErrorData> {
+        use crate::commands::write_batch::{self, BatchWrite};
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
+        let writes: Vec<BatchWrite> = a
+            .writes
+            .into_iter()
+            .map(|w| BatchWrite {
+                sql: w.sql,
+                expect_rows: w.expect_rows,
+            })
+            .collect();
+        // Before a pool is opened, so a list that cannot run costs no
+        // connection. The executor checks it again on whichever side runs it.
+        write_batch::check_writes(&writes)
+            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+        if a.verify.len() > MAX_BATCH_READS {
+            return Err(ErrorData::invalid_params(
+                format!(
+                    "run_writes takes at most {MAX_BATCH_READS} verify queries ({} given)",
+                    a.verify.len()
+                ),
+                None,
+            ));
+        }
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&a.connection_id, a.database.as_deref())
+            .await?;
+        // Against the profile, never the resolved target — see `run_statement`.
+        self.require_verbs(&a.connection_id, write_batch::verbs_of_writes(&writes))?;
+
+        let value = self
+            .call(
+                BridgeRequest::RunWriteBatch {
+                    connection_id: target.clone(),
+                    policy_id: a.connection_id.clone(),
+                    writes,
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
+        let batch: write_batch::WriteBatchResult =
+            serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
+
+        #[derive(serde::Serialize)]
+        struct Reply {
+            #[serde(flatten)]
+            batch: write_batch::WriteBatchResult,
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            verify: Vec<ReadOutcome>,
+        }
+        let verify = self.read_many(&target, &a.connection_id, &a.verify).await;
+        ok_json(&Reply { batch, verify })
+    }
+
     #[tool(
         title = "Browse table rows",
         annotations(read_only_hint = true, open_world_hint = true),
@@ -2347,14 +2578,42 @@ impl Huginn {
     }
 }
 
-/// Truncate a query result to at most `max` rows, flagging the trim in
-/// `rows_affected` semantics untouched — callers see fewer rows than the
-/// engine returned, so we drop the tail rather than lie about the count.
-fn truncate_rows(result: &mut crate::commands::query::QueryResult, max: i64) {
+/// Truncate a query result to at most `max` rows, in place, and say so.
+/// Returns how many rows it kept.
+///
+/// `truncated` is set: it used to be left as the engine reported it, so a
+/// result cut to `--max-rows` arrived looking complete, and a model that cannot
+/// tell a page from a table either concludes the table ends there or spends a
+/// call asking again. `row_types` (MongoDB's per-cell types) is row-aligned and
+/// cut with `rows`, or the two desynchronise. `rows_affected` keeps what the
+/// engine reported — we drop the tail rather than lie about the count.
+fn truncate_rows(result: &mut crate::commands::query::QueryResult, max: i64) -> usize {
     let max = max.max(0) as usize;
     if result.rows.len() > max {
         result.rows.truncate(max);
+        if let Some(types) = result.row_types.as_mut() {
+            types.truncate(max);
+        }
+        result.truncated = true;
     }
+    result.rows.len()
+}
+
+/// Most statements one `run_queries` call, or one `run_writes` `verify` list,
+/// may carry — the same bound `run_writes` puts on its writes.
+const MAX_BATCH_READS: usize = crate::commands::write_batch::MAX_WRITES;
+
+/// One answer in a `run_queries` reply or a `run_writes` `verify` list.
+///
+/// A failed read is an entry, not a failed call: the others ran and their
+/// answers are worth having, and after `run_writes` has committed, failing the
+/// call would tell the model its writes did not land when they did — the
+/// one misreading that makes it write them again.
+#[derive(serde::Serialize)]
+#[serde(untagged)]
+enum ReadOutcome {
+    Rows(crate::commands::query::QueryResult),
+    Failed { error: String },
 }
 
 // `router = self.tool_router` dispatches through the stored router (built once
@@ -2384,11 +2643,14 @@ fn instructions() -> String {
         "Access to the databases configured in HuginnDB. Call \
          list_connections first to see which connection ids are available \
          (each shows its write policy), then pass a connection_id to the \
-         other tools. Reads always work; writes (run_query DML/DDL, \
+         other tools. Reads always work; writes (run_write, run_writes, \
          insert_row, update_cell, delete_rows) only succeed when the \
          connection's policy permits them — 'data' for row changes, \
          'full' for schema changes — and every write is recorded in the \
-         app's MCP audit log.",
+         app's MCP audit log. To save calls, batch: several reads go in \
+         one run_queries, several row writes in one run_writes (one \
+         transaction, with `verify` reads returned after the commit — no \
+         need to re-read).",
     );
     let record = crate::updater::record::load();
     if let Some(note) =
@@ -2864,6 +3126,79 @@ mod tests {
     /// Holds the lock itself rather than racing two opens: two SQLite opens are
     /// too fast to overlap reliably, and the question is only whether
     /// `open_local` takes the per-id lock at all.
+    /// `run_queries` and `run_writes`' `verify`: every read answered in its
+    /// slot, a failure kept to its own slot, a write refused there rather than
+    /// run, and one row budget across the list.
+    #[tokio::test]
+    async fn a_list_of_reads_answers_each_in_its_slot_under_one_row_budget() {
+        use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+        let id = "t-read-many";
+        let path =
+            std::env::temp_dir().join(format!("huginndb-mcp-read-many-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(&path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO t (id) VALUES (1), (2), (3)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let mut huginn = huginn_with_policy(id, McpWritePolicy::Data, false);
+        huginn.config = Arc::new(Config {
+            pinned: Some(HashSet::from([id.to_string()])),
+            read_only: false,
+            max_rows: 4,
+            max_connections: DEFAULT_MAX_CONNECTIONS,
+            saw_allow_writes: false,
+        });
+        huginn
+            .state
+            .connections
+            .write()
+            .insert(id.into(), ActivePool::bare(DbPool::Sqlite(pool)));
+
+        let out = huginn
+            .read_many(
+                id,
+                id,
+                &[
+                    "SELECT id FROM t ORDER BY id".into(),
+                    "SELECT * FROM missing".into(),
+                    "DELETE FROM t WHERE id = 1".into(),
+                    "SELECT id FROM t ORDER BY id".into(),
+                ],
+            )
+            .await;
+        let json = serde_json::to_value(&out).unwrap();
+        assert_eq!(json[0]["rows"], serde_json::json!([[1], [2], [3]]));
+        assert_eq!(json[0]["truncated"], false);
+        assert!(json[1]["error"].as_str().unwrap().contains("missing"));
+        assert!(json[2]["error"].as_str().unwrap().contains("writes"));
+        // Three of the four rows the budget allows went to the first read.
+        assert_eq!(json[3]["rows"], serde_json::json!([[1]]));
+        assert_eq!(json[3]["truncated"], true);
+        // And the refused DELETE did not run.
+        let Ok(DbPool::Sqlite(p)) = huginn.state.pool_for(id) else {
+            unreachable!()
+        };
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM t")
+            .fetch_one(&p)
+            .await
+            .unwrap();
+        assert_eq!(n, 3);
+        let _ = std::fs::remove_file(&path);
+    }
+
     #[tokio::test]
     async fn a_local_open_waits_for_one_already_in_flight_for_the_same_id() {
         // Its own temp file: tests in this module run concurrently.
@@ -3716,6 +4051,11 @@ mod tests {
             "drop_view",
             "create_index",
             "drop_index",
+            // Nested `writes: [{sql, expect_rows}]` — the shape that reaches
+            // for `$ref` without `#[schemars(inline)]`.
+            "run_writes",
+            // Not a write, but a list argument, checked for the same shapes.
+            "run_queries",
         ] {
             let tool = tools
                 .iter()

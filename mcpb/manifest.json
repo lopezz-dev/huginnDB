@@ -49,6 +49,8 @@
     { "name": "list_indexes", "description": "Indexes on a table and the columns each covers." },
     { "name": "run_query", "description": "Run a single read-only statement and return its rows." },
     { "name": "run_write", "description": "Run a single statement that changes the database, where the connection's write policy allows it." },
+    { "name": "run_queries", "description": "Run several read-only statements in one call." },
+    { "name": "run_writes", "description": "Apply several row writes in one transaction, with optional reads to verify them after the commit." },
     { "name": "browse_table", "description": "Browse one page of rows without writing SQL." },
     { "name": "server_version", "description": "The connected engine and version." },
     { "name": "list_users", "description": "Server-side users and roles." },

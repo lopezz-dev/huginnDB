@@ -31,6 +31,7 @@ pub mod terminal;
 pub mod themes;
 pub mod updater;
 pub mod view;
+pub mod write_batch;
 
 use crate::log_bus::TauriSink;
 use crate::state::AppState;

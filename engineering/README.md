@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-111 entries: 89 ADRs, 13 gotchas, 9 conventions.
+112 entries: 90 ADRs, 13 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -151,4 +151,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 109 | ADR | [`mongosh` is downloaded on request from MongoDB's own feed, verified against its published SHA-256, and kept in a per-user directory — never bundled in the installer](adr/adr-109-mongosh-is-downloaded-on-request-from-mongodb-not-bundled.md) | accepted | 2026-10-16 |
 | 110 | ADR | [a tunnel holds one SSH session — a slow channel is not a dead session, and a replaced session is closed](adr/adr-110-a-tunnel-holds-one-ssh-session.md) | accepted | 2026-10-19 |
 | 111 | ADR | [a tunnel whose redial failed waits before dialling again, and fails every channel at once meanwhile](adr/adr-111-a-failed-redial-backs-off.md) | accepted | 2026-10-19 |
+| 112 | ADR | [a write batch is one transaction of single row writes, and its verify reads run after the commit as ordinary reads](adr/adr-112-a-write-batch-is-one-transaction-and-verify-runs-after-it.md) | accepted | 2026-10-20 |
 <!-- index:end -->
