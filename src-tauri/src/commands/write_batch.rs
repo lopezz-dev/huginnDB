@@ -24,6 +24,9 @@
 //!   make everything before it permanent. [`check_writes`] runs here, on the side
 //!   that executes, and not only in the sidecar that sent the list.
 //! * **One statement per entry**, so that check sees every statement.
+//! * **No MySQL executable comments.** `/*! … */` is a comment to every
+//!   classifier here and code to MySQL, so `/*! COMMIT */` would slip a
+//!   `COMMIT` past the check above.
 //! * **`expect_rows`** turns "the `UPDATE` matched nothing" — the usual reason an
 //!   agent re-reads — into a rollback and a message saying which write and how
 //!   many rows it did touch.
@@ -125,6 +128,14 @@ pub fn check_writes(writes: &[BatchWrite]) -> AppResult<()> {
             return Err(AppError::InvalidInput(format!(
                 "writes[{i}] holds {} statements. Give each statement its own entry.",
                 parts.len()
+            )));
+        }
+        // `/*!` is MySQL's, `/*M!` MariaDB's. Anywhere in the entry, not only
+        // in front: the text inside runs, and the classifiers never read it.
+        if sql.contains("/*!") || sql.contains("/*M!") {
+            return Err(AppError::InvalidInput(format!(
+                "writes[{i}] holds a MySQL executable comment (`/*! … */`), which runs as \
+                 code but is invisible to the checks run_writes makes. Write it out plainly."
             )));
         }
         if crate::db::sql::is_session_statement(sql) {
@@ -381,10 +392,26 @@ mod tests {
             "END",
             "SAVEPOINT s",
             "SET x = 1",
+            // A comment in front used to hide them: the COMMIT ran inside the
+            // transaction and made the writes before it permanent.
+            "/* note */ COMMIT",
+            "-- note\nCOMMIT",
+            "/* a */ -- b\n  SET autocommit = 1",
         ] {
             assert!(
                 case(control).contains("writes[1] is transaction or session control"),
                 "{control}"
+            );
+        }
+        for hidden in [
+            "/*! COMMIT */",
+            "/*!40000 COMMIT */",
+            "UPDATE t SET a = 1 WHERE id = 1 /*!, b = 2 */",
+            "/*M! COMMIT */",
+        ] {
+            assert!(
+                case(hidden).contains("writes[1] holds a MySQL executable comment"),
+                "{hidden}"
             );
         }
         assert!(case("SELECT * FROM t").contains("writes[1] only reads"));
@@ -562,6 +589,33 @@ mod tests {
         .unwrap_err()
         .to_string();
         assert!(err.contains("transaction or session control"), "{err}");
+        assert_eq!(values(&state).await[0], ("a".into(), "1".into()));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[tokio::test]
+    async fn a_commented_commit_cannot_split_the_batch() {
+        // Found by hand against a canary build: the COMMIT ran inside the
+        // transaction, the first write stayed, and the reply to the later
+        // missed `expect_rows` said nothing had changed.
+        let (state, path) = sqlite_state("commented-commit").await;
+        let err = execute_write_batch_inner(
+            &Recorder::default(),
+            &state,
+            "c",
+            &[
+                expect("UPDATE cfg SET v = '7' WHERE k = 'a'", 1),
+                w("/* c */ COMMIT"),
+                expect("UPDATE cfg SET v = '7' WHERE k = 'nope'", 1),
+            ],
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("writes[1] is transaction or session control"),
+            "{err}"
+        );
         assert_eq!(values(&state).await[0], ("a".into(), "1".into()));
         let _ = std::fs::remove_file(&path);
     }
