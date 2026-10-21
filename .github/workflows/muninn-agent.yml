@@ -4,7 +4,8 @@
 # columna del agente, Muninn pone la etiqueta `muninn:agent` en su issue; este workflow la resuelve con Claude
 # Code en una rama `agent/issue-<n>` y abre un PR contra `develop` con `Closes #<n>`. Nunca fusiona: eso lo
 # haces tú. Al terminar quita la etiqueta; si no hubo PR, Muninn devuelve la tarea a «Por hacer».
-# Sacar la tarea de la columna quita la etiqueta, y eso cancela la ejecución en curso (job `stop`).
+# Sacar la tarea de la columna quita la etiqueta, y eso cancela la ejecución en curso (job `stop`); si el PR
+# llega a abrirse antes de la cancelación, se cierra.
 #
 # Hace falta, una vez por repo: instalar la GitHub App de Claude (https://github.com/apps/claude) y el secreto
 # CLAUDE_CODE_OAUTH_TOKEN (`claude setup-token`) o ANTHROPIC_API_KEY. Los PRs que abre la App sí lanzan la CI
@@ -74,6 +75,24 @@ jobs:
         run: >-
           jq -r '.[] | select(.type == "result") | .result // empty'
           "${{ steps.claude.outputs.execution_file }}" || true
+
+      # Si sacaste la tarea de la columna con el agente en marcha, Muninn quitó la etiqueta, pero el job `stop`
+      # puede tardar ~30 s en conseguir runner y llegar cuando el PR ya está abierto. Sin la etiqueta en este
+      # punto (la nuestra se quita en el paso siguiente) el PR sobra: se cierra, y Muninn devuelve la tarea a
+      # «Por hacer». Si no se puede leer la issue, no se toca nada.
+      - name: Cerrar el PR si sacaste la tarea
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          labels=$(gh issue view "$ISSUE" --repo "$REPO" --json labels -q '[.labels[].name] | join(",")') || exit 0
+          case ",$labels," in *,muninn:agent,*) exit 0 ;; esac
+          for pr in $(gh pr list --repo "$REPO" --head "agent/issue-$ISSUE" --state open --json number -q '.[].number'); do
+            gh pr close "$pr" --repo "$REPO" \
+              --comment "Cerrado: la tarea salió de la columna del agente en Muninn mientras el agente trabajaba." || true
+          done
 
       # Pase lo que pase (también si se cancela), la etiqueta se va: así Muninn sabe que el agente ha
       # terminado. Con GITHUB_TOKEN no lanza otros workflows (no se cancela a sí mismo).
