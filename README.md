@@ -195,7 +195,7 @@ is in [docs/PRIVACY.md](docs/PRIVACY.md).
 User guides live in [`docs/`](docs/README.md), and the same files are readable
 inside the app under **Help → Documentation**. Each one has a Spanish twin.
 
-[Connections](docs/CONNECTIONS.md) · [Environments](docs/ENVIRONMENTS.md) · [MongoDB](docs/MONGODB.md) · [SQL Server](docs/SQL_SERVER.md) · [MCP connector](docs/MCP.md) · [AI panel](docs/AI.md)
+[Connections](docs/CONNECTIONS.md) · [Environments](docs/ENVIRONMENTS.md) · [MongoDB](docs/MONGODB.md) · [SQL Server](docs/SQL_SERVER.md) · [MCP connector](docs/MCP.md) · [AI panel](docs/AI.md) · [Pulse](docs/PULSE.md) · [Shortcuts](docs/SHORTCUTS.md)
 
 [Roadmap](ROADMAP.md) · [Security](SECURITY.md) · [Privacy](docs/PRIVACY.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
