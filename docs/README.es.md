@@ -21,6 +21,10 @@ para cualquier idioma que no tenga traducción.
 | [MongoDB](MONGODB.es.md) · [en](MONGODB.md) | El dialecto `mongosh` del editor, el editor de documentos, pipelines de agregación y vistas, el gestor de índices, renombrar/mover una colección y lo que no hay. |
 | [SQL Server](SQL_SERVER.es.md) · [en](SQL_SERVER.md) | `HOST\INSTANCIA` y el SQL Browser, confianza en el certificado, autenticación de Windows, cómo llegan los valores y las superficies aún sin implementar. |
 | [Conector MCP](MCP.es.md) · [en](MCP.md) | Exponer tus bases de datos a un cliente de IA: el binario, la configuración por cliente, el nivel de escritura por conexión, el log de auditoría y qué hacer cuando el bloqueo viene del propio cliente. |
+| [Panel de IA](AI.es.md) · [en](AI.md) | Hablar con un modelo de lenguaje sobre tu base de datos: local primero, solo lectura y desactivado por defecto, a qué endpoint se conecta y qué datos puede ver. |
+| [Política gestionada](POLICY.es.md) · [en](POLICY.md) | Una sola política que leen todas las instalaciones de una organización: qué puede ver y hacer la IA, por rol y por base de datos. |
+| [Pulse](PULSE.es.md) · [en](PULSE.md) | Salud y rendimiento del servidor en vivo y su historial: constantes vitales, sentencias costosas y retrospectiva (MySQL y MongoDB). |
+| [Atajos de teclado](SHORTCUTS.es.md) · [en](SHORTCUTS.md) | El catálogo de comandos y cómo asignar, cambiar o quitar la tecla de cada uno desde Preferencias → Atajos. |
 
 Documentos a nivel de repositorio, fuera de esta carpeta (en inglés):
 [`README.md`](../README.md), [`ROADMAP.md`](../ROADMAP.md),
