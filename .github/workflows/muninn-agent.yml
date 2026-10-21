@@ -43,6 +43,7 @@ jobs:
           fetch-depth: 0
 
       - uses: anthropics/claude-code-action@v1
+        id: claude
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -65,6 +66,14 @@ jobs:
           claude_args: >-
             --max-turns 40
             --allowedTools "Read,Edit,Write,Glob,Grep,Bash(git:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(pnpm:*),Bash(cargo:*)"
+
+      # La Action oculta la salida de Claude (en un repo público quedaría a la vista). Si falla, enseña solo
+      # el mensaje final, que es donde dice por qué (token, cuota, modelo…).
+      - name: Mostrar el error de Claude
+        if: failure() && steps.claude.outputs.execution_file != ''
+        run: >-
+          jq -r '.[] | select(.type == "result") | .result // empty'
+          "${{ steps.claude.outputs.execution_file }}" || true
 
       # Pase lo que pase (también si se cancela), la etiqueta se va: así Muninn sabe que el agente ha
       # terminado. Con GITHUB_TOKEN no lanza otros workflows (no se cancela a sí mismo).
