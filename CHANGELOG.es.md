@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.35.0] — 2026-10-22
+
 ### Añadido
 
 - **Herramientas de lote en el conector MCP: varias lecturas, o varias

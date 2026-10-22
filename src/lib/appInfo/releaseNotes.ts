@@ -31,6 +31,7 @@ import {
   Bug,
   BookOpen,
   Building2,
+  Coins,
   Columns3,
   Copy,
   Database,
@@ -57,6 +58,7 @@ import {
   Plug,
   Power,
   RefreshCw,
+  Scissors,
   Search,
   Server,
   Settings2,
@@ -101,6 +103,33 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.35.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_35_0.tagline",
+    highlights: [
+      {
+        icon: Layers,
+        titleKey: "whatsNew.releases.1_35_0.items.batchReads.title",
+        bodyKey: "whatsNew.releases.1_35_0.items.batchReads.body",
+      },
+      {
+        icon: ListChecks,
+        titleKey: "whatsNew.releases.1_35_0.items.batchWrites.title",
+        bodyKey: "whatsNew.releases.1_35_0.items.batchWrites.body",
+      },
+      {
+        icon: Coins,
+        titleKey: "whatsNew.releases.1_35_0.items.fewerTokens.title",
+        bodyKey: "whatsNew.releases.1_35_0.items.fewerTokens.body",
+      },
+      {
+        icon: Scissors,
+        titleKey: "whatsNew.releases.1_35_0.items.truncatedResults.title",
+        bodyKey: "whatsNew.releases.1_35_0.items.truncatedResults.body",
+      },
+    ],
+  },
   {
     version: "1.34.0",
     major: true,

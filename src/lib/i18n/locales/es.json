@@ -2631,6 +2631,27 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_35_0": {
+        "tagline": "Una IA conectada por el conector MCP ya lee y escribe por lotes, comprueba sus propios cambios en la misma llamada y gasta menos tokens de tu plan para hacerlo.",
+        "items": {
+          "batchReads": {
+            "title": "Varias consultas, una sola llamada",
+            "body": "run_queries ejecuta una lista de sentencias de solo lectura y responde con un resultado por sentencia, en orden. La que falla se informa en su propio hueco y las demás se ejecutan igual."
+          },
+          "batchWrites": {
+            "title": "Escrituras por lotes: o todas o ninguna",
+            "body": "run_writes aplica una lista de INSERT, UPDATE y DELETE en una sola transacción. Cada escritura puede indicar cuántas filas debe tocar, así que un UPDATE cuyo WHERE no encontró nada deshace el lote entero, y las lecturas de verify vuelven en la misma respuesta. Necesita que la política de escritura de la conexión sea data o superior."
+          },
+          "fewerTokens": {
+            "title": "Respuestas más ligeras, mismo contenido",
+            "body": "El conector ahora responde con JSON compacto en vez de JSON indentado. Una página de 50 filas ocupa en torno a un 40 % menos del contexto de la IA, y de tu plan."
+          },
+          "truncatedResults": {
+            "title": "Un resultado recortado dice que se recortó",
+            "body": "Cuando --max-rows recorta un resultado, la respuesta ahora lo indica, así que la IA ya no confunde una página con la tabla entera. En MongoDB los tipos de las columnas se recortan con las filas y vuelven a cuadrar."
+          }
+        }
+      },
       "1_34_0": {
         "tagline": "Un terminal en el panel inferior ejecuta mongosh con la sesión de tu conexión MongoDB, los esquemas grandes se abren al momento y los túneles SSH dejan de insistir con un servidor que no responde.",
         "items": {

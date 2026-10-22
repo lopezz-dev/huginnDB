@@ -2631,6 +2631,27 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_35_0": {
+        "tagline": "An AI connected through the MCP connector now reads and writes in batches, checks its own changes in the same call and spends fewer tokens of your plan doing it.",
+        "items": {
+          "batchReads": {
+            "title": "Several queries, one call",
+            "body": "run_queries runs a list of read-only statements and answers with one result per statement, in order. One that fails is reported in its own slot and the rest still run."
+          },
+          "batchWrites": {
+            "title": "Batched writes: all of them or none",
+            "body": "run_writes applies a list of INSERT, UPDATE and DELETE in one transaction. Each write can say how many rows it must touch, so an UPDATE whose WHERE matched nothing rolls the whole batch back, and the reads under verify come back in the same reply. It needs the connection's write policy at data or above."
+          },
+          "fewerTokens": {
+            "title": "Lighter answers, same content",
+            "body": "The connector now replies with compact JSON instead of indented JSON. A page of 50 rows takes around 40% less of the AI's context, and of your plan."
+          },
+          "truncatedResults": {
+            "title": "A cut result says it was cut",
+            "body": "When --max-rows trims a result, the reply now says so, so the AI no longer mistakes a page for the whole table. On MongoDB the column types are trimmed with the rows and line up again."
+          }
+        }
+      },
       "1_34_0": {
         "tagline": "A terminal in the bottom dock runs mongosh signed in as your MongoDB connection, big schemas open at once, and SSH tunnels stop knocking on a server that is not answering.",
         "items": {

@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.35.0] — 2026-10-22
+
 ### Added
 
 - **Batch tools in the MCP connector: several reads, or several writes, in one
