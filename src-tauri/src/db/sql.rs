@@ -463,8 +463,13 @@ impl std::ops::BitOr for Verbs {
 ///
 /// A prefix check on the first statement only — callers that accept text from
 /// a model split it first and refuse more than one statement.
+///
+/// Leading comments are skipped first, as [`is_read_only`] does. Without that,
+/// `/* note */ COMMIT` was not session control, `run_writes` sent it inside
+/// its transaction, and the writes before it stayed committed while the reply
+/// to a later failure said everything had been rolled back.
 pub fn is_session_statement(sql: &str) -> bool {
-    let head = sql.trim_start().to_ascii_lowercase();
+    let head = skip_leading_noise(sql).to_ascii_lowercase();
     let bare = head.trim_end().trim_end_matches(';').trim_end();
     // PostgreSQL's `END` and `ABORT` are `COMMIT` and `ROLLBACK` under other
     // names; matched whole so no other statement that starts with the letters
