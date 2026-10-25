@@ -37,9 +37,10 @@ instead. While the policy is loading or cannot be applied, a bar across the
 window says so and links to Settings → Policy.
 
 Where a role may write only some columns, the table's header shows a lock on
-the others and a line above the rows names the columns that can be changed. A
-locked cell still opens, read-only, so its value can be read in full; a new
-row leaves the locked columns to their default.
+the columns it can neither change nor fill, a "new rows only" mark on the ones
+a new row may still fill, and a line above the rows names the columns that can
+be changed. A locked cell still opens, read-only, so its value can be read in
+full; a new row leaves the locked columns to their default.
 
 The policy only ever **narrows**. The per-connection settings users already
 have — which connections are exposed to MCP, their MCP write level, whether the

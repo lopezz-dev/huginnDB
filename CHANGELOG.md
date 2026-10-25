@@ -15,8 +15,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     whole table; they change only those columns, and their AI never gets more.
     A verb left out of `columns` keeps every column, as before. On MongoDB a
     column is a top-level field.
-  - **In the grid**, the columns a person may not change show a lock in their
-    header, and the line above the rows names the ones they can. A locked cell
+  - **In the grid**, a column a person can neither change nor fill shows a
+    lock in its header, one only a new row may fill shows a "new rows only"
+    mark, and the line above the rows names the columns they can change. A locked cell
     still opens, read-only, to read its value; pasting, Set NULL and the bulk
     update leave it out, and a new or duplicated row leaves it to its default.
   - **In the policy editor**, `insert` and `update` each get **All / Only

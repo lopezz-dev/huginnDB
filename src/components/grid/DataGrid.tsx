@@ -70,6 +70,7 @@ import type {
 } from "@/types";
 import { CellEditor } from "@/components/grid/dialogs/CellEditor";
 import { CellPreview } from "@/components/grid/CellPreview";
+import { isAutoPkColumn } from "@/components/grid/DraftCellControl";
 import { DraftRowView } from "@/components/grid/DraftRowView";
 import { IconButton } from "@/components/ui/icon-button";
 import {
@@ -816,16 +817,39 @@ export function DataGrid({
       ? columnLock(editorTarget.field?.path[0] ?? editorTarget.column.name)
       : null;
 
-  // The columns the policy will not let this person change: a lock in their
-  // header. Derived once per result rather than asked of `columnLock` in the
-  // renderer, since the column definitions must not depend on a function.
-  const lockedNameSet = useMemo(() => {
-    const out = new Set<string>();
+  // The columns the policy will not let this person change, split by whether
+  // a new row may still fill them: a lock in the header for a column they can
+  // neither change nor fill, and an "only when adding a row" mark for one the
+  // draft row still offers — a plain lock there read as a contradiction next
+  // to the Insert button. Derived once per result rather than asked of
+  // `columnLock` in the renderer, since the column definitions must not
+  // depend on a function.
+  // A boolean, not the callback: `onInsertRow` is a fresh function on every
+  // render of the tab, and these sets feed the column definitions, whose
+  // rebuild remounts the table body (see `useGridColumns`).
+  const canInsert = !!onInsertRow;
+  const [lockedNameSet, insertOnlyNameSet] = useMemo(() => {
+    const locked = new Set<string>();
+    const insertOnly = new Set<string>();
     if (editable && columnLock) {
-      for (const c of result.columns) if (columnLock(c.name)) out.add(c.name);
+      for (const c of result.columns) {
+        if (!columnLock(c.name)) continue;
+        const fillable =
+          canInsert &&
+          !draftColumnLock?.(c.name) &&
+          !isAutoPkColumn(columnInfoByName.get(c.name));
+        (fillable ? insertOnly : locked).add(c.name);
+      }
     }
-    return out;
-  }, [editable, columnLock, result.columns]);
+    return [locked, insertOnly] as const;
+  }, [
+    editable,
+    columnLock,
+    draftColumnLock,
+    canInsert,
+    columnInfoByName,
+    result.columns,
+  ]);
 
   // Key-icon lookups for the header (PK = amber, FK = sky), HeidiSQL-style.
   const pkNameSet = useMemo(
@@ -883,7 +907,7 @@ export function DataGrid({
         20 +
         (pkNameSet.has(name) ? 16 : 0) +
         (fkNameSet.has(name) ? 16 : 0) +
-        (lockedNameSet.has(name) ? 16 : 0) +
+        (lockedNameSet.has(name) || insertOnlyNameSet.has(name) ? 16 : 0) +
         ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === name)
           ? 12
           : 0),
@@ -1082,6 +1106,7 @@ export function DataGrid({
       pkNameSet,
       fkNameSet,
       lockedNameSet,
+      insertOnlyNameSet,
       boundSchemaNames,
     },
     editing: {

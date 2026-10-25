@@ -743,7 +743,8 @@
       "unavailable": "Búsqueda de clave foránea no disponible: {{message}}"
     },
     "headerPolicyLocked": "Bloqueada por la política de tu organización",
-    "draftLocked": "Tomará su valor por defecto, o NULL."
+    "draftLocked": "Tomará su valor por defecto, o NULL.",
+    "headerInsertOnly": "Bloqueada por la política de tu organización: solo se rellena al añadir una fila"
   },
   "tableData": {
     "refresh": "Actualizar",

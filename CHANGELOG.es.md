@@ -17,8 +17,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     leyendo la tabla entera; solo modifican esas columnas, y su IA nunca tiene
     más. Un verbo que no aparece en `columns` conserva todas las columnas, como
     hasta ahora. En MongoDB una columna es un campo de primer nivel.
-  - **En la tabla**, las columnas que una persona no puede modificar muestran
-    un candado en la cabecera, y la línea sobre las filas nombra las que sí. Una
+  - **En la tabla**, una columna que una persona no puede ni modificar ni
+    rellenar muestra un candado en la cabecera, una que solo puede rellenar al
+    añadir una fila muestra una marca de «solo al añadir fila», y la línea sobre
+    las filas nombra las que puede modificar. Una
     celda bloqueada se sigue abriendo, en solo lectura, para leer su valor;
     pegar, «Set NULL» y la actualización masiva la dejan fuera, y una fila nueva
     o duplicada la deja con su valor por defecto.

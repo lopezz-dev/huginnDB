@@ -42,8 +42,9 @@ carga o no se puede aplicar, una barra en la ventana lo dice y enlaza a
 Ajustes → Política.
 
 Cuando un rol solo puede escribir algunas columnas, la cabecera de la tabla
-muestra un candado en las demás y una línea sobre las filas nombra las que se
-pueden modificar. Una celda bloqueada se sigue abriendo, en solo lectura, para
+muestra un candado en las que no puede ni modificar ni rellenar, una marca de
+«solo al añadir fila» en las que una fila nueva sí puede rellenar, y una línea
+sobre las filas nombra las que se pueden modificar. Una celda bloqueada se sigue abriendo, en solo lectura, para
 leer su valor entero; una fila nueva deja las columnas bloqueadas con su valor
 por defecto.
 

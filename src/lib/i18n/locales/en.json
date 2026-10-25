@@ -743,7 +743,8 @@
       "unavailable": "FK lookup unavailable: {{message}}"
     },
     "headerPolicyLocked": "Locked by your organization's policy",
-    "draftLocked": "It will take its default value, or NULL."
+    "draftLocked": "It will take its default value, or NULL.",
+    "headerInsertOnly": "Locked by your organization's policy — only filled when adding a row"
   },
   "tableData": {
     "refresh": "Refresh",
