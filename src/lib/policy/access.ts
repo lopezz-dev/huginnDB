@@ -10,8 +10,9 @@
  * comparison (gotcha #1); `usePolicyLocker` hands back a function producing it.
  */
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { columnAllowed, topLevelField } from "@/lib/policy/glob";
 import {
   relationKey,
   usePolicyAccess,
@@ -118,18 +119,15 @@ export function useConnectionAccess(
 }
 
 /**
- * A locker for one connection — and, when `relation` is given, one relation of
- * it: `lock(need)` is the text to show when the policy does not allow `need`,
- * or `null` when the control is usable. One subscription for a menu that locks
- * seven items, rather than seven.
+ * The relation's cached answer, asking for it once the connection is known to
+ * be managed. `undefined` while it has not arrived, which reads as allowed.
  */
-export function usePolicyLocker(
+function useRelationAccess(
   connectionId: string | null | undefined,
-  relation?: { schema: string | null | undefined; name: string } | null,
-): (need: PolicyNeed) => string | null {
+  conn: ConnectionAccess | undefined,
+  relation: { schema: string | null | undefined; name: string } | null | undefined,
+): RelationAccess | undefined {
   const state = usePolicyAccess((s) => s.state);
-  const stateReason = usePolicyAccess((s) => s.reason);
-  const conn = useConnectionAccess(connectionId);
   const key =
     connectionId && relation
       ? relationKey(connectionId, relation.schema, relation.name)
@@ -145,8 +143,81 @@ export function usePolicyLocker(
     if (state === "unknown" || state === "unmanaged" || managed !== true) return;
     requestRelations(connectionId, [{ schema, name }]);
   }, [connectionId, schema, name, rel, state, managed, requestRelations]);
+  return rel;
+}
+
+/**
+ * A locker for one connection — and, when `relation` is given, one relation of
+ * it: `lock(need)` is the text to show when the policy does not allow `need`,
+ * or `null` when the control is usable. One subscription for a menu that locks
+ * seven items, rather than seven.
+ */
+export function usePolicyLocker(
+  connectionId: string | null | undefined,
+  relation?: { schema: string | null | undefined; name: string } | null,
+): (need: PolicyNeed) => string | null {
+  const state = usePolicyAccess((s) => s.state);
+  const stateReason = usePolicyAccess((s) => s.reason);
+  const conn = useConnectionAccess(connectionId);
+  const rel = useRelationAccess(connectionId, conn, relation);
   const text = useLockText();
   return (need) => text(lockFor(state, stateReason, conn, rel, need));
+}
+
+/** The verbs a rule can limit to some columns (ADR #113). */
+export type ColumnVerb = "insert" | "update";
+
+/**
+ * The column limit on one verb of one relation — `null` when there is none:
+ * no policy, an unmanaged connection, an answer still on its way, or a role
+ * that may write every column. Pure, for the tests.
+ */
+export function columnLimitFor(
+  rel: RelationAccess | undefined,
+  verb: ColumnVerb,
+): string[] | null {
+  return rel?.columns?.[verb] ?? null;
+}
+
+/** What {@link usePolicyColumns} hands back. */
+export interface PolicyColumns {
+  /** The limit on each verb, as patterns; `null` means every column. */
+  insert: string[] | null;
+  update: string[] | null;
+  /**
+   * The text to show where `verb` may not write `column`, or `null` when it
+   * may. Only the column limit: whether the verb is granted at all is
+   * {@link usePolicyLocker}'s question.
+   */
+  lock: (verb: ColumnVerb, column: string) => string | null;
+}
+
+/**
+ * Which columns the person may write on one relation (ADR #113). On MongoDB
+ * (`documentMode`) a field path is judged by its top-level field, as the
+ * backend judges it. Stable while the cached answer is, so it can be a prop.
+ */
+export function usePolicyColumns(
+  connectionId: string | null | undefined,
+  relation: { schema: string | null | undefined; name: string } | null | undefined,
+  documentMode = false,
+): PolicyColumns {
+  const { t } = useTranslation();
+  const conn = useConnectionAccess(connectionId);
+  const rel = useRelationAccess(connectionId, conn, relation);
+  return useMemo(() => {
+    const insert = columnLimitFor(rel, "insert");
+    const update = columnLimitFor(rel, "update");
+    return {
+      insert,
+      update,
+      lock: (verb, column) => {
+        const key = documentMode ? topLevelField(column) : column;
+        if (columnAllowed(verb === "insert" ? insert : update, key)) return null;
+        return t(`policy.lock.column.${verb}`, { column: key });
+      },
+    };
+  }, [rel, documentMode, t]);
 }
 
 /** The lock on one need — {@link usePolicyLocker} for a single control. */

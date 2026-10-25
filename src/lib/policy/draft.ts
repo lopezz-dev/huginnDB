@@ -21,6 +21,8 @@ export interface RuleJson {
   human?: string[];
   ai?: string[];
   dbUser?: string;
+  /** Absent per verb: every column. `[]`: none (ADR #113). */
+  columns?: { insert?: string[]; update?: string[] };
   [key: string]: unknown;
 }
 
@@ -228,6 +230,15 @@ export interface DraftChanges {
   /** A `dbUser` appears where the saved policy had none — older versions of
    *  HuginnDB read that as a broken policy. */
   dbUserIntroduced: boolean;
+  /** Column limits appear where the saved policy had none — the same
+   *  compatibility break as `dbUser`. */
+  columnsIntroduced: boolean;
+}
+
+function hasColumns(doc: PolicyJson): boolean {
+  return Object.values(doc.roles ?? {}).some((r) =>
+    (r.rules ?? []).some((rule) => rule.columns !== undefined),
+  );
 }
 
 function hasDbUser(doc: PolicyJson): boolean {
@@ -262,6 +273,7 @@ export function summarizeChanges(before: PolicyJson, after: PolicyJson): DraftCh
         ? { from: before.unmanagedConnections, to: after.unmanagedConnections }
         : null,
     dbUserIntroduced: hasDbUser(after) && !hasDbUser(before),
+    columnsIntroduced: hasColumns(after) && !hasColumns(before),
   };
 }
 

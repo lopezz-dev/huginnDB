@@ -6,6 +6,38 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Managed policy: limit which columns a role may write.**
+  - A rule can now say which columns `insert` may give a value to and which
+    `update` may change: `"columns": { "insert": ["customer", "amount",
+    "status"], "update": ["status"] }`. The people in the role still read the
+    whole table; they change only those columns, and their AI never gets more.
+    A verb left out of `columns` keeps every column, as before. On MongoDB a
+    column is a top-level field.
+  - **In the grid**, the columns a person may not change show a lock in their
+    header, and the line above the rows names the ones they can. A locked cell
+    still opens, read-only, to read its value; pasting, Set NULL and the bulk
+    update leave it out, and a new or duplicated row leaves it to its default.
+  - **In the policy editor**, `insert` and `update` each get **All / Only
+    these**, with the columns of the rule's own tables to pick from — marked
+    when they are required, set by the server, or missing from some table. It
+    warns, with a one-click fix, when a required column is left out of
+    `insert` (no row could be added) and when `delete` sits beside a limited
+    `update` (deleting a row and adding it back would write any column).
+    **View as** and Settings → Policy show the columns too.
+  - **Generate grants** writes column grants — `GRANT UPDATE (status) ON …` —
+    so the database enforces the limits for people with their own database
+    user. SQL Server has no column-level `INSERT`, so there the script grants
+    `INSERT` on the table and says that `columns.insert` holds only inside
+    HuginnDB; MongoDB has no field privileges at all.
+  - Under a column limit, free-form `UPDATE`/`INSERT` statements are refused —
+    a statement's text does not say which columns its triggers or views write —
+    while free-form reads stay as they were.
+  - **Update HuginnDB on every computer before adding `columns`**: older
+    versions read a policy with it as broken and block every connection. The
+    editor says so when you save. See `docs/POLICY.md` and ADR #113.
+
 ## [1.35.0] — 2026-10-22
 
 ### Added

@@ -69,6 +69,34 @@ pub(crate) fn relation(
     )
 }
 
+/// The columns one `INSERT` (`verb` = `Verbs::INSERT`) gives a value to, or
+/// one `UPDATE` changes, on a relation — checked **after** [`relation`] has
+/// granted the verb, by every wrapper that writes rows. A rule may limit
+/// which columns a verb reaches (ADR #113); on MongoDB a column is a field
+/// path, judged by its top-level field.
+pub(crate) fn columns<S: AsRef<str>>(
+    state: &AppState,
+    connection_id: &str,
+    schema: Option<&str>,
+    name: &str,
+    verb: Verbs,
+    columns: impl IntoIterator<Item = S>,
+) -> AppResult<()> {
+    require(
+        state,
+        connection_id,
+        Need::Columns {
+            schema: schema.map(str::to_string),
+            name: name.to_string(),
+            verb,
+            columns: columns
+                .into_iter()
+                .map(|c| c.as_ref().to_string())
+                .collect(),
+        },
+    )
+}
+
 /// Reading one relation's rows or structure.
 pub(crate) fn read(
     state: &AppState,
@@ -559,6 +587,12 @@ mod tests {
                         "relations": {{ "allow": ["invoices", "v_invoice_*"] }},
                         "human": ["select", "insert"],
                         "ai": ["select"]
+                    }}, {{
+                        "endpoint": {{ "host": "erp.local" }},
+                        "databases": ["billing"],
+                        "relations": {{ "allow": ["orders"] }},
+                        "human": ["select", "insert", "update"],
+                        "columns": {{ "insert": ["customer", "status"], "update": ["status"] }}
                     }}] }}
                 }}
             }}"#
@@ -608,6 +642,25 @@ mod tests {
         assert!(export(&state, "erp", None, "invoices").is_err());
         assert!(monitor(&state, "erp").is_err());
         assert!(database_ddl(&state, "erp", "billing").is_err());
+    }
+
+    #[test]
+    fn a_person_writes_only_the_columns_their_role_allows() {
+        let Some(state) = managed_state() else { return };
+        let cols = |verb, list: &[&str]| columns(&state, "erp", None, "orders", verb, list.iter());
+        assert!(relation(&state, "erp", None, "orders", Verbs::UPDATE).is_ok());
+        assert!(cols(Verbs::UPDATE, &["status"]).is_ok());
+        assert!(
+            cols(Verbs::UPDATE, &["STATUS"]).is_ok(),
+            "matched ignoring case"
+        );
+        let err = cols(Verbs::UPDATE, &["amount"]).unwrap_err().to_string();
+        assert!(err.contains("may not change column amount"), "{err}");
+        assert!(err.contains("are: status"), "{err}");
+        assert!(cols(Verbs::INSERT, &["customer", "status"]).is_ok());
+        assert!(cols(Verbs::INSERT, &["customer", "amount"]).is_err());
+        // A relation without column limits takes any column.
+        assert!(columns(&state, "erp", None, "invoices", Verbs::INSERT, ["anything"]).is_ok());
     }
 
     #[test]

@@ -154,6 +154,14 @@ pub async fn import_collection(
     if docs.is_empty() {
         return Ok(0);
     }
+    crate::commands::guard::columns(
+        state.inner(),
+        &connection_id,
+        None,
+        &collection,
+        crate::db::sql::Verbs::INSERT,
+        docs.iter().flat_map(|d| d.keys()),
+    )?;
     let coll = db.collection::<Document>(&collection);
     let res = coll.insert_many(docs).await?;
     Ok(res.inserted_ids.len() as u64)

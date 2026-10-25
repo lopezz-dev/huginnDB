@@ -60,6 +60,7 @@ function status(over: Partial<PolicyStatus> = {}): PolicyStatus {
             human: ["select", "insert", "update"],
             ai: ["select"],
             freeSql: false,
+            columns: { insert: null, update: null },
           },
         ],
       },
@@ -136,6 +137,7 @@ describe("PolicySection", () => {
                 human: ["select"],
                 ai: ["select"],
                 freeSql: true,
+                columns: { insert: null, update: null },
               },
             ]
           : [],

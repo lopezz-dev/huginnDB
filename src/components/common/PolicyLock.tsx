@@ -83,25 +83,48 @@ export function PolicyGate({
 
 export function PolicyVerbNotice({
   locked,
+  columns,
 }: {
   locked: { insert: boolean; update: boolean; delete: boolean };
+  /**
+   * Which columns each verb may write, when the role limits them (ADR #113) —
+   * `null` for a verb that is not limited (or not allowed at all, which
+   * `locked` already says). A cell that does not open says nothing on its
+   * own, so the notice names the columns that do.
+   */
+  columns?: { insert: string[] | null; update: string[] | null };
 }) {
   const { t } = useTranslation();
+  const list = new Intl.ListFormat(i18n.language, {
+    style: "long",
+    type: "conjunction",
+  });
   const verbs = (["insert", "update", "delete"] as const).filter(
     (v) => locked[v],
   );
-  if (verbs.length === 0) return null;
-  const what = new Intl.ListFormat(i18n.language, {
-    style: "long",
-    type: "conjunction",
-  }).format(verbs.map((v) => t(`policy.rows.${v}`)));
+  const parts: string[] = [];
+  if (verbs.length > 0) {
+    const what = list.format(verbs.map((v) => t(`policy.rows.${v}`)));
+    parts.push(t("policy.rows.notice", { what }));
+  }
+  for (const verb of ["update", "insert"] as const) {
+    const allowed = columns?.[verb];
+    if (!allowed) continue;
+    parts.push(
+      allowed.length === 0
+        ? t(`policy.rows.noColumns.${verb}`)
+        : t(`policy.rows.onlyColumns.${verb}`, { columns: list.format(allowed) }),
+    );
+  }
+  if (parts.length === 0) return null;
+  const text = parts.join(" · ");
   return (
     <div
       role="note"
       className="flex items-center gap-1.5 border-b border-border bg-muted/40 px-3 py-1 text-2xs text-muted-foreground"
     >
       <Lock aria-hidden className="h-3 w-3 shrink-0" />
-      <span className="truncate">{t("policy.rows.notice", { what })}</span>
+      <span className="truncate">{text}</span>
     </div>
   );
 }

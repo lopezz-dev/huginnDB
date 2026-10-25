@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConnectionAccess, RelationAccess } from "@/types";
-import { lockFor } from "./access";
+import { columnLimitFor, lockFor } from "./access";
 
 const sales: ConnectionAccess = {
   id: "erp",
@@ -10,6 +10,7 @@ const sales: ConnectionAccess = {
   verbs: ["select", "insert"],
   export: false,
   monitor: false,
+  columns: { insert: null, update: null },
   reason: null,
 };
 
@@ -17,6 +18,7 @@ const invoices: RelationAccess = {
   visible: true,
   verbs: ["select"],
   export: false,
+  columns: { insert: null, update: null },
 };
 
 describe("lockFor", () => {
@@ -60,5 +62,19 @@ describe("lockFor", () => {
     expect(lockFor("active", null, sales, undefined, "freeSql")?.kind).toBe("need");
     expect(lockFor("active", null, sales, undefined, "monitor")?.kind).toBe("need");
     expect(lockFor("active", null, sales, undefined, "export")?.kind).toBe("need");
+  });
+});
+
+describe("columnLimitFor", () => {
+  it("has no limit without an answer, and reads the verb's own list", () => {
+    expect(columnLimitFor(undefined, "update")).toBeNull();
+    const orders: RelationAccess = {
+      ...invoices,
+      verbs: ["select", "insert", "update"],
+      columns: { insert: ["customer", "status"], update: ["status"] },
+    };
+    expect(columnLimitFor(orders, "update")).toEqual(["status"]);
+    expect(columnLimitFor(orders, "insert")).toEqual(["customer", "status"]);
+    expect(columnLimitFor(invoices, "update")).toBeNull();
   });
 });

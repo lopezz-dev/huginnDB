@@ -1,7 +1,7 @@
 //! Policy applied to what an AI asks for: every [`BridgeRequest`] mapped onto
 //! what it needs, and the discovery results filtered to what the AI may see.
 
-use super::model::{verb_names, Grant, Subject};
+use super::model::{verb_names, ColumnScope, Grant, Subject};
 use super::resolve::{Ctx, Need};
 use super::{current_user, PolicyState};
 use crate::bridge::protocol::BridgeRequest;
@@ -36,8 +36,36 @@ fn needs_of(request: &BridgeRequest) -> Vec<Need> {
         }
         GetViewDefinition { schema, view, .. } => vec![rel(schema, view, Verbs::SELECT)],
         FetchTableData { schema, table, .. } => vec![rel(schema, table, Verbs::SELECT)],
-        InsertRow { schema, table, .. } => vec![rel(schema, table, Verbs::INSERT)],
-        UpdateCell { schema, table, .. } => vec![rel(schema, table, Verbs::UPDATE)],
+        // A row write needs its verb on the relation *and* on each column it
+        // writes, when a rule limits those (ADR #113).
+        InsertRow {
+            schema,
+            table,
+            values,
+            ..
+        } => vec![
+            rel(schema, table, Verbs::INSERT),
+            Need::Columns {
+                schema: schema.clone(),
+                name: table.clone(),
+                verb: Verbs::INSERT,
+                columns: insert_columns(values),
+            },
+        ],
+        UpdateCell {
+            schema,
+            table,
+            column,
+            ..
+        } => vec![
+            rel(schema, table, Verbs::UPDATE),
+            Need::Columns {
+                schema: schema.clone(),
+                name: table.clone(),
+                verb: Verbs::UPDATE,
+                columns: vec![column.clone()],
+            },
+        ],
         DeleteRows { schema, table, .. } => vec![rel(schema, table, Verbs::DELETE)],
         // Free text: its verbs are whatever the classifier finds in it, and a
         // scoped rule refuses it whatever they are (D3).
@@ -79,6 +107,16 @@ fn needs_of(request: &BridgeRequest) -> Vec<Need> {
             vec![rel(&None, collection, Verbs::DDL)]
         }
     }
+}
+
+/// The columns an `InsertRow` gives a value to, read the way
+/// `bridge::exec::execute` reads them. A `values` that does not parse yields
+/// no columns: the executor refuses the same value before writing anything, so
+/// there is nothing for the column check to stop.
+fn insert_columns(values: &serde_json::Value) -> Vec<String> {
+    serde_json::from_value::<Vec<crate::commands::query::RowValue>>(values.clone())
+        .map(|rows| rows.into_iter().map(|r| r.column).collect())
+        .unwrap_or_default()
 }
 
 /// The profile behind a connection id — a per-database view folds to its
@@ -378,6 +416,9 @@ pub struct ConnectionAccess {
     pub verbs: Vec<&'static str>,
     pub export: bool,
     pub monitor: bool,
+    /// Which columns the person may write, per verb, across the connection —
+    /// an upper bound, as `verbs` is.
+    pub columns: ColumnScope,
     /// The refusal a locked control shows, when `visible` is false.
     pub reason: Option<String>,
 }
@@ -389,6 +430,9 @@ pub struct RelationAccess {
     pub visible: bool,
     pub verbs: Vec<&'static str>,
     pub export: bool,
+    /// Which columns `insert` and `update` may write here; `None` per verb
+    /// means every column (ADR #113).
+    pub columns: ColumnScope,
 }
 
 /// Everything, for a machine or connection the policy does not govern.
@@ -428,6 +472,7 @@ pub fn access(state: &AppState, connection_ids: &[String]) -> PolicyAccess {
                         verbs: Vec::new(),
                         export: false,
                         monitor: false,
+                        columns: ColumnScope::default(),
                         reason: Some(reason.clone()),
                     })
                     .collect(),
@@ -448,6 +493,7 @@ pub fn access(state: &AppState, connection_ids: &[String]) -> PolicyAccess {
                     verbs: verb_names(full.verbs),
                     export: true,
                     monitor: true,
+                    columns: ColumnScope::default(),
                     reason: None,
                 };
             };
@@ -498,6 +544,7 @@ pub(super) fn connection_access(
         export: grant.export,
         // Server-wide, so not the per-database grant.
         monitor: refusal.is_none() && ctx.decide(&Need::Monitor).is_ok(),
+        columns: ctx.database_columns().unwrap_or_default(),
         reason: refusal,
     }
 }
@@ -514,6 +561,7 @@ pub fn relation_access(
             visible: false,
             verbs: Vec::new(),
             export: false,
+            columns: ColumnScope::default(),
         })
         .collect();
     let everything = || {
@@ -523,6 +571,7 @@ pub fn relation_access(
                 visible: true,
                 verbs: verb_names(Verbs::ALL),
                 export: true,
+                columns: ColumnScope::default(),
             })
             .collect()
     };
@@ -543,6 +592,9 @@ pub fn relation_access(
                         visible: !g.is_empty(),
                         verbs: verb_names(g.verbs),
                         export: g.export && g.verbs.contains(Verbs::SELECT),
+                        columns: ctx
+                            .relation_columns(schema.as_deref(), name)
+                            .unwrap_or_default(),
                     }
                 })
                 .collect()
@@ -603,6 +655,8 @@ pub struct RulePolicy {
     pub ai: Vec<&'static str>,
     /// Whether free SQL is available to the AI under this rule.
     pub free_sql: bool,
+    /// The rule's own column limits, as written.
+    pub columns: ColumnScope,
 }
 
 pub fn status(state: &AppState) -> PolicyStatus {
@@ -671,6 +725,10 @@ pub fn status(state: &AppState) -> PolicyStatus {
                         // that grants reading. It said "any grant" before, so an
                         // insert-only rule was shown with free SQL it did not have.
                         free_sql: !r.is_scoped() && ai.verbs.contains(Verbs::SELECT),
+                        columns: ColumnScope {
+                            insert: r.columns.insert.clone(),
+                            update: r.columns.update.clone(),
+                        },
                     }
                 })
                 .collect();
@@ -726,7 +784,8 @@ mod tests {
                 "databases": ["billing"],
                 "relations": { "allow": ["invoices"] },
                 "human": ["select", "insert"],
-                "ai": ["select", "insert"]
+                "ai": ["select", "insert"],
+                "columns": { "insert": ["number", "total"] }
             }] }
         }
     }"#;
@@ -825,6 +884,43 @@ mod tests {
             connection_id: "policy-test-erp".into(),
         };
         assert!(enforce(&state, &users).is_err());
+    }
+
+    #[test]
+    fn a_row_write_is_checked_column_by_column() {
+        if current_user().is_empty() {
+            return;
+        }
+        let state = state_with_policy();
+        let insert = |values: serde_json::Value| BridgeRequest::InsertRow {
+            connection_id: "policy-test-erp".into(),
+            policy_id: "policy-test-erp".into(),
+            schema: None,
+            table: "invoices".into(),
+            pk_column: None,
+            values,
+        };
+        let row = |cols: &[&str]| {
+            serde_json::Value::Array(
+                cols.iter()
+                    .map(|c| serde_json::json!({ "column": c, "value": "1" }))
+                    .collect(),
+            )
+        };
+        assert!(enforce(&state, &insert(row(&["number", "total"]))).is_ok());
+        let err = enforce(&state, &insert(row(&["number", "secret"])))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("column secret"), "{err}");
+        // `values` the executor cannot read is refused there, before writing.
+        assert!(enforce(&state, &insert(serde_json::json!("garbage"))).is_ok());
+
+        let access = relation_access(&state, "policy-test-erp", &[(None, "invoices".into())]);
+        assert_eq!(
+            access[0].columns.insert,
+            Some(vec!["number".to_string(), "total".to_string()])
+        );
+        assert_eq!(access[0].columns.update, Some(Vec::new()));
     }
 
     #[test]

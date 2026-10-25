@@ -45,6 +45,7 @@ const sales: ConnectionAccess = {
   verbs: ["select", "insert"],
   export: false,
   monitor: false,
+  columns: { insert: null, update: null },
   reason: null,
 };
 
@@ -112,6 +113,20 @@ describe("PolicyVerbNotice", () => {
         "Your organization's policy doesn't allow editing rows and deleting rows in this table",
       ),
     ).toBeTruthy();
+  });
+
+  it("names the columns a limited verb may write", () => {
+    render(
+      <PolicyVerbNotice
+        locked={{ insert: false, update: false, delete: true }}
+        columns={{ insert: [], update: ["Estado", "Observaciones"] }}
+      />,
+    );
+    const note = screen.getByRole("note");
+    expect(note.textContent).toBe(
+      "Your organization's policy doesn't allow deleting rows in this table · " +
+        "You can only change Estado and Observaciones · New rows can't fill any column",
+    );
   });
 });
 

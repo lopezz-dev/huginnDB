@@ -146,6 +146,8 @@ interface GridRowProps {
   tableName?: string;
   pkColumnNames?: string[];
   editable?: boolean;
+  /** Why the policy locks a column (ADR #113); stable identity expected. */
+  columnLock?: (column: string) => string | null;
   onCellSave?: (
     rowValues: CellValue[],
     columnName: string,
@@ -225,6 +227,7 @@ export const GridRow = memo(function GridRow({
   tableName,
   pkColumnNames,
   editable,
+  columnLock,
   onCellSave,
   onNavigateFk,
   onAddFilter,
@@ -726,6 +729,7 @@ export const GridRow = memo(function GridRow({
                     <ContextMenuAction
                       icon={Eraser}
                       disabled={value === null}
+                      locked={columnLock?.(meta.name) ?? null}
                       label={t("cellEditor.setNull")}
                       onSelect={() =>
                         // The rejection is already reported by `DataGrid`'s save seam (which

@@ -741,7 +741,9 @@
       "filter": "Filtrar {{table}}…",
       "showingFirst": "Mostrando las primeras {{count}} filas · escribe para buscar en todas",
       "unavailable": "Búsqueda de clave foránea no disponible: {{message}}"
-    }
+    },
+    "headerPolicyLocked": "Bloqueada por la política de tu organización",
+    "draftLocked": "Tomará su valor por defecto, o NULL."
   },
   "tableData": {
     "refresh": "Actualizar",
@@ -2024,7 +2026,11 @@
       },
       "freeSqlShortOn": "sí",
       "freeSqlShortOff": "no",
-      "summaryTitle": "Estado"
+      "summaryTitle": "Estado",
+      "columns": {
+        "insert": "Columnas de insert",
+        "update": "Columnas de update"
+      }
     },
     "terminal": {
       "intro": "Un terminal en el panel inferior: mongosh con la sesión iniciada en la conexión MongoDB en la que estás trabajando — para ejecutar los scripts que escriben las herramientas de IA, que el editor de consultas solo acepta de sentencia en sentencia — o tu propio shell.",
@@ -3727,7 +3733,11 @@
       "pending": "La política gestionada aún se está cargando",
       "broken": "No se pudo aplicar la política gestionada",
       "connection": "Tu rol no puede usar esta conexión",
-      "need": "La política de tu organización no permite {{what}}"
+      "need": "La política de tu organización no permite {{what}}",
+      "column": {
+        "insert": "La política de tu organización no te deja dar valor a {{column}} aquí",
+        "update": "La política de tu organización no te deja modificar {{column}} aquí"
+      }
     },
     "what": {
       "read": "leer esto",
@@ -3743,7 +3753,15 @@
       "insert": "añadir filas",
       "update": "editar filas",
       "delete": "borrar filas",
-      "notice": "La política de tu organización no permite {{what}} en esta tabla"
+      "notice": "La política de tu organización no permite {{what}} en esta tabla",
+      "onlyColumns": {
+        "update": "Solo puedes modificar {{columns}}",
+        "insert": "Las filas nuevas solo pueden rellenar {{columns}}"
+      },
+      "noColumns": {
+        "update": "No puedes modificar ninguna columna",
+        "insert": "Las filas nuevas no pueden rellenar ninguna columna"
+      }
     },
     "ribbon": {
       "pending": "Leyendo la política de tu organización: las conexiones quedan en pausa hasta que cargue.",
@@ -3806,7 +3824,8 @@
     "warn": {
       "dbUser": "Esto añade dbUser. Las versiones de HuginnDB anteriores a esta la leen como una política rota y bloquean todas las conexiones: actualiza antes todos los equipos.",
       "ownRole": "Cambia tu propio rol: {{from}} → {{to}}.",
-      "appliesSoon": "Guardar rechaza cualquier cosa que no sea una política válida, y conserva la versión anterior como .bak."
+      "appliesSoon": "Guardar rechaza cualquier cosa que no sea una política válida, y conserva la versión anterior como .bak.",
+      "columns": "Esto añade límites por columna. Las versiones de HuginnDB anteriores a esta los leen como una política rota y bloquean todas las conexiones: actualiza antes todos los equipos."
     },
     "change": {
       "rolesAdded": "Roles añadidos",
@@ -3867,7 +3886,9 @@
       "dbCount_one": "{{count}} base de datos",
       "dbCount_other": "{{count}} bases de datos",
       "nothing": "nada",
-      "confirmRemove": "¿Quitar la regla de {{rule}} del rol «{{role}}» ({{grants}})? Solo sale del borrador: hasta que guardes, «Descartar cambios» la recupera."
+      "confirmRemove": "¿Quitar la regla de {{rule}} del rol «{{role}}» ({{grants}})? Solo sale del borrador: hasta que guardes, «Descartar cambios» la recupera.",
+      "columnCount_one": "{{verb}} ({{count}} col.)",
+      "columnCount_other": "{{verb}} ({{count}} col.)"
     },
     "rule": {
       "onlyThese": "Solo estas",
@@ -3927,7 +3948,35 @@
       "groupAs": "Con qué usuario",
       "noCatalogAny": "No hay lista de la que elegir: la regla vale para todos los servidores. Elige una conexión para escoger nombres, o añade un patrón.",
       "noCatalogClosed": "Conéctate a {{name}} (arriba) para elegir entre sus nombres.",
-      "noCatalogManual": "Este servidor no tiene conexión guardada aquí, así que no se pueden listar sus nombres: añádelos como patrones."
+      "noCatalogManual": "Este servidor no tiene conexión guardada aquí, así que no se pueden listar sus nombres: añádelos como patrones.",
+      "columns": {
+        "insert": "Columnas a las que puede dar valor",
+        "update": "Columnas que puede modificar",
+        "all": "Todas",
+        "allExplain": {
+          "insert": "Una fila nueva puede dar valor a todas las columnas, también a las que se creen más adelante.",
+          "update": "Puede modificar todas las columnas, también las que se creen más adelante."
+        },
+        "none": {
+          "insert": "Ninguna columna: con insert marcado, no podrá añadir filas.",
+          "update": "Ninguna columna: con update marcado, no podrá modificar nada."
+        },
+        "noTables": "Esta regla cubre todas las tablas, así que no hay una lista de columnas de la que elegir. Nombra sus tablas arriba, o añade un patrón.",
+        "noMatch": "Ninguna de las tablas de esta regla está en {{source}}. Añade un patrón, o revisa los nombres.",
+        "identity": "identidad · la pone el servidor",
+        "inAll_one": "en la tabla",
+        "inAll_other": "en las {{count}} tablas",
+        "required": "obligatoria",
+        "mssqlInsert": "SQL Server no tiene permiso de INSERT por columna: este límite lo aplica HuginnDB, no la base de datos. El de modificar lo aplican los dos.",
+        "warnRequiredTitle": "No podrá añadir filas en {{table}}",
+        "warnRequiredBody_one": "{{columns}} no admite NULL ni tiene valor por defecto, y no está en la lista de insert: cualquier fila nueva fallaría.",
+        "warnRequiredBody_other": "{{columns}} no admiten NULL ni tienen valor por defecto, y no están en la lista de insert: cualquier fila nueva fallaría.",
+        "warnRequiredFix": "Añadir {{columns}}",
+        "warnRecreateTitle": "Borrar y volver a crear salta el límite de modificar",
+        "warnRecreateBody": "Con delete, una fila se puede borrar y añadir de nuevo con otros valores en las columnas de insert ({{columns}}). Si el límite de update es lo que importa, quita delete.",
+        "warnRecreateBodyAll": "Con delete e insert en todas las columnas, una fila se puede borrar y añadir de nuevo con cualquier valor. Si el límite de update es lo que importa, quita delete.",
+        "warnRecreateFix": "Quitar delete"
+      }
     },
     "perm": {
       "select": "leer",

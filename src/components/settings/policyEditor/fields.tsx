@@ -19,7 +19,7 @@
  * chosen or typed.
  */
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Asterisk, Plug, Plus, X } from "lucide-react";
 
@@ -34,7 +34,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { MICRO_HEADING } from "@/components/ui/styles";
 import { DriverBadge, driverLabel } from "@/components/common/DriverBadge";
-import { PERMISSIONS, type EndpointJson } from "@/lib/policy/draft";
+import { isPattern, matchesOf } from "@/lib/policy/glob";
+import { PERMISSIONS, type EndpointJson, type Permission } from "@/lib/policy/draft";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile, Driver } from "@/types";
 
@@ -76,22 +77,9 @@ export function FieldGroup({ title, children }: { title: string; children: React
 // ---------------------------------------------------------------------------
 // Server
 
-/** `*` is the policy's one wildcard (`policy::resolve::glob_matches`). */
-export const isPattern = (s: string) => s.includes("*");
-
-function globRegex(pattern: string): RegExp {
-  const body = pattern
-    .split("")
-    .map((c) => (c === "*" ? ".*" : c.replace(/[.+?^${}()|[\]\\]/g, "\\$&")))
-    .join("");
-  return new RegExp(`^${body}$`, "i");
-}
-
-/** Which of `names` a pattern (or a plain name) lets through. */
-export function matchesOf(pattern: string, names: string[]): string[] {
-  const re = globRegex(pattern.trim());
-  return names.filter((n) => re.test(n));
-}
+// `*` is the policy's one wildcard; the matching lives in `lib/policy/glob`,
+// shared with the grid's column locks.
+export { isPattern, matchesOf };
 
 const sameFile = (a: string, b: string) =>
   a.trim().replace(/\\/g, "/").toLowerCase() === b.trim().replace(/\\/g, "/").toLowerCase();
@@ -446,6 +434,7 @@ export function NamePicker({
   catalogLoading,
   catalogSource,
   noCatalogHint,
+  describe,
   readOnly,
   onChange,
 }: {
@@ -466,6 +455,11 @@ export function NamePicker({
   catalogSource?: string;
   /** Why there is no list to pick from, when there is none. */
   noCatalogHint?: string;
+  /**
+   * What to say beside a catalog name — "2 of 2 tables", "required", "identity"
+   * — and whether it can be picked at all. For the column pickers (ADR #113).
+   */
+  describe?: (name: string) => { tag?: string; warn?: boolean; disabled?: boolean };
   readOnly: boolean;
   onChange: (next: string[] | undefined) => void;
 }) {
@@ -585,15 +579,33 @@ export function NamePicker({
                     clearLabel={t("common.clear")}
                   />
                   <div className="grid max-h-44 grid-cols-1 gap-x-3 overflow-y-auto px-1 py-0.5 sm:grid-cols-2 lg:grid-cols-3">
-                    {shown.map((name) => (
-                      <div key={name} className="min-w-0 overflow-hidden py-0.5">
-                        <Checkbox
-                          label={<span className="truncate font-mono text-2xs">{name}</span>}
-                          checked={chosen.has(name.toLowerCase())}
-                          onChange={(e) => toggle(name, e.target.checked)}
-                        />
-                      </div>
-                    ))}
+                    {shown.map((name) => {
+                      const about = describe?.(name);
+                      return (
+                        <div key={name} className="min-w-0 overflow-hidden py-0.5">
+                          <Checkbox
+                            label={
+                              <span className="flex min-w-0 items-baseline gap-1.5">
+                                <span className="truncate font-mono text-2xs">{name}</span>
+                                {about?.tag && (
+                                  <span
+                                    className={cn(
+                                      "shrink-0 truncate text-3xs",
+                                      about.warn ? "text-warning" : "text-muted-foreground",
+                                    )}
+                                  >
+                                    {about.tag}
+                                  </span>
+                                )}
+                              </span>
+                            }
+                            checked={chosen.has(name.toLowerCase())}
+                            disabled={about?.disabled}
+                            onChange={(e) => toggle(name, e.target.checked)}
+                          />
+                        </div>
+                      );
+                    })}
                     {shown.length === 0 && (
                       <p className="col-span-full py-1 text-2xs text-muted-foreground">
                         {t("policyEditor.rule.catalogNoMatch")}
@@ -672,11 +684,17 @@ export function PermissionGrid({
   human,
   ai,
   readOnly,
+  below,
   onChange,
 }: {
   human: string[];
   ai: string[];
   readOnly: boolean;
+  /**
+   * What hangs under a permission's row, indented — the column limits under
+   * `insert` and `update` (ADR #113). Nothing for the others.
+   */
+  below?: (permission: Permission) => ReactNode;
   onChange: (next: { human: string[]; ai: string[] }) => void;
 }) {
   const { t } = useTranslation();
@@ -700,8 +718,10 @@ export function PermissionGrid({
             {PERMISSIONS.map((p) => {
               const h = human.includes(p);
               const a = ai.includes(p);
+              const extra = below?.(p);
               return (
-                <tr key={p} className="border-t border-border transition-colors hover:bg-accent/30">
+                <Fragment key={p}>
+                <tr className="border-t border-border transition-colors hover:bg-accent/30">
                   <td className="px-3 py-1.5">
                     <span className="font-mono">{p}</span>
                     <span className="ml-2 text-3xs text-muted-foreground">
@@ -733,6 +753,14 @@ export function PermissionGrid({
                     />
                   </td>
                 </tr>
+                {extra && (
+                  <tr>
+                    <td colSpan={3} className="px-3 pb-3 pt-0.5">
+                      <div className="ml-3 border-l-2 border-border pl-3">{extra}</div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>

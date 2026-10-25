@@ -741,7 +741,9 @@
       "filter": "Filter {{table}}…",
       "showingFirst": "Showing first {{count}} rows · type to search all",
       "unavailable": "FK lookup unavailable: {{message}}"
-    }
+    },
+    "headerPolicyLocked": "Locked by your organization's policy",
+    "draftLocked": "It will take its default value, or NULL."
   },
   "tableData": {
     "refresh": "Refresh",
@@ -2024,7 +2026,11 @@
       },
       "freeSqlShortOn": "yes",
       "freeSqlShortOff": "no",
-      "summaryTitle": "Status"
+      "summaryTitle": "Status",
+      "columns": {
+        "insert": "Insert columns",
+        "update": "Update columns"
+      }
     },
     "terminal": {
       "intro": "A terminal in the bottom dock: mongosh signed in as the MongoDB connection you are working on — to run the scripts AI tools write, which the query editor only accepts one statement at a time — or your own shell.",
@@ -3727,7 +3733,11 @@
       "pending": "The managed policy is still loading",
       "broken": "The managed policy could not be applied",
       "connection": "Your role may not use this connection",
-      "need": "Your organization's policy doesn't allow {{what}}"
+      "need": "Your organization's policy doesn't allow {{what}}",
+      "column": {
+        "insert": "Your organization's policy doesn't let you give {{column}} a value here",
+        "update": "Your organization's policy doesn't let you change {{column}} here"
+      }
     },
     "what": {
       "read": "reading this",
@@ -3743,7 +3753,15 @@
       "insert": "adding rows",
       "update": "editing rows",
       "delete": "deleting rows",
-      "notice": "Your organization's policy doesn't allow {{what}} in this table"
+      "notice": "Your organization's policy doesn't allow {{what}} in this table",
+      "onlyColumns": {
+        "update": "You can only change {{columns}}",
+        "insert": "New rows can only fill {{columns}}"
+      },
+      "noColumns": {
+        "update": "You can't change any column",
+        "insert": "New rows can't fill any column"
+      }
     },
     "ribbon": {
       "pending": "Reading your organization's policy — connections are paused until it loads.",
@@ -3806,7 +3824,8 @@
     "warn": {
       "dbUser": "This adds dbUser. Versions of HuginnDB older than this one read it as a broken policy and block every connection: update every computer first.",
       "ownRole": "Your own role changes: {{from}} → {{to}}.",
-      "appliesSoon": "Saving refuses anything that is not a valid policy, and keeps the previous version as a .bak."
+      "appliesSoon": "Saving refuses anything that is not a valid policy, and keeps the previous version as a .bak.",
+      "columns": "This adds column limits. Versions of HuginnDB older than this one read them as a broken policy and block every connection: update every computer first."
     },
     "change": {
       "rolesAdded": "Roles added",
@@ -3867,7 +3886,9 @@
       "dbCount_one": "{{count}} database",
       "dbCount_other": "{{count}} databases",
       "nothing": "nothing",
-      "confirmRemove": "Remove the rule for {{rule}} from “{{role}}” ({{grants}})? It leaves the draft only; until you save, “Discard changes” brings it back."
+      "confirmRemove": "Remove the rule for {{rule}} from “{{role}}” ({{grants}})? It leaves the draft only; until you save, “Discard changes” brings it back.",
+      "columnCount_one": "{{verb}} ({{count}} col.)",
+      "columnCount_other": "{{verb}} ({{count}} col.)"
     },
     "rule": {
       "onlyThese": "Only these",
@@ -3927,7 +3948,35 @@
       "groupAs": "Signing in",
       "noCatalogAny": "No list to pick from: the rule is about every server. Pick a connection to choose names, or add a pattern.",
       "noCatalogClosed": "Connect to {{name}} (above) to pick from its names.",
-      "noCatalogManual": "This server has no saved connection here, so its names cannot be listed: add them as patterns."
+      "noCatalogManual": "This server has no saved connection here, so its names cannot be listed: add them as patterns.",
+      "columns": {
+        "insert": "Columns it may give a value to",
+        "update": "Columns it may change",
+        "all": "All",
+        "allExplain": {
+          "insert": "A new row may give a value to every column, including ones created later.",
+          "update": "Every column may be changed, including ones created later."
+        },
+        "none": {
+          "insert": "No columns: with insert ticked, no row could be added.",
+          "update": "No columns: with update ticked, nothing could be changed."
+        },
+        "noTables": "This rule covers every table, so there is no list of columns to pick from. Name its tables above, or add a pattern.",
+        "noMatch": "None of this rule's tables is on {{source}}. Add a pattern, or check the table names.",
+        "identity": "identity · set by the server",
+        "inAll_one": "in the table",
+        "inAll_other": "in all {{count}} tables",
+        "required": "required",
+        "mssqlInsert": "SQL Server has no column-level INSERT permission: this limit is applied by HuginnDB, not by the database. The update limit is enforced by both.",
+        "warnRequiredTitle": "No row could be added to {{table}}",
+        "warnRequiredBody_one": "{{columns}} takes no NULL and has no default, and it is not in the insert list: every new row would fail.",
+        "warnRequiredBody_other": "{{columns}} take no NULL and have no default, and they are not in the insert list: every new row would fail.",
+        "warnRequiredFix": "Add {{columns}}",
+        "warnRecreateTitle": "Deleting and re-adding gets around the update limit",
+        "warnRecreateBody": "With delete, a row can be deleted and added again with other values in the insert columns ({{columns}}). If the update limit is what matters, remove delete.",
+        "warnRecreateBodyAll": "With delete and insert on every column, a row can be deleted and added again with any values. If the update limit is what matters, remove delete.",
+        "warnRecreateFix": "Remove delete"
+      }
     },
     "perm": {
       "select": "read",

@@ -65,6 +65,8 @@ export interface GridKeyboardNavOptions {
   /** User-rebindable combo for "expand selected cell". */
   expandCellCombo: string;
   editable: boolean | undefined;
+  /** Why the policy locks a column (ADR #113): pasting into it does nothing. */
+  columnLock?: (column: string) => string | null;
   onCellSave:
     | ((
         rowValues: CellValue[],
@@ -107,6 +109,7 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
     bitDisplay,
     expandCellCombo,
     editable,
+    columnLock,
     onCellSave,
   } = opts;
 
@@ -160,6 +163,7 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
       return;
     }
     if (!editable || !onCellSave) return;
+    if (columnLock?.(cell.column.name)) return;
     const info = columnInfoByName.get(cell.column.name);
     if (info?.referenced_table) return;
     const isBit = bitColNames.has(cell.column.name);

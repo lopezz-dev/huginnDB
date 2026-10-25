@@ -19,9 +19,14 @@
 //! - Rules add up: two rules granting on the same object merge their verbs.
 //! - `export` has no database equivalent — reading is what lets another client
 //!   export — and `monitor` is server-wide.
+//! - A rule that limits columns (ADR #113) is always expanded, since a column
+//!   grant names one object, and its globs are resolved against each
+//!   relation's columns as they are today: `GRANT UPDATE (a, b) ON t`. SQL
+//!   Server grants `INSERT` only on the whole table and MongoDB has no field
+//!   privileges at all; the script grants the whole object there and says so.
 
 use super::model::{expand_db_user, normalise_user, Grant, PolicyDoc, Rule};
-use super::resolve::{database_matches, endpoint_matches, relation_allowed};
+use super::resolve::{database_matches, endpoint_matches, glob_matches, relation_allowed};
 use crate::db::dump::quote_text_literal;
 use crate::db::sql::{Dialect, Verbs};
 use crate::state::ConnectionProfile;
@@ -43,6 +48,9 @@ pub struct Relation {
     pub database: String,
     pub schema: String,
     pub name: String,
+    /// The relation's columns — read only when a rule limits columns on it,
+    /// and empty otherwise.
+    pub columns: Vec<String>,
 }
 
 pub struct GrantInput<'a> {
@@ -95,6 +103,47 @@ impl Target {
     }
 }
 
+/// The two verbs a rule can limit to some columns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum LimitedVerb {
+    Insert,
+    Update,
+}
+
+impl LimitedVerb {
+    const ALL: [(LimitedVerb, Verbs); 2] = [
+        (LimitedVerb::Insert, Verbs::INSERT),
+        (LimitedVerb::Update, Verbs::UPDATE),
+    ];
+
+    fn key(self) -> &'static str {
+        match self {
+            LimitedVerb::Insert => "insert",
+            LimitedVerb::Update => "update",
+        }
+    }
+}
+
+/// Which columns a limited verb reaches on one relation, merged across rules:
+/// one rule without a limit makes it every column.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ColumnGrant {
+    All,
+    Only(BTreeSet<String>),
+}
+
+type Limits = BTreeMap<(Target, LimitedVerb), ColumnGrant>;
+
+/// What [`plan`] works out.
+struct Plan {
+    targets: BTreeMap<Target, Verbs>,
+    /// Column lists for `INSERT`/`UPDATE` on relation targets; a target and
+    /// verb with no entry is granted on every column.
+    limits: Limits,
+    expanded: bool,
+    warnings: Vec<String>,
+}
+
 /// `role`'s rules for `profile`'s server, or `None` when the policy has no
 /// such role.
 pub fn rules_for<'a>(
@@ -115,6 +164,16 @@ pub fn rules_for<'a>(
 /// the script has to read.
 pub fn wants_database(rules: &[&Rule], database: &str) -> bool {
     rules.iter().any(|r| database_matches(r, Some(database)))
+}
+
+/// Whether a rule limits the columns some verb writes on this relation — the
+/// relations whose columns the script has to read.
+pub fn wants_columns(rules: &[&Rule], database: &str, schema: &str, name: &str) -> bool {
+    rules.iter().any(|r| {
+        database_matches(r, Some(database))
+            && relation_allowed(r, Some(schema), name)
+            && r.limits_columns_of(r.human_grant().verbs)
+    })
 }
 
 /// The database users of the people the policy gives `role`: their OS
@@ -160,8 +219,9 @@ fn add(targets: &mut BTreeMap<Target, Verbs>, t: Target, verbs: Verbs) {
 }
 
 /// The objects each rule reaches and what it grants on them, merged.
-fn plan(input: &GrantInput) -> (BTreeMap<Target, Verbs>, bool) {
+fn plan(input: &GrantInput) -> Plan {
     let mut targets: BTreeMap<Target, Verbs> = BTreeMap::new();
+    let mut limits: Limits = BTreeMap::new();
     let mut expanded = false;
     for rule in &input.rules {
         let grant: Grant = rule.human_grant();
@@ -169,7 +229,11 @@ fn plan(input: &GrantInput) -> (BTreeMap<Target, Verbs>, bool) {
         if verbs == Verbs::NONE {
             continue;
         }
-        let whole = rule.relations.allow.is_none() && rule.relations.deny.is_empty();
+        // A column grant names one object, so a rule that limits columns is
+        // expanded even when it covers every relation.
+        let whole = rule.relations.allow.is_none()
+            && rule.relations.deny.is_empty()
+            && !rule.limits_columns_of(verbs);
         for db in input
             .databases
             .iter()
@@ -197,26 +261,86 @@ fn plan(input: &GrantInput) -> (BTreeMap<Target, Verbs>, bool) {
                 // the schema the pattern is written against: on MySQL and
                 // MongoDB that is the database.
                 if relation_allowed(rule, Some(&r.schema), &r.name) {
-                    add(
-                        &mut targets,
-                        Target::Relation(db.clone(), r.schema.clone(), r.name.clone()),
-                        verbs,
-                    );
+                    let target = Target::Relation(db.clone(), r.schema.clone(), r.name.clone());
+                    for (limited, verb) in LimitedVerb::ALL {
+                        if !verbs.contains(verb) {
+                            continue;
+                        }
+                        let this = match rule.columns.limit(verb) {
+                            None => ColumnGrant::All,
+                            Some(globs) => ColumnGrant::Only(
+                                r.columns
+                                    .iter()
+                                    .filter(|c| globs.iter().any(|g| glob_matches(g, c)))
+                                    .cloned()
+                                    .collect(),
+                            ),
+                        };
+                        let key = (target.clone(), limited);
+                        let merged = match (limits.remove(&key), this) {
+                            (Some(ColumnGrant::All), _) | (_, ColumnGrant::All) => ColumnGrant::All,
+                            (Some(ColumnGrant::Only(mut a)), ColumnGrant::Only(b)) => {
+                                a.extend(b);
+                                ColumnGrant::Only(a)
+                            }
+                            (None, only) => only,
+                        };
+                        limits.insert(key, merged);
+                    }
+                    add(&mut targets, target, verbs);
                 }
             }
         }
     }
-    (targets, expanded)
+    // A limit that matches no column of a relation grants the verb on none of
+    // it: take the verb away there, rather than grant it on the whole table.
+    let mut warnings = Vec::new();
+    limits.retain(|(target, limited), grant| match grant {
+        ColumnGrant::All => false,
+        ColumnGrant::Only(cols) if cols.is_empty() => {
+            let verb = if *limited == LimitedVerb::Insert {
+                Verbs::INSERT
+            } else {
+                Verbs::UPDATE
+            };
+            if let Some(v) = targets.get_mut(target) {
+                *v = v.without(verb);
+            }
+            if let Target::Relation(_, schema, name) = target {
+                warnings.push(format!(
+                    "columns.{} matches no column of {schema}.{name}, so the role gets no {} \
+                     there.",
+                    limited.key(),
+                    limited.key().to_uppercase()
+                ));
+            }
+            false
+        }
+        ColumnGrant::Only(_) => true,
+    });
+    targets.retain(|_, v| *v != Verbs::NONE);
+    Plan {
+        targets,
+        limits,
+        expanded,
+        warnings,
+    }
 }
 
 pub fn build(input: &GrantInput) -> GrantScript {
     let role = role_name(input.role);
-    let (targets, expanded) = plan(input);
+    let Plan {
+        targets,
+        limits,
+        expanded,
+        warnings: plan_warnings,
+    } = plan(input);
     let monitor = input.rules.iter().any(|r| r.human_grant().monitor);
     let export = input.rules.iter().any(|r| r.human_grant().export);
     let ddl = targets.values().any(|v| v.contains(Verbs::DDL));
 
-    let mut warnings = Vec::new();
+    let mut warnings = plan_warnings;
+    let limited = |v: LimitedVerb| limits.keys().any(|(_, l)| *l == v);
     if expanded {
         warnings.push(
             "The rules name relations, so the grants list the ones that exist today. Generate \
@@ -246,15 +370,35 @@ pub fn build(input: &GrantInput) -> GrantScript {
                 );
             }
         }
-        Engine::MsSql => warnings.push(
-            "SQL Server lists every database to every login unless VIEW ANY DATABASE is revoked \
-             from public — the script offers it, commented, because it affects every login."
-                .to_string(),
-        ),
+        Engine::MsSql => {
+            warnings.push(
+                "SQL Server lists every database to every login unless VIEW ANY DATABASE is \
+                 revoked from public — the script offers it, commented, because it affects \
+                 every login."
+                    .to_string(),
+            );
+            if limited(LimitedVerb::Insert) {
+                warnings.push(
+                    "SQL Server grants INSERT only on a whole table (column permissions are \
+                     SELECT, UPDATE and REFERENCES), so the script grants INSERT on the table: \
+                     columns.insert only applies inside HuginnDB. To have the database enforce \
+                     it, grant INSERT on a view with just those columns instead."
+                        .to_string(),
+                );
+            }
+        }
         Engine::Mysql => {
             warnings.push("Roles need MySQL 8.0 or MariaDB 10.0.5 or later.".to_string())
         }
-        Engine::Mongo => {}
+        Engine::Mongo => {
+            if !limits.is_empty() {
+                warnings.push(
+                    "MongoDB has no field-level privileges, so the script grants insert and \
+                     update on whole collections: the column limits only apply inside HuginnDB."
+                        .to_string(),
+                );
+            }
+        }
     }
 
     let comment = if input.engine == Engine::Mongo {
@@ -295,9 +439,9 @@ pub fn build(input: &GrantInput) -> GrantScript {
         )
     } else {
         match input.engine {
-            Engine::Postgres => postgres(&role, &targets, monitor, &input.members),
-            Engine::Mysql => mysql(&role, &targets, monitor, &input.members),
-            Engine::MsSql => mssql(&role, &targets, monitor, &input.members),
+            Engine::Postgres => postgres(&role, &targets, &limits, monitor, &input.members),
+            Engine::Mysql => mysql(&role, &targets, &limits, monitor, &input.members),
+            Engine::MsSql => mssql(&role, &targets, &limits, monitor, &input.members),
             Engine::Mongo => mongo(&role, &targets, monitor, &input.members),
         }
     };
@@ -330,6 +474,35 @@ fn dml(verbs: Verbs) -> Vec<&'static str> {
     .collect()
 }
 
+/// [`dml`] for one relation, with a column list after each limited verb:
+/// `UPDATE ("a", "b")`. `insert_by_column` is false where the engine cannot
+/// grant `INSERT` per column (SQL Server), which then gets the whole table.
+fn relation_privs(
+    target: &Target,
+    verbs: Verbs,
+    limits: &Limits,
+    quote: impl Fn(&str) -> String,
+    insert_by_column: bool,
+) -> Vec<String> {
+    dml(verbs)
+        .into_iter()
+        .map(|name| {
+            let limited = match name {
+                "INSERT" if insert_by_column => Some(LimitedVerb::Insert),
+                "UPDATE" => Some(LimitedVerb::Update),
+                _ => None,
+            };
+            match limited.and_then(|l| limits.get(&(target.clone(), l))) {
+                Some(ColumnGrant::Only(cols)) => {
+                    let list: Vec<String> = cols.iter().map(|c| quote(c)).collect();
+                    format!("{name} ({})", list.join(", "))
+                }
+                _ => name.to_string(),
+            }
+        })
+        .collect()
+}
+
 fn by_database(targets: &BTreeMap<Target, Verbs>) -> BTreeMap<&str, Vec<(&Target, Verbs)>> {
     let mut out: BTreeMap<&str, Vec<(&Target, Verbs)>> = BTreeMap::new();
     for (t, v) in targets {
@@ -341,6 +514,7 @@ fn by_database(targets: &BTreeMap<Target, Verbs>) -> BTreeMap<&str, Vec<(&Target
 fn postgres(
     role: &str,
     targets: &BTreeMap<Target, Verbs>,
+    limits: &Limits,
     monitor: bool,
     members: &[String],
 ) -> String {
@@ -385,6 +559,7 @@ fn postgres(
                     }
                 }
                 Target::Relation(_, s, n) => {
+                    let privs = relation_privs(t, *verbs, limits, q, true).join(", ");
                     if !privs.is_empty() {
                         out.push_str(&format!("GRANT {privs} ON {}.{} TO {r};\n", q(s), q(n)));
                     }
@@ -409,6 +584,7 @@ fn postgres(
 fn mysql(
     role: &str,
     targets: &BTreeMap<Target, Verbs>,
+    limits: &Limits,
     monitor: bool,
     members: &[String],
 ) -> String {
@@ -419,17 +595,21 @@ fn mysql(
         out.push_str(&format!("GRANT PROCESS ON *.* TO {r};\n"));
     }
     for (t, verbs) in targets {
-        let mut privs = dml(*verbs);
+        let mut privs: Vec<String> = Vec::new();
         let on = match t {
             Target::Database(db) => {
+                privs.extend(dml(*verbs).into_iter().map(String::from));
                 if verbs.contains(Verbs::DDL) {
-                    privs.extend(["CREATE", "ALTER", "DROP", "INDEX", "CREATE VIEW"]);
+                    privs.extend(
+                        ["CREATE", "ALTER", "DROP", "INDEX", "CREATE VIEW"].map(String::from),
+                    );
                 }
                 format!("{}.*", q(db))
             }
             Target::Relation(db, _, n) => {
+                privs.extend(relation_privs(t, *verbs, limits, q, true));
                 if verbs.contains(Verbs::DDL) {
-                    privs.extend(["ALTER", "DROP", "INDEX"]);
+                    privs.extend(["ALTER", "DROP", "INDEX"].map(String::from));
                 }
                 format!("{}.{}", q(db), q(n))
             }
@@ -453,6 +633,7 @@ fn mysql(
 fn mssql(
     role: &str,
     targets: &BTreeMap<Target, Verbs>,
+    limits: &Limits,
     monitor: bool,
     members: &[String],
 ) -> String {
@@ -483,18 +664,21 @@ fn mssql(
         ));
         let mut create = false;
         for (t, verbs) in &items {
-            let mut privs = dml(*verbs);
+            let mut privs: Vec<String> = Vec::new();
             let on = match t {
                 Target::Schema(_, s) => {
+                    privs.extend(dml(*verbs).into_iter().map(String::from));
                     if verbs.contains(Verbs::DDL) {
-                        privs.push("ALTER");
+                        privs.push("ALTER".into());
                         create = true;
                     }
                     format!("SCHEMA::{}", q(s))
                 }
                 Target::Relation(_, s, n) => {
+                    // No column list for INSERT: SQL Server cannot grant it.
+                    privs.extend(relation_privs(t, *verbs, limits, q, false));
                     if verbs.contains(Verbs::DDL) {
-                        privs.push("ALTER");
+                        privs.push("ALTER".into());
                     }
                     format!("{}.{}", q(s), q(n))
                 }
@@ -624,7 +808,122 @@ mod tests {
             database: db.into(),
             schema: schema.into(),
             name: name.into(),
+            columns: Vec::new(),
         }
+    }
+
+    fn rel_cols(db: &str, schema: &str, name: &str, columns: &[&str]) -> Relation {
+        Relation {
+            columns: columns.iter().map(|c| c.to_string()).collect(),
+            ..rel(db, schema, name)
+        }
+    }
+
+    /// The customer's case: read `pedidos`, add rows with three columns,
+    /// change two.
+    const PEDIDOS: &str = r#"[{ "endpoint": "*", "relations": { "allow": ["pedidos"] },
+        "human": ["select", "insert", "update"],
+        "columns": { "insert": ["cliente", "importe", "estado"], "update": ["estado", "obs*"] } }]"#;
+
+    fn pedidos() -> Vec<Relation> {
+        vec![rel_cols(
+            "ventas",
+            "dbo",
+            "pedidos",
+            &["id", "cliente", "importe", "estado", "observaciones"],
+        )]
+    }
+
+    #[test]
+    fn column_limits_become_column_lists_on_postgres_and_mysql() {
+        let doc = rules(PEDIDOS);
+        let pg = build(&input(Engine::Postgres, &doc, pedidos()));
+        assert!(
+            pg.script.contains(
+                r#"GRANT SELECT, INSERT ("cliente", "estado", "importe"), UPDATE ("estado", "observaciones") ON "dbo"."pedidos" TO "huginn_sales";"#
+            ),
+            "{}",
+            pg.script
+        );
+        let my = build(&input(Engine::Mysql, &doc, pedidos()));
+        assert!(
+            my.script.contains(
+                "GRANT SELECT, INSERT (`cliente`, `estado`, `importe`), UPDATE (`estado`, `observaciones`) ON `ventas`.`pedidos`"
+            ),
+            "{}",
+            my.script
+        );
+    }
+
+    #[test]
+    fn sql_server_limits_update_by_column_and_says_insert_cannot_be() {
+        let doc = rules(PEDIDOS);
+        let s = build(&input(Engine::MsSql, &doc, pedidos()));
+        assert!(
+            s.script.contains(
+                "GRANT SELECT, INSERT, UPDATE ([estado], [observaciones]) ON [dbo].[pedidos] TO [huginn_sales];"
+            ),
+            "{}",
+            s.script
+        );
+        assert!(s
+            .warnings
+            .iter()
+            .any(|w| w.contains("INSERT only on a whole table")));
+    }
+
+    #[test]
+    fn mongodb_grants_whole_collections_and_says_so() {
+        let doc = rules(PEDIDOS);
+        let s = build(&input(Engine::Mongo, &doc, pedidos()));
+        assert!(s.script.contains("\"insert\", \"update\""), "{}", s.script);
+        assert!(s
+            .warnings
+            .iter()
+            .any(|w| w.contains("no field-level privileges")));
+    }
+
+    #[test]
+    fn a_rule_over_everything_with_column_limits_is_expanded() {
+        let doc = rules(
+            r#"[{ "endpoint": "*", "human": ["select", "update"], "columns": { "update": ["estado"] } }]"#,
+        );
+        let s = build(&input(
+            Engine::Postgres,
+            &doc,
+            vec![
+                rel_cols("ventas", "dbo", "pedidos", &["id", "estado"]),
+                rel_cols("ventas", "dbo", "clientes", &["id", "nombre"]),
+            ],
+        ));
+        assert!(!s.script.contains("ALL TABLES IN SCHEMA"), "{}", s.script);
+        assert!(s
+            .script
+            .contains(r#"GRANT SELECT, UPDATE ("estado") ON "dbo"."pedidos""#));
+        // No column of `clientes` matches: it is read-only, not wide open.
+        assert!(s
+            .script
+            .contains(r#"GRANT SELECT ON "dbo"."clientes" TO "huginn_sales";"#));
+        assert!(s
+            .warnings
+            .iter()
+            .any(|w| w.contains("matches no column of dbo.clientes")));
+        assert!(s.warnings.iter().any(|w| w.contains("exist today")));
+    }
+
+    #[test]
+    fn a_rule_without_a_column_limit_wins_on_the_same_table() {
+        let doc = rules(
+            r#"[{ "endpoint": "*", "human": ["update"], "columns": { "update": ["estado"] } },
+                { "endpoint": "*", "relations": { "allow": ["pedidos"] }, "human": ["update"] }]"#,
+        );
+        let s = build(&input(Engine::Postgres, &doc, pedidos()));
+        assert!(
+            s.script
+                .contains(r#"GRANT UPDATE ON "dbo"."pedidos" TO "huginn_sales";"#),
+            "{}",
+            s.script
+        );
     }
 
     fn input<'a>(engine: Engine, doc: &'a PolicyDoc, relations: Vec<Relation>) -> GrantInput<'a> {

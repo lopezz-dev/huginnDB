@@ -107,7 +107,7 @@ import { SortByMenuItems, type SortField } from "@/components/grid/SortControls"
 import { pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import { PolicyLockHint, PolicyVerbNotice } from "@/components/common/PolicyLock";
-import { usePolicyLocker } from "@/lib/policy/access";
+import { usePolicyColumns, usePolicyLocker } from "@/lib/policy/access";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -150,6 +150,9 @@ function duplicateDraft(
   pkColumn:
     | { name: string; is_primary_key: boolean; data_type: string }
     | undefined,
+  // A column the policy will not let the person fill is left untouched too,
+  // so the copy takes the database's default there (ADR #113).
+  insertLock?: (column: string) => string | null,
 ): DraftRow {
   const cells: Record<string, DraftCell> = {};
   const pkIsAuto =
@@ -158,7 +161,7 @@ function duplicateDraft(
     /int|serial|rowid/i.test(pkColumn.data_type);
   for (let i = 0; i < resultColumns.length; i++) {
     const name = resultColumns[i];
-    if (pkIsAuto && pkColumn?.name === name) {
+    if ((pkIsAuto && pkColumn?.name === name) || insertLock?.(name)) {
       cells[name] = { value: null, touched: false };
       continue;
     }
@@ -205,6 +208,28 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // subquery reads any table — so a rule that limits relations refuses it
   // (`guard::raw_filter`). On MongoDB it is a filter over this one collection.
   const rawLock = driver === "mongodb" ? null : lock("freeSql");
+  // Which columns the role may write, when it limits them (ADR #113). Each
+  // lock is `undefined` when the verb is not limited, so the grid's paths
+  // stay exactly as they were for everyone else.
+  const policyColumns = usePolicyColumns(
+    connectionId,
+    { schema, name: table },
+    driver === "mongodb",
+  );
+  const columnLock = useMemo(
+    () =>
+      policyColumns.update
+        ? (column: string) => policyColumns.lock("update", column)
+        : undefined,
+    [policyColumns],
+  );
+  const draftColumnLock = useMemo(
+    () =>
+      policyColumns.insert
+        ? (column: string) => policyColumns.lock("insert", column)
+        : undefined,
+    [policyColumns],
+  );
   const tableKey = `${schema ?? ""}.${table}`;
   // Subscribe to THIS tab's own column entry, not the whole per-connection
   // `columns` map. `loadColumns` (schema.ts) writes a new map reference on
@@ -1099,6 +1124,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         result.columns.map((c) => c.name),
         rowValues,
         pkColumn,
+        draftColumnLock,
       ),
     );
   }
@@ -1118,7 +1144,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   async function onDraftCommit() {
     if (!draft || draft.saving) return;
     const values: RowValue[] = Object.entries(draft.cells)
-      .filter(([, c]) => c.touched)
+      .filter(([column, c]) => c.touched && !draftColumnLock?.(column))
       .map(([column, c]) => ({
         column,
         value: c.value,
@@ -1797,6 +1823,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             update: !!updateLock,
             delete: !!deleteLock,
           }}
+          columns={{
+            insert: insertLock ? null : policyColumns.insert,
+            update: updateLock ? null : policyColumns.update,
+          }}
         />
       )}
       <div className="flex-1 overflow-hidden">
@@ -1804,6 +1834,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           <DataGrid
             result={result}
             editable={hasPk && !updateLock}
+            columnLock={columnLock}
+            draftColumnLock={draftColumnLock}
             connectionId={connectionId}
             tableSchema={schema}
             tableName={table}
@@ -1946,6 +1978,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           initialFilters={serverFilters}
           isMongo={isMongo}
           expressionIgnored={!!raw}
+          columnLock={columnLock}
           onApplied={() => void fetchData()}
           onClose={() => setBulkUpdateOpen(false)}
         />

@@ -72,6 +72,7 @@ export function BulkUpdateDialog({
   initialFilters,
   isMongo,
   expressionIgnored = false,
+  columnLock,
   onApplied,
   onClose,
 }: {
@@ -96,6 +97,12 @@ export function BulkUpdateDialog({
    * not showing — the preview's count says so too, but only if it is read.
    */
   expressionIgnored?: boolean;
+  /**
+   * Why the policy will not let the person change a column (ADR #113). Such a
+   * column is left out of the **set** half; the match half still offers it,
+   * since matching on a column only reads it.
+   */
+  columnLock?: (column: string) => string | null;
   onApplied: () => void;
   onClose: () => void;
 }) {
@@ -119,7 +126,9 @@ export function BulkUpdateDialog({
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
-  const columnNames = columns.map((c) => c.name);
+  const columnNames = columns
+    .map((c) => c.name)
+    .filter((name) => !columnLock?.(name));
   const typeByColumn = new Map(columns.map((c) => [c.name, c.data_type]));
 
   // The match half's field catalogue: the same columns, plus MongoDB's nested

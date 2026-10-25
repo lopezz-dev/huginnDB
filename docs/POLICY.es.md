@@ -41,6 +41,12 @@ sin `monitor`) muestra una página bloqueada en su lugar. Mientras la política
 carga o no se puede aplicar, una barra en la ventana lo dice y enlaza a
 Ajustes → Política.
 
+Cuando un rol solo puede escribir algunas columnas, la cabecera de la tabla
+muestra un candado en las demás y una línea sobre las filas nombra las que se
+pueden modificar. Una celda bloqueada se sigue abriendo, en solo lectura, para
+leer su valor entero; una fila nueva deja las columnas bloqueadas con su valor
+por defecto.
+
 La política solo **restringe**, nunca amplía. Los ajustes por conexión que ya
 tienen los usuarios —qué conexiones se exponen al MCP, su nivel de escritura
 MCP, si el panel de IA está activado— siguen aplicándose. Lo que puede hacer la
@@ -192,6 +198,21 @@ permite en él.
 
   La IA nunca tiene más que la persona: lo que `ai` añada respecto a `human` se
   ignora, y Ajustes → Política muestra un aviso.
+- **`columns`**: a qué columnas puede dar valor `insert` y cuáles puede
+  modificar `update`, en todas las relaciones que alcanza la regla:
+  `"columns": { "insert": ["cliente", "importe", "estado"], "update": ["estado",
+  "observaciones"] }`. Un verbo que no aparece en `columns` alcanza todas las
+  columnas; una lista vacía, ninguna. Los patrones funcionan como en las
+  relaciones (`obs_*`, sin distinguir mayúsculas). La lectura no se limita:
+  quien puede leer la tabla sigue viendo todas sus columnas. En MongoDB una
+  columna es un campo y se juzga por su nombre de primer nivel —cambiar
+  `direccion.cp` cambia `direccion`—, y el `_id` de un documento siempre se
+  puede dar al insertar. Para que una tabla tenga columnas distintas del resto,
+  escribe una regla aparte para ella.
+
+  Dos reglas sobre la misma tabla se suman: una columna que permita cualquiera
+  de ellas está permitida, y una regla que no limita un verbo lo permite en
+  todas las columnas. El límite vale igual para la persona que para su IA.
 - **`dbUser`**: el usuario de base de datos con el que una persona entra en este
   servidor; ver
   [Cada persona con su propio usuario de base de datos](#cada-persona-con-su-propio-usuario-de-base-de-datos).
@@ -210,6 +231,13 @@ todas las tablas que toca: las vistas, las funciones, el SQL dinámico y los
 catálogos del sistema como `INFORMATION_SCHEMA` o `master` serían formas de
 saltarse la restricción. Una regla sobre un servidor entero mantiene las
 consultas libres, con los límites de sus permisos.
+
+**Los límites por columna cierran las escrituras libres, no las lecturas.** Con
+una regla que limita `columns.update`, un `UPDATE` libre se rechaza por el mismo
+motivo —el texto de una sentencia no dice con fiabilidad qué columnas escribe
+(triggers, vistas, SQL dinámico)—, e igual un `INSERT` con `columns.insert`. Las
+lecturas libres siguen disponibles salvo que la regla limite también bases de
+datos o relaciones; entonces se aplica el párrafo anterior.
 
 El descubrimiento también se filtra: la lista de bases de datos y tablas que ve
 la IA solo contiene lo que el rol alcanza, así que no llega a saber los nombres
@@ -277,9 +305,10 @@ compartida no tiene por qué llegar al equipo de nadie.
   compartido para esa conexión **no** se guarda en su equipo. Para que no llegue
   a ningún equipo, publica la conexión sin contraseña.
 
-> **Actualiza HuginnDB en todos los equipos antes de añadir `dbUser`.** Las
-> versiones anteriores no conocen el campo, dan la política por no válida y
-> bloquean todas las conexiones hasta que se actualicen.
+> **Actualiza HuginnDB en todos los equipos antes de añadir `dbUser` o
+> `columns`.** Las versiones anteriores a un campo no lo conocen, dan la
+> política por no válida y bloquean todas las conexiones hasta que se
+> actualicen.
 
 ### Generar los permisos
 
@@ -296,6 +325,15 @@ servidor:
   después. Una regla que nombra relaciones (o tiene un `deny`) se expande a las
   tablas que existen ahora —un `GRANT` no admite comodines—, así que vuelve a
   generar el script después de crear tablas.
+- Una regla con `columns` concede por columna, `GRANT UPDATE (estado,
+  observaciones) ON pedidos`, sobre las columnas que cada tabla tiene ahora:
+  vuelve a generar el script también después de añadir columnas. **SQL Server
+  no puede limitar `INSERT` por columna** (sus permisos por columna son
+  `SELECT`, `UPDATE` y `REFERENCES`): el script concede `INSERT` sobre toda la
+  tabla y lo avisa, y `columns.insert` solo se cumple dentro de HuginnDB. Para
+  que SQL Server lo haga cumplir, concede `INSERT` sobre una vista con solo esas
+  columnas. MongoDB no tiene privilegios por campo, así que allí los dos límites
+  solo se cumplen dentro de HuginnDB. PostgreSQL y MySQL hacen cumplir los dos.
 - Las personas a las que la política da el rol aparecen al final, comentadas,
   tal como entran (`dbUser`, o su cuenta): revisa los nombres y descomenta.
 - Las notas del script dicen lo que el motor no puede ocultar: PostgreSQL
@@ -321,7 +359,15 @@ defecto— con el JSON a un clic; los dos editan el mismo borrador.
   cambio lo comprueba el mismo analizador que aplica la política, y el error
   nombra el rol y la regla. Una errata ya no puede bloquear todos los equipos.
 - **Ver como** enseña lo que tendría cualquier cuenta —y su IA— en cada conexión
-  guardada con el borrador, antes de guardar nada.
+  guardada con el borrador, antes de guardar nada, con las columnas que puede
+  escribir cada verbo limitado.
+- Bajo `insert` y `update`, **Todas / Solo estas** limita el verbo a las
+  columnas elegidas de las propias tablas de la regla. Cada una indica si es
+  obligatoria (sin valor por defecto ni NULL), si la pone el servidor o si
+  falta en alguna de las tablas. El editor avisa, con un botón que lo corrige,
+  cuando una columna obligatoria se queda fuera de `insert` —no se podría
+  añadir ninguna fila— y cuando `delete` convive con un `update` limitado, ya
+  que borrar una fila y volver a añadirla escribe cualquier columna.
 - El servidor de una regla se elige entre las conexiones guardadas en este
   equipo, y sus bases de datos y tablas de la lista del propio servidor (la
   regla ofrece conectarse a él). También se puede añadir un patrón como

@@ -8,6 +8,41 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Política gestionada: limita qué columnas puede escribir un rol.**
+  - Una regla puede decir ahora a qué columnas puede dar valor `insert` y
+    cuáles puede modificar `update`: `"columns": { "insert": ["cliente",
+    "importe", "estado"], "update": ["estado"] }`. Las personas del rol siguen
+    leyendo la tabla entera; solo modifican esas columnas, y su IA nunca tiene
+    más. Un verbo que no aparece en `columns` conserva todas las columnas, como
+    hasta ahora. En MongoDB una columna es un campo de primer nivel.
+  - **En la tabla**, las columnas que una persona no puede modificar muestran
+    un candado en la cabecera, y la línea sobre las filas nombra las que sí. Una
+    celda bloqueada se sigue abriendo, en solo lectura, para leer su valor;
+    pegar, «Set NULL» y la actualización masiva la dejan fuera, y una fila nueva
+    o duplicada la deja con su valor por defecto.
+  - **En el editor de políticas**, `insert` y `update` tienen cada uno **Todas /
+    Solo estas**, con las columnas de las propias tablas de la regla para
+    elegir, marcadas cuando son obligatorias, las pone el servidor o faltan en
+    alguna tabla. Avisa, con un botón que lo corrige, cuando una columna
+    obligatoria se queda fuera de `insert` (no se podría añadir ninguna fila) y
+    cuando `delete` convive con un `update` limitado (borrar una fila y volver a
+    añadirla escribiría cualquier columna). **Ver como** y Ajustes → Política
+    también muestran las columnas.
+  - **Generar permisos** escribe permisos por columna —`GRANT UPDATE (estado)
+    ON …`—, así que la base de datos hace cumplir los límites a quien entra con
+    su propio usuario. SQL Server no tiene `INSERT` por columna, así que allí el
+    script concede `INSERT` sobre la tabla y avisa de que `columns.insert` solo
+    se cumple dentro de HuginnDB; MongoDB no tiene privilegios por campo.
+  - Con un límite por columna, las sentencias libres `UPDATE`/`INSERT` se
+    rechazan —el texto de una sentencia no dice qué columnas escriben sus
+    triggers o vistas—, mientras que las lecturas libres siguen igual.
+  - **Actualiza HuginnDB en todos los equipos antes de añadir `columns`**: las
+    versiones anteriores leen una política con ese campo como rota y bloquean
+    todas las conexiones. El editor lo avisa al guardar. Ver `docs/POLICY.md` y
+    el ADR #113.
+
 ## [1.35.0] — 2026-10-22
 
 ### Añadido
