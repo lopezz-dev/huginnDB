@@ -46,7 +46,8 @@ muestra un candado en las que no puede ni modificar ni rellenar, una marca de
 «solo al añadir fila» en las que una fila nueva sí puede rellenar, y una línea
 sobre las filas nombra las que se pueden modificar. Una celda bloqueada se sigue abriendo, en solo lectura, para
 leer su valor entero; una fila nueva deja las columnas bloqueadas con su valor
-por defecto.
+por defecto. Al pegar un bloque de celdas sobre columnas bloqueadas, antes de
+escribir nada se dice qué celdas se quedan fuera.
 
 La política solo **restringe**, nunca amplía. Los ajustes por conexión que ya
 tienen los usuarios —qué conexiones se exponen al MCP, su nivel de escritura

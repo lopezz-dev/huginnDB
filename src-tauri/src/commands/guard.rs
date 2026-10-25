@@ -304,6 +304,9 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("query::insert_row", "insert"),
     ("query::insert_documents", "insert"),
     ("insert::insert_rows", "insert"),
+    // Cells it changes need `update`, rows it adds `insert`: both are guarded
+    // in the wrapper, per verb and per column.
+    ("paste::apply_paste", "update"),
     ("mongo::import_collection", "insert"),
     ("query::update_cell", "update"),
     ("query::unset_field", "update"),

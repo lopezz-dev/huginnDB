@@ -86,6 +86,7 @@ import type {
   PulseTopQuery,
   QueryResult,
   CountResult,
+  PasteSummary,
   RowValue,
   StartupArgs,
   MongoIndexInfo,
@@ -952,6 +953,24 @@ export const api = {
    * column safely (convention #4) and what decides whether a JSON `true` binds as
    * `1` or as the word. Refused on MongoDB, which has `insertDocuments`.
    */
+  /**
+   * Write a block pasted into the grid: existing cells by their row's full
+   * key, and new rows, in one transaction (ADR #114).
+   */
+  applyPaste: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    pkColumns: string[];
+    updates: {
+      pkValues: CellValue[];
+      column: string;
+      value: string | null;
+      columnType?: string;
+    }[];
+    inserts: RowValue[][];
+  }) => invoke<PasteSummary>("apply_paste", { args }),
+
   insertRows: (args: {
     connectionId: string;
     schema?: string;

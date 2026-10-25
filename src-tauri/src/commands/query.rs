@@ -2443,6 +2443,61 @@ async fn try_estimate(
     }
 }
 
+/// The `UPDATE` one cell write runs, and its binds: `column` set on the row
+/// whose primary key is `pk_values`. Shared by [`update_cell`] and the
+/// multi-cell paste (`commands::paste`), so the two cannot drift on quoting,
+/// placeholder numbering, MySQL's `BIT` cast or SQL Server's binary
+/// `CONVERT`.
+///
+/// `qt` is the already-qualified table; `bit_cast` is whether `column` is a
+/// MySQL `BIT`, which the caller decides because it may need the catalogue.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn update_cell_statement(
+    dialect: Dialect,
+    qt: &str,
+    column: &str,
+    column_type: Option<&str>,
+    bit_cast: bool,
+    pk_columns: &[String],
+    value: Option<String>,
+    pk_values: &[Value],
+) -> (String, Vec<Option<String>>) {
+    let col_id = dialect.quote_ident(column);
+    // SET uses placeholder #1; the PK predicate consumes #2..=#N+1 on the
+    // dialects that number their placeholders.
+    let where_clause = pk_columns
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            format!(
+                "{} = {}",
+                dialect.quote_ident(c),
+                dialect.placeholder(i + 2)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    let set_placeholder = if bit_cast {
+        mysql::bit_cast(&dialect.placeholder(1))
+    } else if dialect == Dialect::MsSql {
+        // The same "text literal, wrong coercion" problem MySQL BIT has, for
+        // SQL Server's binary family — see `db::mssql::binary_convert`.
+        crate::db::mssql::binary_convert(column_type, &dialect.placeholder(1))
+    } else {
+        dialect.placeholder(1)
+    };
+    let sql = format!("UPDATE {qt} SET {col_id} = {set_placeholder} WHERE {where_clause}");
+    let effective_value = if bit_cast {
+        value.as_deref().map(mysql::normalize_bit_value)
+    } else {
+        value
+    };
+    let mut binds = Vec::with_capacity(pk_values.len() + 1);
+    binds.push(effective_value);
+    binds.extend(pk_values.iter().map(json_to_string));
+    (sql, binds)
+}
+
 /// Update one column of one row in `schema.table`, addressed by the
 /// full primary key.
 ///
@@ -2581,22 +2636,7 @@ pub(crate) async fn update_cell_inner(
     let schema_for_catalog = schema.clone();
 
     let qt = dialect.qualify(schema.as_deref(), &table);
-    let col_id = dialect.quote_ident(&column);
 
-    // SET uses placeholder #1; the PK predicate consumes #2..=#N+1 on the
-    // dialects that number their placeholders.
-    let where_clause = pk_columns
-        .iter()
-        .enumerate()
-        .map(|(i, c)| {
-            format!(
-                "{} = {}",
-                dialect.quote_ident(c),
-                dialect.placeholder(i + 2)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join(" AND ");
     // The cell value travels as a textual literal (ADR #5) and drivers
     // coerce it to the column type server-side. That coercion is wrong for
     // MySQL `BIT`: binding the string "1" makes MySQL store the ASCII byte
@@ -2621,22 +2661,16 @@ pub(crate) async fn update_cell_inner(
             .unwrap_or(false);
     let bit_cast =
         is_mysql && (column_type.as_deref().is_some_and(mysql::is_bit_type) || catalog_bit_cast);
-    let set_placeholder = if bit_cast {
-        mysql::bit_cast(&dialect.placeholder(1))
-    } else if dialect == Dialect::MsSql {
-        // The same "text literal, wrong coercion" problem MySQL BIT has, for
-        // SQL Server's binary family — see `db::mssql::binary_convert`.
-        crate::db::mssql::binary_convert(column_type.as_deref(), &dialect.placeholder(1))
-    } else {
-        dialect.placeholder(1)
-    };
-    let sql = format!("UPDATE {qt} SET {col_id} = {set_placeholder} WHERE {where_clause}");
-    let effective_value: Option<String> = if bit_cast {
-        value.as_deref().map(mysql::normalize_bit_value)
-    } else {
-        value
-    };
-    let pk_strs: Vec<Option<String>> = pk_values.iter().map(json_to_string).collect();
+    let (sql, binds) = update_cell_statement(
+        dialect,
+        &qt,
+        &column,
+        column_type.as_deref(),
+        bit_cast,
+        &pk_columns,
+        value,
+        &pk_values,
+    );
 
     // Wrap the UPDATE in a transaction so a stray multi-row hit can be
     // rolled back atomically. With a correctly-introspected PRIMARY KEY
@@ -2648,9 +2682,6 @@ pub(crate) async fn update_cell_inner(
     // The guard, the rollback and SQL Server's statement-based transaction all
     // live in `db::exec::in_tx_expect_at_most_one` — see its doc for the bug it
     // exists to catch.
-    let mut binds = Vec::with_capacity(pk_strs.len() + 1);
-    binds.push(effective_value);
-    binds.extend(pk_strs);
     let res = crate::db::exec::in_tx_expect_at_most_one(&pool, &sql, &binds, "update_cell").await;
     let affected = try_sql_sink!(sink, &connection_id, driver, &sql, start, res);
     log_sql_sink(

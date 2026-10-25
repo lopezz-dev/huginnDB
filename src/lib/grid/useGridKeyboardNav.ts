@@ -4,6 +4,7 @@ import type { Virtualizer } from "@tanstack/react-virtual";
 import { copyToClipboard, readFromClipboard } from "@/lib/clipboard";
 import { normalizeBitValue } from "@/lib/grid/columnKinds";
 import { formatValue, rawCellText } from "@/lib/grid/formatValue";
+import { isBlockText } from "@/lib/grid/pasteBlock";
 import { matchesBinding } from "@/lib/keybindings";
 import type { CellValue, ColumnInfo, ColumnMeta, GridPrefs } from "@/types";
 import type { InlineEdit } from "@/lib/grid/useCellEditing";
@@ -12,6 +13,17 @@ import type { InlineEdit } from "@/lib/grid/useCellEditing";
 export interface ActiveCell {
   r: number;
   c: number;
+}
+
+/**
+ * A block pasted into the grid, with where it lands: the rows on screen from
+ * the target cell's row down, and the columns on screen from its column
+ * rightwards, in the order they are shown (ADR #114).
+ */
+export interface GridPaste {
+  text: string;
+  rows: CellValue[][];
+  columns: ColumnMeta[];
 }
 
 /** The cell a chord acts on, resolved from either selection mechanism. */
@@ -67,6 +79,11 @@ export interface GridKeyboardNavOptions {
   editable: boolean | undefined;
   /** Why the policy locks a column (ADR #113): pasting into it does nothing. */
   columnLock?: (column: string) => string | null;
+  /**
+   * Receives a pasted *block* — text with tabs or several lines. Without it a
+   * block is pasted into the one cell as text, as before.
+   */
+  onPasteBlock?: (paste: GridPaste) => void;
   onCellSave:
     | ((
         rowValues: CellValue[],
@@ -110,6 +127,7 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
     expandCellCombo,
     editable,
     columnLock,
+    onPasteBlock,
     onCellSave,
   } = opts;
 
@@ -155,6 +173,23 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
    * (same coercion `BitInput` applies) and commits directly via `onCellSave`,
    * skipping the round trip if the normalized value is already what's there.
    */
+  /** Where a block pasted on `cell` lands; see {@link GridPaste}. */
+  function blockTarget(cell: TargetCell): Omit<GridPaste, "text"> | null {
+    const rows = grid.table.getRowModel().rows;
+    const r = rows.findIndex((row) => row.original === cell.rowValues);
+    if (r < 0) return null;
+    const shown = rows[r]
+      .getVisibleCells()
+      .map((c) => c.column.id)
+      .filter((id) => grid.columnIndexByName.has(id));
+    const c = shown.indexOf(cell.column.name);
+    if (c < 0) return null;
+    return {
+      rows: rows.slice(r).map((row) => row.original as CellValue[]),
+      columns: shown.slice(c).map((id) => grid.columns[grid.columnIndexByName.get(id)!]),
+    };
+  }
+
   function handleCopyPasteChord(key: "c" | "v") {
     const cell = resolveTargetCell();
     if (!cell) return;
@@ -162,10 +197,15 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
       void copyToClipboard(formatValue(cell.value));
       return;
     }
-    if (!editable || !onCellSave) return;
-    if (columnLock?.(cell.column.name)) return;
     const info = columnInfoByName.get(cell.column.name);
-    if (info?.referenced_table) return;
+    // One value into one cell: the inline editor, as before.
+    const intoCell = !!(
+      editable &&
+      onCellSave &&
+      !columnLock?.(cell.column.name) &&
+      !info?.referenced_table
+    );
+    if (!intoCell && !onPasteBlock) return;
     const isBit = bitColNames.has(cell.column.name);
     // Through the shared seam, which reads the clipboard in Rust. Reading it
     // from JS here is what used to make Ctrl+V raise WebView2's own "allow
@@ -176,6 +216,14 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
       // nothing useful to say about an empty clipboard, same convention as
       // `copyToClipboard` swallowing a failed write.
       if (text === null) return;
+      // Several cells: the grid works out where each one lands and asks
+      // first (ADR #114). The anchor cell itself may be one it cannot write.
+      if (onPasteBlock && isBlockText(text)) {
+        const target = blockTarget(cell);
+        if (target) onPasteBlock({ ...target, text });
+        return;
+      }
+      if (!intoCell || !onCellSave) return;
       const cur =
         cell.rowValues[grid.columnIndexByName.get(cell.column.name) ?? -1];
       const original =

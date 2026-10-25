@@ -1,5 +1,7 @@
 /** SQL column-type classification helpers, shared by the data grid. */
 
+import type { ColumnInfo } from "@/types";
+
 /**
  * Return `true` if the SQL data-type string represents a numeric type.
  *
@@ -103,4 +105,17 @@ export function normalizeBitValue(value: string | null | undefined): "0" | "1" |
   if (v === "1" || v.toLowerCase() === "true") return "1";
   if (v === "0" || v.toLowerCase() === "false") return "0";
   return v === "" ? "" : "1";
+}
+
+/**
+ * Whether the database generates this column's value on insert, so the draft
+ * shows an "auto" placeholder instead of a control, and a pasted block leaves
+ * it alone.
+ *
+ * Deliberately conservative: only an integer-ish primary key. A `uuid` or
+ * `varchar` PK may well have no default, and hiding its input would make the
+ * row impossible to insert.
+ */
+export function isAutoPkColumn(info?: ColumnInfo): boolean {
+  return !!info?.is_primary_key && /int|serial|rowid/i.test(info.data_type);
 }

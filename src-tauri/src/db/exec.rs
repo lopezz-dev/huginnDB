@@ -160,6 +160,39 @@ pub async fn execute_params_in_tx(
     pool: &DbPool,
     batches: &[(String, Vec<Option<String>>)],
 ) -> AppResult<Vec<u64>> {
+    execute_params_in_tx_checked(pool, batches, |_, _| None).await
+}
+
+/// [`execute_params_in_tx`], refusing to commit when a statement touched more
+/// than one row — the multi-cell paste (`commands::paste`), where every
+/// statement addresses one row by its full key or inserts one row, and a
+/// second row touched means the key was not one: the same assertion
+/// [`in_tx_expect_at_most_one`] makes for a single cell, kept across a whole
+/// list. `what` names the caller in the refusal.
+pub async fn execute_params_in_tx_at_most_one(
+    pool: &DbPool,
+    batches: &[(String, Vec<Option<String>>)],
+    what: &str,
+) -> AppResult<Vec<u64>> {
+    execute_params_in_tx_checked(pool, batches, |i, n| {
+        (n > 1).then(|| {
+            format!(
+                "{what}: statement {} touched {n} rows instead of one (is the primary key \
+                 complete?) — the transaction was rolled back, nothing was changed",
+                i + 1
+            )
+        })
+    })
+    .await
+}
+
+/// The loop behind both: `check(index, rows_affected)` returning a reason
+/// rolls the whole list back with it.
+async fn execute_params_in_tx_checked(
+    pool: &DbPool,
+    batches: &[(String, Vec<Option<String>>)],
+    check: impl Fn(usize, u64) -> Option<String>,
+) -> AppResult<Vec<u64>> {
     if batches.is_empty() {
         return Ok(Vec::new());
     }
@@ -168,13 +201,16 @@ pub async fn execute_params_in_tx(
         ($p:expr) => {{
             let mut tx = $p.begin().await?;
             let mut affected = Vec::with_capacity(batches.len());
-            for (sql, binds) in batches {
-                affected.push(
-                    bind_all!(sql.as_str(), binds, $p)
-                        .execute(&mut *tx)
-                        .await?
-                        .rows_affected(),
-                );
+            for (i, (sql, binds)) in batches.iter().enumerate() {
+                let n = bind_all!(sql.as_str(), binds, $p)
+                    .execute(&mut *tx)
+                    .await?
+                    .rows_affected();
+                if let Some(reason) = check(i, n) {
+                    // Dropping `tx` rolls it back.
+                    return Err(AppError::InvalidInput(reason));
+                }
+                affected.push(n);
             }
             tx.commit().await?;
             Ok(affected)
@@ -189,17 +225,22 @@ pub async fn execute_params_in_tx(
             let mut c = p.acquire().await?;
             c.simple_execute("BEGIN TRANSACTION").await?;
             let mut affected = Vec::with_capacity(batches.len());
-            for (sql, binds) in batches {
-                match c.execute(sql, binds).await {
-                    Ok(n) => affected.push(n),
-                    Err(e) => {
-                        // Best-effort unwind: if the rollback also fails the
-                        // session is already poisoned and `classify` will not
-                        // return it to the pool.
-                        let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
-                        return Err(e);
-                    }
-                }
+            for (i, (sql, binds)) in batches.iter().enumerate() {
+                let refusal = match c.execute(sql, binds).await {
+                    Ok(n) => match check(i, n) {
+                        None => {
+                            affected.push(n);
+                            continue;
+                        }
+                        Some(reason) => AppError::InvalidInput(reason),
+                    },
+                    Err(e) => e,
+                };
+                // Best-effort unwind: if the rollback also fails the session
+                // is already poisoned and `classify` will not return it to
+                // the pool.
+                let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
+                return Err(refusal);
             }
             c.simple_execute("COMMIT TRANSACTION").await?;
             Ok(affected)
@@ -469,6 +510,65 @@ mod tests {
         ];
         assert!(execute_params_in_tx(&pool, &batches).await.is_err());
         assert_eq!(count(&pool).await, 0);
+    }
+
+    /// The multi-cell paste's promise: a statement that touches a second row
+    /// means its key was not one, and nothing of the list may stay — the
+    /// statements before it included.
+    #[tokio::test]
+    async fn a_statement_touching_two_rows_rolls_the_whole_list_back() {
+        let pool = sqlite_pool("at_most_one").await;
+        execute_params_in_tx(
+            &pool,
+            &[(
+                "INSERT INTO t (name) VALUES (?), (?)".to_string(),
+                vec![Some("a".to_string()), Some("a".to_string())],
+            )],
+        )
+        .await
+        .unwrap();
+        let batches = vec![
+            (
+                "INSERT INTO t (name) VALUES (?)".to_string(),
+                vec![Some("b".to_string())],
+            ),
+            // `name` is not a key: two rows match.
+            (
+                "UPDATE t SET name = ? WHERE name = ?".to_string(),
+                vec![Some("z".to_string()), Some("a".to_string())],
+            ),
+        ];
+        let err = execute_params_in_tx_at_most_one(&pool, &batches, "paste")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("statement 2 touched 2 rows"), "{err}");
+        assert_eq!(count(&pool).await, 2, "the insert before it was undone");
+        assert_eq!(
+            scalar_i64(&pool, "SELECT COUNT(*) FROM t WHERE name = 'z'", &[])
+                .await
+                .unwrap(),
+            Some(0)
+        );
+
+        // One row per statement commits, and the counts come back in order.
+        let ok = vec![
+            (
+                "UPDATE t SET name = ? WHERE id = ?".to_string(),
+                vec![Some("y".to_string()), Some("1".to_string())],
+            ),
+            (
+                "INSERT INTO t (name) VALUES (?)".to_string(),
+                vec![Some("c".to_string())],
+            ),
+        ];
+        assert_eq!(
+            execute_params_in_tx_at_most_one(&pool, &ok, "paste")
+                .await
+                .unwrap(),
+            vec![1, 1]
+        );
+        assert_eq!(count(&pool).await, 3);
     }
 
     #[tokio::test]

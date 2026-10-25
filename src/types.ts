@@ -920,6 +920,15 @@ export interface RowValue {
   columnType?: string;
 }
 
+/** What `apply_paste` did with a pasted block (ADR #114). */
+export interface PasteSummary {
+  updated: number;
+  inserted: number;
+  /** Whether it ran as one transaction — false only on a MongoDB server
+   *  without transactions. */
+  atomic: boolean;
+}
+
 /**
  * Per-cell state for the inline insert/duplicate draft row.
  *

@@ -8,6 +8,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Paste a block of cells into the grid.**
+  - Copy several cells from a spreadsheet, another grid or any tab-separated
+    text and press Ctrl+V on a cell: the block lands with its top-left cell
+    there and spreads right and down, across the columns and rows as they are
+    shown. Rows below the last one become **new rows**. One value with no tab
+    or line break still pastes into the one cell, as before.
+  - Before anything is written, a confirmation says how many cells change and
+    how many rows are added, previews the first rows, and names what is left
+    out and why: a primary-key column, a column your organization's policy
+    locks, a key the database generates. **Paste only the allowed cells** then
+    writes the rest. A value equal to what the cell holds is not sent.
+  - **All or nothing**: the whole paste is one transaction on PostgreSQL,
+    MySQL, SQLite and SQL Server — if one cell fails, nothing changes. On
+    MongoDB it is one transaction on a replica set; a standalone server has no
+    transactions, so there the writes go in order and stop at the first error,
+    and the confirmation says so first. See ADR #114.
+
 - **Managed policy: limit which columns a role may write.**
   - A rule can now say which columns `insert` may give a value to and which
     `update` may change: `"columns": { "insert": ["customer", "amount",

@@ -513,6 +513,7 @@ pub fn run() {
             commands::query::insert_row,
             commands::query::insert_documents,
             commands::insert::insert_rows,
+            commands::paste::apply_paste,
             commands::query::fetch_fk_options,
             commands::prefs::get_preferences,
             commands::prefs::update_preferences,
