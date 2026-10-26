@@ -2732,7 +2732,7 @@
         "items": {
           "appLock": {
             "title": "Bloqueo de la app con contraseña maestra",
-            "body": "Actívalo en Ajustes → Seguridad y todas las contraseñas que guarda HuginnDB pasan a una bóveda cifrada que solo abre tu contraseña maestra. Bloqueada, la app no muestra nada ni llega a ninguna base de datos, y el conector MCP también se niega. Si olvidas la contraseña se pierden los secretos guardados, así que la app te avisa antes."
+            "body": "Actívalo en Ajustes → Seguridad y todas las contraseñas que guarda HuginnDB pasan a una bóveda cifrada que solo abre tu contraseña maestra. Bloqueada, la app no muestra nada ni llega a ninguna base de datos, y el conector MCP también se niega. Si olvidas la contraseña se pierden los secretos guardados, así que la app te avisa antes. Una política gestionada puede exigirlo y limitar cuánto tiempo puede quedarse HuginnDB inactivo."
           },
           "lockWithSession": {
             "title": "Se bloquea cuando te levantas",

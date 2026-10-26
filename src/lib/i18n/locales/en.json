@@ -2732,7 +2732,7 @@
         "items": {
           "appLock": {
             "title": "App lock with a master password",
-            "body": "Turn it on in Settings → Security and every password HuginnDB stores moves into an encrypted vault only your master password opens. Locked, the app shows nothing and reaches no database, and the MCP connector refuses too. Forget the password and the saved secrets are lost, so the app warns you first."
+            "body": "Turn it on in Settings → Security and every password HuginnDB stores moves into an encrypted vault only your master password opens. Locked, the app shows nothing and reaches no database, and the MCP connector refuses too. Forget the password and the saved secrets are lost, so the app warns you first. A managed policy can require it and cap how long HuginnDB may sit idle."
           },
           "lockWithSession": {
             "title": "It locks when you walk away",
