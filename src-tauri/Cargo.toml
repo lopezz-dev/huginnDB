@@ -12,7 +12,11 @@ version = "1.35.0"
 description = "HuginnDB — minimal desktop database manager"
 authors = ["HuginnDB contributors"]
 edition = "2021"
-rust-version = "1.77"
+# The floor the dependency tree actually needs, not an aspiration: the Tauri
+# plugins and `muda` declare 1.90, `russh` 0.65 declares 1.89. It said 1.77
+# long after the tree had moved past it. CI builds with `RUST_VERSION` in
+# .github/workflows/ci.yml, which is newer.
+rust-version = "1.90"
 
 [lib]
 name = "huginndb_lib"
@@ -134,7 +138,7 @@ portable-pty = "0.9"
 # / `USER`, which whoever launches the process controls. Already in the tree
 # through `sqlx-mysql` / `sqlx-postgres`, so declaring it adds no crate.
 whoami = { version = "1.6", default-features = false }
-russh = { version = "0.60", default-features = false, features = [
+russh = { version = "0.65", default-features = false, features = [
     "ring",
     "flate2",
     "rsa",

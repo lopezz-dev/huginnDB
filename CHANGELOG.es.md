@@ -95,9 +95,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     respuestas IPC de otra (GHSA-w28w-mhc8-qvjv). Las ventanas de HuginnDB
     solo cargan su propia interfaz, así que no era alcanzable, pero la
     corrección ya está.
+  - **Los túneles SSH** pasan a russh 0.65, que deja la biblioteca de claves
+    bifurcada que arrastraba un `crypto-bigint` con canales laterales de
+    tiempo (RUSTSEC-2026-0387). Las huellas de host guardadas siguen
+    coincidiendo: un servidor con certificado de host de OpenSSH se sigue
+    reconociendo por la clave con la que ya se confiaba en él, nunca por una
+    autoridad que no hayas configurado. Ver ADR #117. El aviso Marvin del
+    crate `rsa` (RUSTSEC-2023-0071) sigue apareciendo, porque no tiene versión
+    corregida.
 - Las herramientas de desarrollo (Vite 8, Vitest 5) resuelven 25 avisos que
   solo afectaban a las máquinas donde se compila la aplicación, no a la
   aplicación.
+- Compilar HuginnDB desde el código declara ahora la versión de Rust que de
+  verdad necesita, la 1.90; las dependencias ya la exigían desde hace tiempo.
 
 ## [1.35.0] — 2026-10-22
 
