@@ -64,6 +64,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     todas las conexiones. El editor lo avisa al guardar. Ver `docs/POLICY.md` y
     el ADR #113.
 
+### Corregido
+
+- **Un túnel SSH con clave RSA ya inicia sesión en servidores OpenSSH
+  actuales.** El túnel firmaba siempre con `ssh-rsa`, que usa SHA-1 y que
+  OpenSSH 8.8 y posteriores rechazan por defecto (`signature algorithm ssh-rsa
+  not in PubkeyAcceptedAlgorithms`), así que cualquier bastión al día
+  rechazaba una clave RSA. Ahora pregunta al servidor qué firmas acepta, como
+  hace el cliente de OpenSSH, y firma con `rsa-sha2-512` o `rsa-sha2-256`.
+  `ssh-rsa` solo se usa con un servidor que no acepta otra cosa. Las claves
+  Ed25519 y ECDSA nunca se vieron afectadas.
+
 ## [1.35.0] — 2026-10-22
 
 ### Añadido
