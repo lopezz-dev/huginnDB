@@ -32,9 +32,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     amber ring drains through the wait, and it swings open before the app
     appears. With "reduce motion" on in Windows, it keeps every state and
     drops the movement. A Caps Lock warning sits under the field.
-  - **Settings → Security** gathers it: the lock's state and actions, the
-    inactivity timeout, and what the lock covers and what it does not, side
-    by side.
+  - **Settings → Security** gathers it, built like every other section: the
+    lock's switch (turning it either way asks for the master password), the
+    password change and "Lock now" rows, and the inactivity timeout.
   - **Forgetting the master password loses the secrets in the vault**, and the
     app says so before you turn the lock on. **Forgot your master password?**
     on the lock screen resets the vault: the secrets are deleted, your

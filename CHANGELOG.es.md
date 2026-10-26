@@ -39,9 +39,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     durante la espera y se abre antes de que aparezca la app. Con «reducir
     movimiento» activado en Windows conserva todos los estados sin moverse.
     Un aviso de Bloq Mayús aparece bajo el campo.
-  - **Ajustes → Seguridad** lo reúne todo: el estado y las acciones del
-    bloqueo, el tiempo de inactividad, y lo que cubre y lo que no, uno al lado
-    del otro.
+  - **Ajustes → Seguridad** lo reúne todo, con la misma estructura que el
+    resto de secciones: el interruptor del bloqueo (activarlo o desactivarlo
+    pide la contraseña maestra), las filas para cambiar la contraseña y
+    bloquear ahora, y el tiempo de inactividad.
   - **Si olvidas la contraseña maestra, pierdes los secretos de la bóveda**, y
     la app lo avisa antes de activar el bloqueo. **¿Has olvidado la contraseña
     maestra?** en la pantalla de bloqueo restablece la bóveda: se borran los

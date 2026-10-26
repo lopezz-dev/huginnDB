@@ -2097,46 +2097,34 @@
       "security": "mongosh inicia sesión con las credenciales de la propia conexión y, por SSH, a través de su túnel. La contraseña se le pasa en su entorno, nunca en la línea de comandos, donde otros usuarios podrían leerla. Con una política gestionada, mongosh solo se ofrece en conexiones donde puedes ejecutar consultas libres que lean y escriban cualquier cosa."
     },
     "security": {
+      "intro": "Pide una contraseña maestra antes de que HuginnDB muestre nada. Protege tus contraseñas guardadas y el conector MCP frente a alguien que se siente en tu ordenador mientras tu sesión está abierta; no protege frente a malware.",
+      "groups": {
+        "appLock": "Bloqueo de la app",
+        "autoLock": "Bloqueo automático"
+      },
       "lock": {
-        "eyebrow": "Bloqueo de la app",
-        "on": "Activado",
-        "off": "Desactivado",
-        "titleOn": "HuginnDB pide tu contraseña maestra",
-        "titleOff": "Cualquiera con tu sesión de Windows puede abrir HuginnDB",
-        "descOn": "Tus contraseñas están en una bóveda cifrada en este equipo; el llavero del sistema ya no las tiene. HuginnDB se bloquea al arrancar, tras un rato sin usarlo y con Ctrl+L.",
-        "descOff": "Activa el bloqueo para guardar tus contraseñas en una bóveda cifrada que solo abre tu contraseña maestra, y para cerrar el conector MCP mientras HuginnDB esté bloqueado.",
-        "lockNow": "Bloquear ahora",
-        "change": "Cambiar la contraseña maestra…",
-        "turnOff": "Desactivar…",
-        "turnOn": "Activar el bloqueo de la app…",
+        "label": "Bloquear HuginnDB con una contraseña maestra",
+        "descOn": "Activado. Tus contraseñas están en una bóveda cifrada en este equipo, y el llavero del sistema ya no las tiene.",
+        "descOff": "Pasa tus contraseñas a una bóveda cifrada y cierra el conector MCP mientras HuginnDB esté bloqueado.",
         "forgetting": "Si olvidas la contraseña maestra, los secretos de la bóveda se pierden. Tus conexiones se conservan, pero tendrás que volver a escribir sus contraseñas."
       },
-      "autoLock": "Bloqueo automático",
+      "password": {
+        "label": "Contraseña maestra",
+        "desc": "Cámbiala sin tocar los secretos de la bóveda.",
+        "change": "Cambiar…"
+      },
+      "lockNow": {
+        "label": "Bloquear ahora",
+        "desc": "También con {{shortcut}}.",
+        "descNoShortcut": "También desde la paleta de comandos.",
+        "action": "Bloquear"
+      },
       "idleMinutes": {
         "label": "Bloquear tras inactividad",
         "desc": "Minutos sin pulsar una tecla ni hacer clic en ninguna ventana de HuginnDB.",
         "never": "Nunca",
         "minutes_one": "{{count}} minuto",
         "minutes_other": "{{count}} minutos"
-      },
-      "covers": {
-        "title": "Qué cubre",
-        "yes": {
-          "title": "Protege",
-          "items": [
-            "Las contraseñas de las conexiones, las frases SSH, las de los orígenes y la clave de la IA",
-            "Tus bases de datos a través del conector MCP, hasta que desbloquees",
-            "Que alguien abra HuginnDB en tu sesión, aunque borre sus ficheros"
-          ]
-        },
-        "no": {
-          "title": "No protege",
-          "items": [
-            "El malware, o un keylogger que capture lo que escribes",
-            "Los nombres de las conexiones, las pestañas abiertas y el historial de Pulse, que siguen sin cifrar en el disco",
-            "Las conexiones que no necesitan contraseña"
-          ]
-        }
       }
     }
   },

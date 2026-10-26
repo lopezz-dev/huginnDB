@@ -2097,46 +2097,34 @@
       "security": "mongosh signs in with the connection's own credentials and, over SSH, through its tunnel. The password is handed to it in its environment, never on the command line where other users could read it. Under a managed policy, mongosh is only offered on connections where you may run free queries that read and write anything."
     },
     "security": {
+      "intro": "Ask for a master password before HuginnDB shows anything. It protects your saved passwords and the MCP connector from someone who sits at your computer while your session is open; it does not protect against malware.",
+      "groups": {
+        "appLock": "App lock",
+        "autoLock": "Automatic lock"
+      },
       "lock": {
-        "eyebrow": "App lock",
-        "on": "On",
-        "off": "Off",
-        "titleOn": "HuginnDB asks for your master password",
-        "titleOff": "Anyone at your Windows session can open HuginnDB",
-        "descOn": "Your passwords are in an encrypted vault on this machine; the system keychain no longer has them. HuginnDB locks when it starts, after inactivity and with Ctrl+L.",
-        "descOff": "Turn on the lock to keep your passwords in an encrypted vault that only your master password opens, and to close the MCP connector while HuginnDB is locked.",
-        "lockNow": "Lock now",
-        "change": "Change master password…",
-        "turnOff": "Turn off…",
-        "turnOn": "Turn on the app lock…",
+        "label": "Lock HuginnDB with a master password",
+        "descOn": "On. Your passwords are in an encrypted vault on this machine, and the system keychain no longer has them.",
+        "descOff": "Moves your passwords into an encrypted vault and closes the MCP connector while HuginnDB is locked.",
         "forgetting": "If you forget the master password, the secrets in the vault are lost. Your connections stay, but you will have to type their passwords again."
       },
-      "autoLock": "Automatic lock",
+      "password": {
+        "label": "Master password",
+        "desc": "Change it without touching the secrets in the vault.",
+        "change": "Change…"
+      },
+      "lockNow": {
+        "label": "Lock now",
+        "desc": "Also with {{shortcut}}.",
+        "descNoShortcut": "Also from the command palette.",
+        "action": "Lock"
+      },
       "idleMinutes": {
         "label": "Lock after inactivity",
         "desc": "Minutes without a key press or click in any HuginnDB window.",
         "never": "Never",
         "minutes_one": "{{count}} minute",
         "minutes_other": "{{count}} minutes"
-      },
-      "covers": {
-        "title": "What it covers",
-        "yes": {
-          "title": "Protects",
-          "items": [
-            "Connection passwords, SSH passphrases, origin passphrases and the AI key",
-            "Your databases through the MCP connector, until you unlock",
-            "Opening HuginnDB at your session, even after deleting its files"
-          ]
-        },
-        "no": {
-          "title": "Does not protect",
-          "items": [
-            "Malware, or a keylogger recording what you type",
-            "Connection names, open tabs and Pulse history, still unencrypted on disk",
-            "Connections that need no password"
-          ]
-        }
       }
     }
   },
