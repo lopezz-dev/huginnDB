@@ -137,6 +137,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   hace el cliente de OpenSSH, y firma con `rsa-sha2-512` o `rsa-sha2-256`.
   `ssh-rsa` solo se usa con un servidor que no acepta otra cosa. Las claves
   Ed25519 y ECDSA nunca se vieron afectadas.
+- **Una conexión importada ya no pertenece a un origen compartido de otra
+  máquina.** Una exportación de perfiles o de entornos lleva el id del origen
+  compartido del que venía cada conexión en la máquina que exportó, y la
+  importación lo conservaba. Ese id aquí no nombra nada, así que la conexión
+  llegaba de solo lectura en el diálogo de conexión y aparecía como de un
+  origen desaparecido. Ahora una conexión importada es una conexión local
+  normal, como una creada por ti; solo la sincronización del propio origen
+  compartido marca una conexión como suya.
 
 ### Seguridad
 

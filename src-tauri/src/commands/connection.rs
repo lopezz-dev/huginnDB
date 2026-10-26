@@ -2252,6 +2252,18 @@ pub(crate) fn apply_profile_imports(
         // And whoever the exporting machine's person signed in as: this
         // machine's person is somebody else.
         new_profile.personal_username = None;
+        // And which shared origin the exporting machine pulled it from. That id
+        // names an entry in *its* origin registry, not this one, so keeping it
+        // left a connection owned by an origin that does not exist here:
+        // read-only in the connection dialog, and reported by
+        // `reconcileOrphans` as a vanished origin on every launch. Neither
+        // caller can repair it later — `import_environment` registers the
+        // bundle's origins under fresh ids with no link back to the old ones,
+        // and a later sync would not adopt this copy anyway, since the fresh
+        // UUID above no longer matches the id the origin publishes. An import
+        // is a local copy; the shared-origin sync (`origins::merge_into`) is
+        // the only path that stamps ownership.
+        new_profile.origin_id = None;
 
         // Decrypt and store secrets if present. `Strict` because the user is
         // sitting in the import dialog: a wrong passphrase has to surface here
@@ -2873,6 +2885,28 @@ mod tests {
         assert_eq!(result.imported.len(), 1);
         assert!(!profiles[0].ai_enabled, "AI reach is re-opted-in locally");
         assert!(!profiles[0].ai_rows_allowed, "so is row access");
+    }
+
+    /// A bundle exported on a machine where the connection came from a shared
+    /// origin carries *that* machine's origin id. Here it names nothing, so
+    /// keeping it would leave a read-only connection owned by a ghost.
+    #[test]
+    fn an_imported_profile_is_never_owned_by_a_shared_origin() {
+        let mut profiles = Vec::new();
+        let mut ep = exported("orig-a", "A");
+        ep.profile.origin_id = Some("origin-on-the-exporting-machine".into());
+
+        let (result, _map, _overwritten) = apply_profile_imports(
+            &mut profiles,
+            vec![ep],
+            None,
+            &std::collections::HashMap::new(),
+            |_, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(result.imported.len(), 1);
+        assert_eq!(profiles[0].origin_id, None, "an import is a local copy");
     }
 
     #[test]
