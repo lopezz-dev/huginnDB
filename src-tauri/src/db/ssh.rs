@@ -49,6 +49,34 @@ fn ssh_err(label: &str, e: impl std::fmt::Display) -> AppError {
     AppError::Ssh(format!("{label}: {e}"))
 }
 
+/// The signature hashes to offer an RSA key with, in order, given what the
+/// server advertised in `server-sig-algs` (RFC 8308) — the answer of
+/// [`Handle::best_supported_rsa_hash`]. For a key that is not RSA the hash is
+/// ignored, and the caller passes `Some(None)`.
+///
+/// `russh` maps a missing hash to `ssh-rsa`, which signs with SHA-1, and that
+/// is what an RSA key used to sign with here no matter the server. OpenSSH
+/// 8.8 and later refuse it by default (`signature algorithm ssh-rsa not in
+/// PubkeyAcceptedAlgorithms`), so an RSA key could not log in to any current
+/// server (gotcha #115). The OpenSSH client asks the server instead, and so
+/// does this:
+///
+/// * the server named its best RSA hash → that one alone. If it is `None`,
+///   the server takes nothing but `ssh-rsa`, and SHA-1 is the only way in;
+/// * the server sent no `server-sig-algs` (one older than OpenSSH 7.2, or one
+///   that never implemented RFC 8308) → SHA-512, then SHA-256, then SHA-1 as
+///   a last resort. Each refusal is one failed attempt against the server's
+///   `MaxAuthTries` (six by default in OpenSSH), well inside the budget.
+///
+/// SHA-1 is never tried while a SHA-2 hash is known to work, so a server
+/// that accepts both is always signed for with SHA-2.
+fn signature_hashes(advertised: Option<Option<HashAlg>>) -> Vec<Option<HashAlg>> {
+    match advertised {
+        Some(best) => vec![best],
+        None => vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None],
+    }
+}
+
 /// Whether a `TcpListener::bind` error on a *pinned* local port means the
 /// port simply can't be used (so we should fall back to an ephemeral one)
 /// rather than a fatal problem. See the call site for the per-platform
@@ -277,21 +305,42 @@ impl Dialer {
                     .authenticate_password(&tunnel.username, pw)
                     .await
                     .map_err(|e| ssh_err("auth-password", e))?
+                    .success()
             }
             SshAuth::Key { path } => {
                 let passphrase = self.secret.clone().filter(|s| !s.is_empty());
                 let key = load_secret_key(PathBuf::from(path), passphrase.as_deref())
                     .map_err(|e| ssh_err("load-key", e))?;
-                session
-                    .authenticate_publickey(
-                        &tunnel.username,
-                        PrivateKeyWithHashAlg::new(Arc::new(key), None),
-                    )
-                    .await
-                    .map_err(|e| ssh_err("auth-publickey", e))?
+                let key = Arc::new(key);
+                // Only an RSA key has a choice of signature hash, and asking
+                // the server waits up to a second for its EXT_INFO — not a
+                // wait to impose on an Ed25519 or ECDSA key for nothing.
+                let advertised = if key.algorithm().is_rsa() {
+                    session
+                        .best_supported_rsa_hash()
+                        .await
+                        .map_err(|e| ssh_err("auth-publickey", e))?
+                } else {
+                    Some(None)
+                };
+                let mut accepted = false;
+                for hash in signature_hashes(advertised) {
+                    accepted = session
+                        .authenticate_publickey(
+                            &tunnel.username,
+                            PrivateKeyWithHashAlg::new(key.clone(), hash),
+                        )
+                        .await
+                        .map_err(|e| ssh_err("auth-publickey", e))?
+                        .success();
+                    if accepted {
+                        break;
+                    }
+                }
+                accepted
             }
         };
-        if !authenticated.success() {
+        if !authenticated {
             return Err(AppError::Ssh("authentication rejected by server".into()));
         }
         Ok(session)
@@ -730,6 +779,28 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// An RSA key used to sign with `ssh-rsa` (SHA-1) whatever the server
+    /// said, which OpenSSH 8.8+ refuses by default.
+    #[test]
+    fn an_rsa_key_signs_with_sha2_unless_the_server_takes_nothing_else() {
+        // The server named its best hash: that one, and nothing weaker.
+        assert_eq!(
+            signature_hashes(Some(Some(HashAlg::Sha512))),
+            vec![Some(HashAlg::Sha512)]
+        );
+        assert_eq!(
+            signature_hashes(Some(Some(HashAlg::Sha256))),
+            vec![Some(HashAlg::Sha256)]
+        );
+        // The server takes only `ssh-rsa`: SHA-1 is the only way in.
+        assert_eq!(signature_hashes(Some(None)), vec![None]);
+        // The server did not say: strongest first, SHA-1 last.
+        assert_eq!(
+            signature_hashes(None),
+            vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
+        );
+    }
 
     #[test]
     fn only_a_session_that_is_gone_is_redialled() {

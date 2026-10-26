@@ -56,6 +56,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     versions read a policy with it as broken and block every connection. The
     editor says so when you save. See `docs/POLICY.md` and ADR #113.
 
+### Fixed
+
+- **An SSH tunnel with an RSA key now logs in to current OpenSSH servers.**
+  The tunnel always signed with `ssh-rsa`, which uses SHA-1 and which OpenSSH
+  8.8 and later refuse by default (`signature algorithm ssh-rsa not in
+  PubkeyAcceptedAlgorithms`), so an RSA key was turned away by any up-to-date
+  bastion. It now asks the server which signatures it takes, as the OpenSSH
+  client does, and signs with `rsa-sha2-512` or `rsa-sha2-256`. `ssh-rsa` is
+  used only with a server that takes nothing else. Ed25519 and ECDSA keys were
+  never affected.
+
 ## [1.35.0] — 2026-10-22
 
 ### Added
