@@ -82,6 +82,7 @@ import {
 import { GoToRowInput } from "@/components/grid/GoToRowInput";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
 import { DeleteRowsDialog } from "@/components/grid/dialogs/DeleteRowsDialog";
+import { PasteCellsDialog } from "@/components/grid/dialogs/PasteCellsDialog";
 import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
 import { InsertRowsDialog } from "@/components/grid/dialogs/InsertRowsDialog";
 import { Button } from "@/components/ui/button";
@@ -108,6 +109,10 @@ import { pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import { PolicyLockHint, PolicyVerbNotice } from "@/components/common/PolicyLock";
 import { usePolicyColumns, usePolicyLocker } from "@/lib/policy/access";
+import { isBitType } from "@/lib/grid/columnKinds";
+import { parsePasteBlock } from "@/lib/grid/pasteBlock";
+import { planPaste, type PastePlan } from "@/lib/grid/pastePlan";
+import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -477,6 +482,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
     null,
   );
+  /** A pasted block waiting for its confirmation (ADR #114). */
+  const [pendingPaste, setPendingPaste] = useState<PastePlan | null>(null);
   const [draft, setDraft] = useState<DraftRow | null>(null);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
 
@@ -1197,6 +1204,48 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     (result === null || pkColumnIndices.every((i) => i >= 0));
 
   /**
+   * A block pasted into the grid (ADR #114): work out what it writes — cells
+   * by their row's key, new rows from its overflow, and what it leaves out —
+   * and ask before sending any of it.
+   */
+  function onPasteBlock(paste: GridPaste) {
+    if (!result) return;
+    setPendingPaste(
+      planPaste({
+        block: parsePasteBlock(paste.text),
+        rows: paste.rows,
+        columns: paste.columns,
+        columnIndexByName: new Map(result.columns.map((c, i) => [c.name, i])),
+        pkColumns: pkColumnNames,
+        columnInfo: new Map((cols ?? []).map((c) => [c.name, c])),
+        bitColumns: new Set(
+          result.columns.filter((c) => isBitType(c.data_type)).map((c) => c.name),
+        ),
+        canUpdate: !updateLock,
+        canInsert: !insertLock,
+        updateLock: columnLock,
+        insertLock: draftColumnLock,
+      }),
+    );
+  }
+
+  async function applyPaste(plan: PastePlan) {
+    const summary = await api.applyPaste({
+      connectionId,
+      schema,
+      table,
+      pkColumns: pkColumnNames,
+      updates: plan.updates,
+      inserts: plan.inserts,
+    });
+    setPendingPaste(null);
+    notify.success(
+      t("dataGrid.paste.done", { cells: summary.updated, count: summary.inserted }),
+    );
+    await reloadAll();
+  }
+
+  /**
    * Stable identity for a grid row, derived from its payload rather than a
    * display index (ADR #7). Drives the grid's multi-row selection.
    *
@@ -1836,6 +1885,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             editable={hasPk && !updateLock}
             columnLock={columnLock}
             draftColumnLock={draftColumnLock}
+            onPasteBlock={hasPk ? onPasteBlock : undefined}
             connectionId={connectionId}
             tableSchema={schema}
             tableName={table}
@@ -1955,6 +2005,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </div>
         )}
       </div>
+
+      {pendingPaste && (
+        <PasteCellsDialog
+          plan={pendingPaste}
+          table={`${schema ? `${schema}.` : ""}${table}`}
+          documentMode={isMongo}
+          onApply={() => applyPaste(pendingPaste)}
+          onClose={() => setPendingPaste(null)}
+        />
+      )}
 
       {pendingDelete && (
         <DeleteRowsDialog

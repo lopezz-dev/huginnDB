@@ -40,7 +40,9 @@ Where a role may write only some columns, the table's header shows a lock on
 the columns it can neither change nor fill, a "new rows only" mark on the ones
 a new row may still fill, and a line above the rows names the columns that can
 be changed. A locked cell still opens, read-only, so its value can be read in
-full; a new row leaves the locked columns to their default.
+full; a new row leaves the locked columns to their default. Pasting a block of
+cells over locked columns says, before anything is written, which cells it
+leaves out.
 
 The policy only ever **narrows**. The per-connection settings users already
 have — which connections are exposed to MCP, their MCP write level, whether the
