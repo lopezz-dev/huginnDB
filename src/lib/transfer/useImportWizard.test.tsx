@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { useImportWizard, type ImportAnalysisLike } from "./useImportWizard";
 
@@ -64,7 +64,7 @@ function deferred<T>() {
 function setup(cfg: {
   analysis: ImportAnalysisLike;
   reviewStep?: boolean;
-  run?: ReturnType<typeof vi.fn>;
+  run?: Mock<Parameters<typeof useImportWizard>[0]["run"]>;
   open?: boolean;
 }) {
   const run = cfg.run ?? vi.fn().mockResolvedValue({ ok: true });

@@ -67,6 +67,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   used only with a server that takes nothing else. Ed25519 and ECDSA keys were
   never affected.
 
+### Security
+
+- **Dependencies brought up to date after a security audit.** The ones that
+  ship inside the app:
+  - **TLS certificate checks** (every encrypted database connection, the AI
+    endpoint and the updater) no longer trust the distrusted emSign (eMudhra)
+    intermediate certificates (RUSTSEC-2026-0381/0382/0383), and pick up four
+    `rustls` fixes, among them a downgrade of the post-quantum key exchange
+    (RUSTSEC-2026-0349) and handshake messages accepted at the wrong stage
+    (RUSTSEC-2026-0285).
+  - **SQL Server** now uses the same up-to-date TLS stack as every other
+    database. Its driver moved to tiberius 0.13, whose old TLS libraries
+    no longer received fixes. Queries still run as long as they need: the new
+    driver cuts any query at 30 seconds by default, and HuginnDB turns that
+    off.
+  - **Tauri 2.12**, which fixes a way for one window to read another's IPC
+    replies (GHSA-w28w-mhc8-qvjv). HuginnDB's windows only load its own
+    interface, so this was not reachable, but the fix is in.
+- The development toolchain (Vite 8, Vitest 5) clears 25 advisories that only
+  affected the machines the app is built on, not the app itself.
+
 ## [1.35.0] — 2026-10-22
 
 ### Added

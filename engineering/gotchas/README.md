@@ -133,6 +133,12 @@ Template: [`../templates/gotcha.md`](../templates/gotcha.md).
 | - | ----- | ---- | ------ |
 | 87 | ADR: [A VS Code theme is *translated* into Monaco and *derived* into the chrome — and alpha is resolved at import, not in the pipeline](../adr/adr-087-vscode-theme-import-derives-chrome-translates-editor.md) | Real VS Code themes are often JSONC (do not parse with JSON.parse), carry many translucent #RRGGBBAA colours, omit keys such as menu.* and button.*, may omit `type`, and one extension contributes several themes; Monaco's defineTheme rejects unknown colour keys. | accepted |
 
+### tiberius
+
+| # | Entry | Trap | Status |
+| - | ----- | ---- | ------ |
+| 116 | Gotcha: [tiberius 0.13 bounds every query at 30 s and the handshake at 15 s by default, and its connect future is three times larger](gotcha-116-tiberius-013-default-timeouts.md) | tiberius 0.13 compiles unchanged over 0.12 but cuts any query whose server round-trip passes 30 s (TimedOut, connection desynced) unless `command_timeout(None)` is set, and its larger connect future, left inline, overflowed a 2 MiB thread stack in a debug build. | active |
+
 ### updater
 
 | # | Entry | Trap | Status |

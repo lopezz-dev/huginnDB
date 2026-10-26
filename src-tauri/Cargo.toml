@@ -82,17 +82,19 @@ bson = { version = "3", features = ["serde_json-1"] }
 # Microsoft SQL Server (TDS). `sqlx` dropped its MSSQL driver after 0.6 and 0.8
 # has no replacement, so this cannot be "one more sqlx feature" — it is a
 # separate client with its own connection model, closer to the `mongodb` case.
-# `tiberius` is the only pure-Rust TDS implementation; its last release is
-# 0.12.3 (July 2024) though the repo is still active, which is a maintenance
+# `tiberius` is the only pure-Rust TDS implementation. After two quiet years
+# on 0.12.3 it released 0.13.0 (September 2026); its maintenance remains a
 # risk we accept knowingly (a `[patch.crates-io]` fork is the escape hatch).
 #
 # `default-features = false` drops `native-tls`, which would mean schannel on
 # Windows but an OpenSSL *system* build dependency on the Linux CI leg. The
-# `rustls` feature keeps the tree pure-Rust at the cost of pulling
-# `tokio-rustls 0.24` (rustls 0.21) alongside the rustls 0.23 that
-# sqlx/mongodb/russh/reqwest already share — a second rustls *version*, not a
-# second TLS stack. Reviewed and accepted as the lesser evil; revisit on any
-# `cargo update` that lets tiberius move to rustls 0.23.
+# `rustls` feature keeps the tree pure-Rust. Until 0.13 it pulled
+# `tokio-rustls 0.24` (rustls 0.21 / rustls-webpki 0.101) alongside the
+# rustls 0.23 everything else shares, and that old pair stopped getting
+# security fixes (RUSTSEC-2026-0382 and friends); 0.13 moved to rustls 0.23,
+# so SQL Server now rides the same, patched TLS stack as every other driver.
+# 0.13 also bounds the handshake and each round-trip by default, which
+# `db::mssql::build_config` turns off — see the comment there.
 #
 # `tds73` = TDS 7.3 (SQL Server 2008+ date/time types). `chrono` +
 # `rust_decimal` are what `ColumnData` needs to hand back real temporal and
@@ -100,7 +102,7 @@ bson = { version = "3", features = ["serde_json-1"] }
 # `TcpStream::connect_named`, which resolves a named instance
 # (`HOST\SQLEXPRESS`) through the SQL Browser's UDP 1434 service — very common
 # in the on-prem installs this driver exists for.
-tiberius = { version = "0.12", default-features = false, features = [
+tiberius = { version = "0.13", default-features = false, features = [
     "rustls",
     "tds73",
     "chrono",
@@ -189,7 +191,7 @@ anyhow = { version = "1", optional = true }
 # only be enabled there. The Linux CI leg compiles the same source with the
 # SQL Server auth mode limited to SQL logins; see `db::mssql::auth`.
 [target.'cfg(windows)'.dependencies]
-tiberius = { version = "0.12", default-features = false, features = ["winauth"] }
+tiberius = { version = "0.13", default-features = false, features = ["winauth"] }
 # Reads the managed-policy anchor under `HKLM\SOFTWARE\Policies\HuginnDB`
 # (`policy::source`) — the key Group Policy / Intune write and a standard user
 # cannot. Already in the tree through `hickory-resolver` → `ipconfig`, so
