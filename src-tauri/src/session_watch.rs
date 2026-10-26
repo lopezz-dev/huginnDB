@@ -61,7 +61,9 @@ fn should_lock(with_session: bool, vault_open: bool) -> bool {
 
 fn on_event(event: SessionEvent) {
     let Some(app) = APP.get() else { return };
-    let with_session = app.state::<AppState>().prefs.read().lock.with_session;
+    let state = app.state::<AppState>();
+    let chosen = state.prefs.read().lock.with_session;
+    let with_session = crate::policy::app_lock(state.inner()).with_session(chosen);
     let vault_open = crate::vault::with(|v, env| v.mode(env) == crate::vault::Mode::Unlocked);
     if !should_lock(with_session, vault_open) {
         return;

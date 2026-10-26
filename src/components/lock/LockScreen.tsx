@@ -237,6 +237,45 @@ function ResetForm({
   );
 }
 
+/**
+ * The wall an organization puts up when its policy requires the lock and this
+ * machine has none yet (ADR #120): a master password is set here, before
+ * anything else in the app can be reached.
+ */
+function SetupForm({ status, onDone }: { status: LockStatus; onDone: () => void }) {
+  const { t } = useTranslation();
+  const [password, setPassword] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!password) return;
+    if (!(await confirmIrreversible(t("lock.enable.confirm")))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.vaultEnable(password);
+      onDone();
+    } catch (e) {
+      setError(String(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="w-full space-y-4 rounded-xl border border-border/80 bg-background/75 p-4 backdrop-blur-md">
+      <p className="text-xs leading-relaxed text-muted-foreground">{t("lock.setup.explain")}</p>
+      <MasterPasswordFields minChars={status.minPasswordChars} onChange={setPassword} autoFocus />
+      {error && <p className="text-2xs text-destructive">{error}</p>}
+      <div className="flex justify-end">
+        <Button size="sm" loading={busy} disabled={!password} onClick={() => void submit()}>
+          {t("lock.setup.action")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function LockScreen({
   status,
   onChanged,
@@ -247,21 +286,24 @@ export function LockScreen({
 }) {
   const { t } = useTranslation();
   const broken = status.mode === "broken";
+  const setup = status.mode === "setup";
   const [resetting, setResetting] = useState(false);
-  const [phase, setPhase] = useState<PadlockPhase>(broken ? "broken" : "closing");
+  const [phase, setPhase] = useState<PadlockPhase>(
+    broken ? "broken" : setup ? "open" : "closing",
+  );
   const [waitMs, setWaitMs] = useState(0);
   const [exiting, setExiting] = useState(false);
   const closing = phase === "closing";
 
   // The wall arrives with the padlock snapping shut, then rests.
   useEffect(() => {
-    if (broken) return;
+    if (broken || setup) return;
     const timer = window.setTimeout(
       () => setPhase((p) => (p === "closing" ? "locked" : p)),
       reducedMotion() ? 0 : CLOSE_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [broken]);
+  }, [broken, setup]);
 
   // Stable: the form's "back to rest" effect depends on it, and a new function
   // each render would fire that effect mid-attempt and drop the padlock out of
@@ -283,7 +325,23 @@ export function LockScreen({
     window.setTimeout(onChanged, OPEN_MS + EXIT_MS);
   };
 
-  const subtitle = broken
+  /** The master password is set: the padlock snaps shut — the lock is on —
+   *  and the stage lifts away. */
+  const lockedIn = () => {
+    if (reducedMotion()) {
+      onChanged();
+      return;
+    }
+    setPhase("closing");
+    window.setTimeout(() => setExiting(true), CLOSE_MS);
+    window.setTimeout(onChanged, CLOSE_MS + EXIT_MS);
+  };
+
+  const subtitle = setup
+    ? status.policy.role
+      ? t("lock.setup.subtitleRole", { role: status.policy.role })
+      : t("lock.setup.subtitle")
+    : broken
     ? t("lock.wall.brokenSubtitle")
     : resetting
       ? t("lock.reset.title")
@@ -325,7 +383,7 @@ export function LockScreen({
               className="h-44 w-auto drop-shadow-[0_14px_36px_color-mix(in_srgb,var(--brand)_35%,transparent)]"
             />
             <h1 className="lock-reveal mt-7 text-center text-xl font-extrabold tracking-tight [animation-delay:120ms]">
-              {t("lock.wall.title")}
+              {setup ? t("lock.setup.title") : t("lock.wall.title")}
             </h1>
             <p className="lock-reveal mt-1.5 text-center text-xs text-muted-foreground [animation-delay:180ms]">
               {subtitle}
@@ -339,7 +397,9 @@ export function LockScreen({
             )}
 
             <div className="lock-reveal mt-6 w-full [animation-delay:240ms]" key={resetting ? "reset" : "unlock"}>
-              {broken || resetting ? (
+              {setup ? (
+                <SetupForm status={status} onDone={lockedIn} />
+              ) : broken || resetting ? (
                 <ResetForm
                   status={status}
                   onDone={reveal}
@@ -350,7 +410,7 @@ export function LockScreen({
               )}
             </div>
 
-            {!broken && !resetting && (
+            {!broken && !setup && !resetting && (
               <Button
                 variant="link"
                 size="xs"

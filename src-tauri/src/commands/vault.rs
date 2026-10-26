@@ -29,7 +29,7 @@ async fn blocking<T: Send + 'static>(
 /// gate here grants nothing a restart would not.
 #[tauri::command]
 pub fn vault_status(state: State<'_, AppState>) -> LockStatus {
-    app_lock::sync_gate();
+    app_lock::sync_gate(state.inner());
     app_lock::status(state.inner())
 }
 
@@ -114,7 +114,24 @@ pub async fn vault_enable(
 /// Asks for the master password again: an unlocked app left unattended must
 /// not be one click from undoing the lock.
 #[tauri::command]
-pub async fn vault_disable(app: AppHandle, password: String) -> AppResult<usize> {
+pub async fn vault_disable(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    password: String,
+) -> AppResult<usize> {
+    // The organization may require the lock; a policy that cannot be read
+    // keeps the lock that is there (ADR #120). Settings shows the switch
+    // locked, but the refusal is here.
+    let policy = crate::policy::app_lock(state.inner());
+    if !policy.may_disable {
+        return Err(AppError::InvalidInput(match policy.role {
+            Some(role) => format!(
+                "your organization's HuginnDB policy requires the app lock for the role                  \"{role}\" (appLock.required), so it cannot be turned off"
+            ),
+            None => "your organization's HuginnDB policy cannot be read right now, so the app                      lock stays on until it can"
+                .into(),
+        }));
+    }
     let moved = blocking(move || vault::with(|v, env| v.disable(env, &password))).await?;
     app_lock::announce(&app).await;
     Ok(moved)

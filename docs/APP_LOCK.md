@@ -107,6 +107,13 @@ In **Settings → Security**:
 - **Turn off…** asks for the master password and puts every secret back in the
   system keychain, exactly as it was before.
 
+## On a managed computer
+
+Your organization's HuginnDB policy can require the lock, limit how long
+HuginnDB may sit idle, and decide whether it locks with your session. Those
+settings then show who decides them, and HuginnDB applies them even where the
+interface would let you change them. See [Managed policy](POLICY.md).
+
 ## Related
 
 - [Connections](CONNECTIONS.md): how passwords are stored when the lock is off.

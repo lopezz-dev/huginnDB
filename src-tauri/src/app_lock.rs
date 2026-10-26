@@ -34,7 +34,17 @@ pub const CHANGED_EVENT: &str = "huginndb://lock-changed";
 /// `vault_reset` is here on purpose. It destroys the secrets and never reveals
 /// one, so the worst it hands a stranger at the wall is an app with no
 /// passwords — the same thing deleting the config files would.
-pub const OPEN_WHILE_LOCKED: &[&str] = &["vault_status", "vault_unlock", "vault_reset"];
+///
+/// `vault_enable` is for the wall a policy puts up when it requires the lock
+/// and there is no vault yet (ADR #120): setting the master password is the
+/// only way past it. Behind an ordinary lock it refuses on its own — the lock
+/// is already on.
+pub const OPEN_WHILE_LOCKED: &[&str] = &[
+    "vault_status",
+    "vault_unlock",
+    "vault_reset",
+    "vault_enable",
+];
 
 /// Whether the dispatcher refuses. Mirrors `vault::is_locked()`, which reads
 /// `vault.json` to answer, so that the check every IPC call makes costs an
@@ -46,10 +56,17 @@ pub fn gate_closed() -> bool {
     CLOSED.load(Ordering::SeqCst)
 }
 
-/// Re-read the vault's answer into the gate. Called at startup and after
-/// anything that changes it.
-pub fn sync_gate() -> bool {
-    let locked = crate::vault::is_locked();
+/// Whether the organization requires the lock and this machine has none yet:
+/// the app waits behind the wall until a master password is set.
+pub fn setup_required(state: &AppState) -> bool {
+    crate::policy::app_lock(state).required
+        && crate::vault::with(|v, env| v.mode(env) == crate::vault::Mode::Off)
+}
+
+/// Re-read the vault's answer — and the policy's demand — into the gate.
+/// Called at startup and after anything that changes either.
+pub fn sync_gate(state: &AppState) -> bool {
+    let locked = crate::vault::is_locked() || setup_required(state);
     CLOSED.store(locked, Ordering::SeqCst);
     locked
 }
@@ -81,7 +98,8 @@ pub fn gate<R: Runtime>(
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LockStatus {
-    /// `off`, `locked`, `unlocked` or `broken`.
+    /// `off`, `locked`, `unlocked`, `broken`, or `setup`: the organization
+    /// requires the lock and there is no vault yet.
     pub mode: &'static str,
     /// Why the vault is broken, when it is.
     pub problem: Option<String>,
@@ -93,12 +111,16 @@ pub struct LockStatus {
     pub session_watch: bool,
     pub language: String,
     pub min_password_chars: usize,
+    /// What the organization's policy asks of the lock (ADR #120).
+    pub policy: crate::policy::LockPolicy,
 }
 
 pub fn status(state: &AppState) -> LockStatus {
     let (mode, retry_after) =
         crate::vault::with(|v, env| (v.mode(env), v.retry_after(Instant::now())));
+    let policy = crate::policy::app_lock(state);
     let (mode, problem) = match mode {
+        crate::vault::Mode::Off if policy.required => ("setup", None),
         crate::vault::Mode::Off => ("off", None),
         crate::vault::Mode::Locked => ("locked", None),
         crate::vault::Mode::Unlocked => ("unlocked", None),
@@ -109,10 +131,11 @@ pub fn status(state: &AppState) -> LockStatus {
         mode,
         problem,
         retry_after_ms: u64::try_from(retry_after.as_millis()).unwrap_or(u64::MAX),
-        idle_minutes: prefs.lock.idle_minutes,
+        idle_minutes: policy.idle_minutes(prefs.lock.idle_minutes),
         session_watch: crate::session_watch::watching(),
         language: prefs.ui.language.clone(),
         min_password_chars: crate::vault::MIN_PASSWORD_CHARS,
+        policy,
     }
 }
 
@@ -120,7 +143,7 @@ pub fn status(state: &AppState) -> LockStatus {
 /// while the app is unlocked, so a sidecar that finds no bridge falls back to
 /// its own path, which refuses for the same reason (`mcp::Huginn::require_open`).
 pub async fn announce(app: &AppHandle) {
-    sync_gate();
+    sync_gate(app.state::<AppState>().inner());
     crate::bridge::server::reconcile(app).await;
     let _ = app.emit(CHANGED_EVENT, status(app.state::<AppState>().inner()));
 }
@@ -169,7 +192,10 @@ pub fn spawn_idle_watcher(app: AppHandle) {
             if gate_closed() {
                 continue;
             }
-            let minutes = app.state::<AppState>().prefs.read().lock.idle_minutes;
+            // The person's choice, capped by the organization's (ADR #120).
+            let state = app.state::<AppState>();
+            let chosen = state.prefs.read().lock.idle_minutes;
+            let minutes = crate::policy::app_lock(state.inner()).idle_minutes(chosen);
             if crate::vault::with(|v, _| v.idle_expired(Instant::now(), minutes)) {
                 lock_app(&app).await;
             }

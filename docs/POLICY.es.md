@@ -282,6 +282,40 @@ Sin política, la descarga está permitida.
 "roles": { "analista": { "allowToolDownloads": true, "rules": [ … ] } }
 ```
 
+### Exigir el bloqueo de la app
+
+`"appLock"` en un **rol** fija qué pueden decidir sus personas sobre el bloqueo
+de la app (véase `APP_LOCK.es.md`). Cada campo solo restringe; ninguno desactiva
+un bloqueo que alguien haya activado.
+
+```json
+"roles": { "analista": {
+  "appLock": { "required": true, "maxIdleMinutes": 15, "lockWithSession": true },
+  "rules": [ … ]
+} }
+```
+
+- `required`: el bloqueo es obligatorio. En un equipo que no lo tiene, HuginnDB
+  se abre en una pantalla que pide una contraseña maestra antes de nada más, y
+  desactivar el bloqueo se rechaza.
+- `maxIdleMinutes`: lo máximo que HuginnDB puede estar sin usarse antes de
+  bloquearse. Un tiempo más corto sigue siendo elección de la persona; «Nunca»
+  deja de estar disponible. Tiene que ser al menos 1.
+- `lockWithSession`: si HuginnDB se bloquea con la sesión del equipo (Win+L, al
+  desconectar el Escritorio remoto), decidido por la organización.
+- `allowWindowsHello`: se acepta, y por ahora no tiene efecto. Está reservado
+  para cuando Windows Hello pueda desbloquear HuginnDB, para que una política
+  escrita hoy siga funcionando.
+
+Una política que aún se está leyendo, o que no se puede aplicar, mantiene el
+bloqueo que haya: no se puede desactivar hasta que se lea la política. No obliga
+a configurarlo, porque no se sabe qué pediría. Sin `appLock`, o sin política, el
+bloqueo lo decide la persona.
+
+> **Actualiza todas las instalaciones antes de añadir `appLock`.** Un HuginnDB
+> anterior a esta versión no conoce el campo, da toda la política por no válida
+> y bloquea todas las conexiones.
+
 ## Cada persona con su propio usuario de base de datos
 
 Para las personas, la política de la app es un guardarraíl, porque la propia

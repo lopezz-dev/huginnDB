@@ -2131,6 +2131,13 @@
         "descWindows": "When Windows locks (Win+L) or a Remote Desktop session is disconnected.",
         "desc": "When the desktop session locks.",
         "unavailable": "This system does not report its session locking, so HuginnDB cannot follow it."
+      },
+      "managed": {
+        "required": "Your organization requires the app lock (role \"{{role}}\").",
+        "unreadable": "Your organization's policy cannot be read right now, so the lock stays on.",
+        "maxIdle_one": "Your organization allows at most {{count}} minute.",
+        "maxIdle_other": "Your organization allows at most {{count}} minutes.",
+        "withSession": "Your organization decides this (role \"{{role}}\")."
       }
     }
   },
@@ -4227,6 +4234,13 @@
       "action": "Turn off",
       "done_one": "App lock off: {{count}} secret returned to the keychain.",
       "done_other": "App lock off: {{count}} secrets returned to the keychain."
+    },
+    "setup": {
+      "title": "Set up the app lock",
+      "subtitle": "Your organization requires a master password before HuginnDB opens.",
+      "subtitleRole": "Your organization requires a master password for the role \"{{role}}\" before HuginnDB opens.",
+      "explain": "Your passwords, SSH passphrases and AI key will be kept in an encrypted vault that only this password opens. If you forget it, the secrets are lost and you will have to type the passwords again.",
+      "action": "Set the master password"
     }
   }
 }

@@ -28,7 +28,7 @@ export const LOCK_CHANGED_EVENT = "huginndb://lock-changed";
 const ACTIVITY_EVENTS = ["keydown", "pointerdown", "pointermove", "wheel"] as const;
 
 function behindTheWall(status: LockStatus | null): boolean {
-  return status?.mode === "locked" || status?.mode === "broken";
+  return status?.mode === "locked" || status?.mode === "broken" || status?.mode === "setup";
 }
 
 export function LockGate({ children }: { children: ReactNode }) {
@@ -62,6 +62,14 @@ export function LockGate({ children }: { children: ReactNode }) {
         sessionWatch: false,
         language: "en",
         minPasswordChars: 12,
+        policy: {
+          role: null,
+          required: false,
+          mayDisable: false,
+          maxIdleMinutes: null,
+          lockWithSession: null,
+          allowWindowsHello: false,
+        },
       }),
     );
   }, [apply]);

@@ -44,6 +44,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     durante la espera y se abre antes de que aparezca la app. Con «reducir
     movimiento» activado en Windows conserva todos los estados sin moverse.
     Un aviso de Bloq Mayús aparece bajo el campo.
+  - **La política gestionada puede exigirlo.** El `appLock` de un rol fija
+    `required` (HuginnDB se abre en una pantalla que pide crear la contraseña
+    maestra y el bloqueo no se puede desactivar), `maxIdleMinutes` y
+    `lockWithSession`; `allowWindowsHello` se acepta y queda reservado. Una
+    política que no se puede leer mantiene el bloqueo que haya. Actualiza
+    todas las instalaciones antes de añadir `appLock`: las anteriores leen el
+    campo como una política no válida. Consulta el ADR #120.
   - **Ajustes → Seguridad** lo reúne todo, con la misma estructura que el
     resto de secciones: el interruptor del bloqueo (activarlo o desactivarlo
     pide la contraseña maestra), las filas para cambiar la contraseña y

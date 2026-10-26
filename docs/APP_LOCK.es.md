@@ -115,6 +115,13 @@ En **Ajustes → Seguridad**:
 - **Desactivar…** pide la contraseña maestra y devuelve todos los secretos al
   llavero del sistema, tal como estaban.
 
+## En un equipo gestionado
+
+La política de HuginnDB de tu organización puede exigir el bloqueo, limitar el
+tiempo que HuginnDB puede estar sin usarse y decidir si se bloquea con tu
+sesión. Esos ajustes muestran entonces quién los decide, y HuginnDB los aplica
+aunque la interfaz te dejara cambiarlos. Consulta [Política gestionada](POLICY.es.md).
+
 ## Relacionado
 
 - [Conexiones](CONNECTIONS.es.md): cómo se guardan las contraseñas con el

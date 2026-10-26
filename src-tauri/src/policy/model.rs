@@ -65,6 +65,35 @@ pub struct Role {
     /// the download is on, as everything else is.
     #[serde(default)]
     pub allow_tool_downloads: bool,
+    /// What the role asks of the app lock (ADR #118, #120). Absent: the person
+    /// decides, as on an unmanaged machine.
+    #[serde(default)]
+    pub app_lock: Option<AppLockRule>,
+}
+
+/// A role's demands on the app lock. Every field only ever tightens what the
+/// person could choose; none of them can turn the lock off for someone who
+/// turned it on.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppLockRule {
+    /// The lock must be on: an app without a vault opens on a wall that asks
+    /// for a master password before anything else, and turning it off is
+    /// refused.
+    #[serde(default)]
+    pub required: bool,
+    /// The longest the app may sit idle before it locks, in minutes. "Never"
+    /// stops being a choice.
+    #[serde(default)]
+    pub max_idle_minutes: Option<u32>,
+    /// Whether the app locks with the operating system's session, decided
+    /// for the person rather than by them.
+    #[serde(default)]
+    pub lock_with_session: Option<bool>,
+    /// Whether Windows Hello may unlock it. Accepted now so a policy written
+    /// today keeps parsing when Hello ships; it has no effect until then.
+    #[serde(default)]
+    pub allow_windows_hello: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -438,6 +467,20 @@ impl PolicyDoc {
             }
         }
         let mut warnings = Vec::new();
+        for (name, role) in &doc.roles {
+            if let Some(lock) = &role.app_lock {
+                if lock.max_idle_minutes == Some(0) {
+                    return Err(format!(
+                        "role {name:?}: appLock.maxIdleMinutes is 0; leave it out to let                          people choose, or give the longest idle time in minutes"
+                    ));
+                }
+                if lock.max_idle_minutes.is_some() && !lock.required {
+                    warnings.push(format!(
+                        "role {name:?}: appLock.maxIdleMinutes applies only while the lock is                          on, and appLock.required is false, so people may still leave it off"
+                    ));
+                }
+            }
+        }
         for (name, role) in &doc.roles {
             for (i, rule) in role.rules.iter().enumerate() {
                 let globs = rule

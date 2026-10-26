@@ -211,6 +211,67 @@ pub fn tool_downloads(state: &AppState) -> AppResult<()> {
     }
 }
 
+/// What the organization's policy asks of the app lock for this person
+/// (ADR #120). Settings and the lock read it; the backend enforces it in
+/// `app_lock` and `commands::vault`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LockPolicy {
+    /// The role whose `appLock` this is; `None` when there is no active
+    /// policy.
+    pub role: Option<String>,
+    /// The lock must be on.
+    pub required: bool,
+    /// Turning the lock off is allowed. False when it is required, and while
+    /// the policy is pending or broken: what it would ask is unknowable, and
+    /// failing closed means keeping the lock that is there.
+    pub may_disable: bool,
+    pub max_idle_minutes: Option<u32>,
+    pub lock_with_session: Option<bool>,
+    /// Reserved for Windows Hello; nothing reads it yet.
+    pub allow_windows_hello: bool,
+}
+
+pub fn app_lock(state: &AppState) -> LockPolicy {
+    match &*state.policy.read() {
+        PolicyState::Unmanaged => LockPolicy {
+            may_disable: true,
+            allow_windows_hello: true,
+            ..LockPolicy::default()
+        },
+        PolicyState::Pending { .. } | PolicyState::Broken { .. } => LockPolicy::default(),
+        PolicyState::Active { doc, .. } => {
+            let (name, role) = doc.role_for(current_user());
+            let rule = role.app_lock.clone().unwrap_or_default();
+            LockPolicy {
+                role: Some(name.to_string()),
+                required: rule.required,
+                may_disable: !rule.required,
+                max_idle_minutes: rule.max_idle_minutes,
+                lock_with_session: rule.lock_with_session,
+                allow_windows_hello: rule.allow_windows_hello.unwrap_or(true),
+            }
+        }
+    }
+}
+
+impl LockPolicy {
+    /// The idle timeout that applies: the person's, capped by the policy.
+    /// The person's "never" (0) becomes the policy's maximum.
+    pub fn idle_minutes(&self, chosen: u32) -> u32 {
+        match self.max_idle_minutes {
+            Some(max) if chosen == 0 || chosen > max => max,
+            _ => chosen,
+        }
+    }
+
+    /// Whether the app locks with the session: the policy's answer when it
+    /// gives one, the person's otherwise.
+    pub fn with_session(&self, chosen: bool) -> bool {
+        self.lock_with_session.unwrap_or(chosen)
+    }
+}
+
 /// Refuse `request` unless the policy lets the AI make it. Called at the top
 /// of `bridge::exec::execute`, and for `EnsureConnected` where that is
 /// intercepted before it.
@@ -1074,6 +1135,88 @@ mod tests {
             warnings: Vec::new(),
         };
         state
+    }
+
+    /// A state whose active policy gives the running account a role with
+    /// `appLock` set to `lock` (raw JSON), or none.
+    fn state_with_app_lock(lock: Option<&str>) -> AppState {
+        let state = AppState::new();
+        let field = lock.map_or(String::new(), |l| format!(r#", "appLock": {l}"#));
+        let text = format!(
+            r#"{{ "version": 1, "defaultRole": "r", "users": {{ {user:?}: "r" }},
+                 "roles": {{ "r": {{ "rules": []{field} }} }} }}"#,
+            user = current_user_or_test(),
+        );
+        let (doc, _) = super::super::model::PolicyDoc::parse(&text).unwrap();
+        *state.policy.write() = PolicyState::Active {
+            doc: Arc::new(doc),
+            source: "test".into(),
+            warnings: Vec::new(),
+        };
+        state
+    }
+
+    #[test]
+    fn without_a_policy_the_lock_is_the_persons_to_decide() {
+        let lock = app_lock(&AppState::new());
+        assert!(!lock.required);
+        assert!(lock.may_disable);
+        assert_eq!(lock.idle_minutes(0), 0, "never stays never");
+        assert!(!lock.with_session(false));
+    }
+
+    #[test]
+    fn a_role_can_require_the_lock_and_bound_it() {
+        let lock = app_lock(&state_with_app_lock(Some(
+            r#"{ "required": true, "maxIdleMinutes": 10, "lockWithSession": true }"#,
+        )));
+        assert!(lock.required);
+        assert!(!lock.may_disable, "a required lock cannot be turned off");
+        assert_eq!(lock.role.as_deref(), Some("r"));
+        assert_eq!(lock.idle_minutes(0), 10, "never becomes the maximum");
+        assert_eq!(lock.idle_minutes(30), 10, "longer is capped");
+        assert_eq!(lock.idle_minutes(5), 5, "shorter is the person's");
+        assert!(lock.with_session(false), "the policy decides");
+    }
+
+    #[test]
+    fn a_role_without_app_lock_leaves_it_to_the_person() {
+        let lock = app_lock(&state_with_app_lock(None));
+        assert!(!lock.required);
+        assert!(lock.may_disable);
+        assert!(lock.allow_windows_hello);
+    }
+
+    #[test]
+    fn a_pending_or_broken_policy_keeps_the_lock_that_is_there() {
+        let state = AppState::new();
+        *state.policy.write() = PolicyState::Broken {
+            source: "test".into(),
+            error: "unreadable".into(),
+        };
+        let lock = app_lock(&state);
+        assert!(!lock.may_disable, "fails closed: the lock stays");
+        assert!(!lock.required, "but what it would require is unknowable");
+    }
+
+    #[test]
+    fn app_lock_fields_are_checked() {
+        let parse = |lock: &str| {
+            super::super::model::PolicyDoc::parse(&format!(
+                r#"{{ "version": 1, "defaultRole": "r", "roles": {{ "r": {{ "appLock": {lock} }} }} }}"#
+            ))
+        };
+        assert!(
+            parse(r#"{ "required": true, "maxIdleMinute": 5 }"#).is_err(),
+            "typo"
+        );
+        assert!(parse(r#"{ "maxIdleMinutes": 0 }"#).is_err(), "zero minutes");
+        let (_, warnings) = parse(r#"{ "maxIdleMinutes": 5 }"#).unwrap();
+        assert!(
+            warnings.iter().any(|w| w.contains("appLock.required")),
+            "{warnings:?}"
+        );
+        assert!(parse(r#"{ "required": true, "allowWindowsHello": false }"#).is_ok());
     }
 
     #[test]

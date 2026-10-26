@@ -343,13 +343,22 @@ pub fn run() {
                     &app.state::<AppState>().policy,
                     Some(Box::new(move || {
                         let _ = handle.emit(policy::CHANGED_EVENT, ());
+                        // A policy that now requires the app lock puts up its
+                        // wall at once, rather than at the next launch.
+                        let handle = handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            app_lock::announce(&handle).await;
+                        });
                     })),
                 );
             }
             // The app lock's gate starts closed and is opened here only if the
             // vault says so, before any window can ask for anything. Locked,
             // the idle watcher waits; unlocked, it counts (ADR #118).
-            app_lock::sync_gate();
+            {
+                use tauri::Manager;
+                app_lock::sync_gate(app.state::<AppState>().inner());
+            }
             app_lock::spawn_idle_watcher(app.handle().clone());
             // And it locks with the operating system's session (ADR #119).
             session_watch::spawn(app.handle().clone());
