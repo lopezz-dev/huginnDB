@@ -4,7 +4,7 @@
 > desactualizado respecto al original en inglés, ese es el que manda.
 
 El bloqueo de la app pide una contraseña maestra antes de que HuginnDB muestre
-nada. Está desactivado hasta que lo actives en **Ajustes → Bloqueo de la app**.
+nada. Está desactivado hasta que lo actives en **Ajustes → Seguridad**.
 
 ## Contra qué protege
 
@@ -53,7 +53,7 @@ Díselo claramente a quien dependa de él:
 
 ## Activarlo
 
-1. Abre **Ajustes → Bloqueo de la app** y elige **Activar el bloqueo de la
+1. Abre **Ajustes → Seguridad** y elige **Activar el bloqueo de la
    app…**.
 2. Elige una contraseña maestra de al menos 12 caracteres. Unas cuantas
    palabras sin relación entre sí, separadas por espacios, se recuerdan mejor
@@ -103,7 +103,7 @@ dañado.
 
 ## Cambiar la contraseña o desactivar el bloqueo
 
-En **Ajustes → Bloqueo de la app**:
+En **Ajustes → Seguridad**:
 
 - **Cambiar la contraseña maestra…** pide la contraseña actual y una nueva.
   Tus secretos no cambian.

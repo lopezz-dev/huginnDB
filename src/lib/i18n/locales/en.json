@@ -1435,9 +1435,9 @@
         "label": "Terminal",
         "desc": "mongosh and your shell"
       },
-      "appLock": {
-        "label": "App lock",
-        "desc": "Master password and auto-lock"
+      "security": {
+        "label": "Security",
+        "desc": "App lock and master password"
       }
     },
     "general": {
@@ -2096,26 +2096,47 @@
       "update": "Update to {{version}}",
       "security": "mongosh signs in with the connection's own credentials and, over SSH, through its tunnel. The password is handed to it in its environment, never on the command line where other users could read it. Under a managed policy, mongosh is only offered on connections where you may run free queries that read and write anything."
     },
-    "appLock": {
-      "intro": "Ask for a master password before HuginnDB shows anything. This protects against someone who sits at your computer while your session is open.",
-      "status": {
-        "title": "Status",
+    "security": {
+      "lock": {
+        "eyebrow": "App lock",
         "on": "On",
-        "off": "Off"
+        "off": "Off",
+        "titleOn": "HuginnDB asks for your master password",
+        "titleOff": "Anyone at your Windows session can open HuginnDB",
+        "descOn": "Your passwords are in an encrypted vault on this machine; the system keychain no longer has them. HuginnDB locks when it starts, after inactivity and with Ctrl+L.",
+        "descOff": "Turn on the lock to keep your passwords in an encrypted vault that only your master password opens, and to close the MCP connector while HuginnDB is locked.",
+        "lockNow": "Lock now",
+        "change": "Change master password…",
+        "turnOff": "Turn off…",
+        "turnOn": "Turn on the app lock…",
+        "forgetting": "If you forget the master password, the secrets in the vault are lost. Your connections stay, but you will have to type their passwords again."
       },
-      "lockNow": "Lock now",
-      "change": "Change master password…",
-      "turnOff": "Turn off…",
-      "turnOn": "Turn on the app lock…",
-      "protects": "It protects your saved passwords, SSH passphrases and AI key. With the lock on, the system keychain no longer has them, and the MCP connector cannot reach your databases until HuginnDB is unlocked.",
-      "doesNot": "It does not protect against malware or a keylogger. Connection names, open tabs and Pulse history are still stored unencrypted on disk.",
-      "forgetting": "If you forget the master password, the secrets are lost. Your connections stay, but you will have to type their passwords again.",
+      "autoLock": "Automatic lock",
       "idleMinutes": {
         "label": "Lock after inactivity",
         "desc": "Minutes without a key press or click in any HuginnDB window.",
         "never": "Never",
         "minutes_one": "{{count}} minute",
         "minutes_other": "{{count}} minutes"
+      },
+      "covers": {
+        "title": "What it covers",
+        "yes": {
+          "title": "Protects",
+          "items": [
+            "Connection passwords, SSH passphrases, origin passphrases and the AI key",
+            "Your databases through the MCP connector, until you unlock",
+            "Opening HuginnDB at your session, even after deleting its files"
+          ]
+        },
+        "no": {
+          "title": "Does not protect",
+          "items": [
+            "Malware, or a keylogger recording what you type",
+            "Connection names, open tabs and Pulse history, still unencrypted on disk",
+            "Connections that need no password"
+          ]
+        }
       }
     }
   },
@@ -4130,7 +4151,7 @@
     }
   },
   "lock": {
-    "notOn": "The app lock is off. Turn it on in Settings → App lock.",
+    "notOn": "The app lock is off. Turn it on in Settings → Security.",
     "wall": {
       "title": "HuginnDB is locked",
       "subtitle": "Enter your master password to continue.",
@@ -4141,7 +4162,9 @@
       "wait_other": "Try again in {{count}} seconds",
       "wrong_one": "Wrong password ({{count}} attempt).",
       "wrong_other": "Wrong password ({{count}} attempts).",
-      "forgot": "Forgot your master password?"
+      "forgot": "Forgot your master password?",
+      "capsLock": "Caps Lock is on.",
+      "footer": "Vault encrypted on this machine"
     },
     "reset": {
       "title": "Start over with a new master password.",

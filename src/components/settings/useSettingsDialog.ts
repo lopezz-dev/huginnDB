@@ -27,7 +27,7 @@ import type { PrefId } from "@/lib/prefId";
 
 export type SettingsSection =
   | "general"
-  | "appLock"
+  | "security"
   | "editor"
   | "grid"
   | "notifications"

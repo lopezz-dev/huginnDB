@@ -1,7 +1,7 @@
 # App lock
 
 The app lock asks for a master password before HuginnDB shows anything. It is
-off until you turn it on in **Settings → App lock**.
+off until you turn it on in **Settings → Security**.
 
 ## What it protects against
 
@@ -47,7 +47,7 @@ Say this plainly to anyone who relies on it:
 
 ## Turning it on
 
-1. Open **Settings → App lock** and choose **Turn on the app lock…**.
+1. Open **Settings → Security** and choose **Turn on the app lock…**.
 2. Choose a master password of at least 12 characters. A few unrelated words
    with spaces between them are easier to remember than a short password full
    of symbols, and harder to guess.
@@ -95,7 +95,7 @@ HuginnDB shows the same screen if its vault file is missing or damaged.
 
 ## Changing the password, or turning the lock off
 
-In **Settings → App lock**:
+In **Settings → Security**:
 
 - **Change master password…** asks for the current password and a new one.
   Your secrets are not touched.

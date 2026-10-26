@@ -35,12 +35,16 @@ export function LockGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<LockStatus | null>(null);
   const showing = useRef<LockStatus | null>(null);
 
-  const apply = useCallback((next: LockStatus) => {
+  const apply = useCallback((next: LockStatus, fromEvent = false) => {
     // Locked while the app was mounted: start again from nothing.
     if (behindTheWall(next) && showing.current && !behindTheWall(showing.current)) {
       window.location.reload();
       return;
     }
+    // Unlocked while the wall is up: the wall hands over itself, once its
+    // padlock has swung open (`LockScreen`'s `onChanged`). Taking the event
+    // here would unmount it mid-animation.
+    if (fromEvent && behindTheWall(showing.current) && !behindTheWall(next)) return;
     if (SUPPORTED_LANGUAGES.includes(next.language as AppLanguage)) {
       setLanguage(next.language as AppLanguage);
     }
@@ -64,7 +68,7 @@ export function LockGate({ children }: { children: ReactNode }) {
   useEffect(refresh, [refresh]);
 
   useEffect(() => {
-    const unlisten = listen<LockStatus>(LOCK_CHANGED_EVENT, (e) => apply(e.payload));
+    const unlisten = listen<LockStatus>(LOCK_CHANGED_EVENT, (e) => apply(e.payload, true));
     return () => void unlisten.then((fn) => fn());
   }, [apply]);
 

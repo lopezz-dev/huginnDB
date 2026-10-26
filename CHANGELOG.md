@@ -9,7 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 
 - **App lock: a master password before HuginnDB shows anything.**
-  - Turn it on in **Settings → App lock**. Every secret HuginnDB stores moves
+  - Turn it on in **Settings → Security**. Every secret HuginnDB stores moves
     out of the system keychain into an encrypted vault that only the master
     password opens: connection passwords, SSH passwords and passphrases,
     shared-origin passphrases, the AI key and the issue reporter's GitHub
@@ -26,6 +26,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     connection and SSH tunnel, and clears the AI panel's conversation;
     unlocking reconnects nothing.
   - After three wrong passwords each attempt waits longer, up to five minutes.
+  - **The lock screen is a padlock in HuginnDB's own sticker style**, animated
+    to say what is happening: it snaps shut when the app locks, its three LEDs
+    chase while the password is checked, it shakes red on a wrong one, an
+    amber ring drains through the wait, and it swings open before the app
+    appears. With "reduce motion" on in Windows, it keeps every state and
+    drops the movement. A Caps Lock warning sits under the field.
+  - **Settings → Security** gathers it: the lock's state and actions, the
+    inactivity timeout, and what the lock covers and what it does not, side
+    by side.
   - **Forgetting the master password loses the secrets in the vault**, and the
     app says so before you turn the lock on. **Forgot your master password?**
     on the lock screen resets the vault: the secrets are deleted, your

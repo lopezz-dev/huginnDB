@@ -413,7 +413,7 @@ export default function App() {
         void api.vaultStatus().then((s) => {
           if (s.mode === "unlocked") return api.vaultLock();
           notify.info(t("lock.notOn"));
-          openSettings("appLock");
+          openSettings("security");
         });
       },
       toggleCommandPalette: () => togglePalette(),

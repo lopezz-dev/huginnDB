@@ -12,7 +12,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 - **Bloqueo de la app: una contraseña maestra antes de que HuginnDB muestre
   nada.**
-  - Actívalo en **Ajustes → Bloqueo de la app**. Todos los secretos que guarda
+  - Actívalo en **Ajustes → Seguridad**. Todos los secretos que guarda
     HuginnDB salen del llavero del sistema y pasan a una bóveda cifrada que
     solo abre la contraseña maestra: contraseñas de las conexiones,
     contraseñas y frases SSH, frases de los orígenes compartidos, la clave de
@@ -32,6 +32,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     de IA; al desbloquear no se reconecta nada.
   - Tras tres contraseñas incorrectas, cada intento espera más, hasta cinco
     minutos.
+  - **La pantalla de bloqueo es un candado con el estilo de pegatina de
+    HuginnDB**, animado para contar lo que pasa: se cierra de golpe al
+    bloquearse la app, sus tres LEDs corren mientras se comprueba la
+    contraseña, tiembla en rojo si es incorrecta, un anillo ámbar se vacía
+    durante la espera y se abre antes de que aparezca la app. Con «reducir
+    movimiento» activado en Windows conserva todos los estados sin moverse.
+    Un aviso de Bloq Mayús aparece bajo el campo.
+  - **Ajustes → Seguridad** lo reúne todo: el estado y las acciones del
+    bloqueo, el tiempo de inactividad, y lo que cubre y lo que no, uno al lado
+    del otro.
   - **Si olvidas la contraseña maestra, pierdes los secretos de la bóveda**, y
     la app lo avisa antes de activar el bloqueo. **¿Has olvidado la contraseña
     maestra?** en la pantalla de bloqueo restablece la bóveda: se borran los

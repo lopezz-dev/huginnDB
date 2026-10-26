@@ -60,6 +60,14 @@ function mount() {
 }
 
 beforeEach(() => {
+  // Reduced motion: the wall hands over without waiting for the padlock to
+  // swing open, so the tests do not depend on animation timers.
+  window.matchMedia = ((query: string) => ({
+    matches: query.includes("reduce"),
+    media: query,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })) as unknown as typeof window.matchMedia;
   vaultStatus.mockReset();
   vaultUnlock.mockReset();
   vaultActivity.mockClear();
@@ -110,8 +118,9 @@ describe("LockGate", () => {
     const field = await screen.findByPlaceholderText("Master password");
     fireEvent.change(field, { target: { value: "wrong guess here" } });
     fireEvent.click(screen.getByRole("button", { name: "Unlock" }));
-    expect(await screen.findByText("Wrong password (3 attempts).")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Try again in 4 seconds/ })).toBeTruthy();
+    // The wait is said where the status goes, and the field is closed for it.
+    expect(await screen.findByText(/Try again in 4 seconds/, {}, { timeout: 2000 })).toBeTruthy();
+    expect((screen.getByPlaceholderText("Master password") as HTMLInputElement).disabled).toBe(true);
     expect(screen.queryByText("behind the wall")).toBeNull();
   });
 
