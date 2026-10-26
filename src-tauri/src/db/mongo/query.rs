@@ -1061,7 +1061,13 @@ pub async fn insert_row(
 ) -> AppResult<Value> {
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
+    let res = coll.insert_one(row_document(values)).await?;
+    Ok(bson_to_json(&res.inserted_id))
+}
 
+/// The document one grid row's column/value pairs make — what [`insert_row`]
+/// inserts, and the multi-cell paste's new rows too.
+fn row_document(values: &[RowValue]) -> Document {
     let mut document = Document::new();
     for rv in values {
         // Skip an empty/blank `_id` so the server generates an ObjectId.
@@ -1071,9 +1077,119 @@ pub async fn insert_row(
         let bson = string_to_bson(rv.value.as_deref(), rv.column_type.as_deref());
         document.insert(rv.column.clone(), bson);
     }
+    document
+}
 
-    let res = coll.insert_one(document).await?;
-    Ok(bson_to_json(&res.inserted_id))
+/// One field written by a multi-cell paste: `field` of the document `id`.
+pub struct PasteSet<'a> {
+    pub id: &'a Value,
+    pub field: &'a str,
+    pub value: Option<&'a str>,
+    pub type_hint: Option<&'a str>,
+}
+
+/// What a paste did: how many documents it changed and added, and whether it
+/// ran as one transaction.
+pub struct PasteOutcome {
+    pub updated: u64,
+    pub inserted: u64,
+    pub atomic: bool,
+}
+
+/// Whether the deployment runs multi-document transactions: a replica set
+/// member or a `mongos`. A standalone server refuses them outright.
+async fn supports_transactions(conn: &MongoConn) -> bool {
+    let Ok(db) = resolve_db(conn) else {
+        return false;
+    };
+    match db.run_command(doc! { "hello": 1 }).await {
+        Ok(hello) => {
+            hello.contains_key("setName") || hello.get_str("msg").is_ok_and(|m| m == "isdbgrid")
+        }
+        Err(_) => false,
+    }
+}
+
+/// Apply a multi-cell paste: each `$set` on its document, then each new
+/// document. In **one transaction** where the deployment has them (ADR #114);
+/// on a standalone server in order, stopping at the first failure — what was
+/// applied before it stays, and the error says so.
+pub async fn apply_paste(
+    conn: &MongoConn,
+    collection: &str,
+    sets: &[PasteSet<'_>],
+    inserts: &[Vec<RowValue>],
+) -> AppResult<PasteOutcome> {
+    let db = resolve_db(conn)?;
+    let coll = db.collection::<Document>(collection);
+    let update_of = |s: &PasteSet| {
+        (
+            doc! { "_id": id_to_bson(s.id) },
+            doc! { "$set": { s.field: string_to_bson(s.value, s.type_hint) } },
+        )
+    };
+
+    if supports_transactions(conn).await {
+        let mut session = conn.client.start_session().await?;
+        session.start_transaction().await?;
+        let mut updated = 0;
+        for s in sets {
+            let (filter, update) = update_of(s);
+            match coll.update_one(filter, update).session(&mut session).await {
+                Ok(r) => updated += r.matched_count,
+                Err(e) => {
+                    let _ = session.abort_transaction().await;
+                    return Err(e.into());
+                }
+            }
+        }
+        let mut inserted = 0;
+        for row in inserts {
+            match coll
+                .insert_one(row_document(row))
+                .session(&mut session)
+                .await
+            {
+                Ok(_) => inserted += 1,
+                Err(e) => {
+                    let _ = session.abort_transaction().await;
+                    return Err(e.into());
+                }
+            }
+        }
+        session.commit_transaction().await?;
+        return Ok(PasteOutcome {
+            updated,
+            inserted,
+            atomic: true,
+        });
+    }
+
+    let (mut updated, mut inserted) = (0u64, 0u64);
+    let stopped = |done: u64, e: mongodb::error::Error| {
+        AppError::InvalidInput(format!(
+            "{e} — this MongoDB server runs no transactions, so the {done} write(s) before \
+             this one were applied and the rest were not"
+        ))
+    };
+    for s in sets {
+        let (filter, update) = update_of(s);
+        match coll.update_one(filter, update).await {
+            Ok(r) => updated += r.matched_count,
+            Err(e) => return Err(stopped(updated + inserted, e)),
+        }
+    }
+    for row in inserts {
+        match coll.insert_one(row_document(row)).await {
+            Ok(_) => inserted += 1,
+            Err(e) => return Err(stopped(updated + inserted, e)),
+        }
+    }
+    Ok(PasteOutcome {
+        updated,
+        inserted,
+        atomic: false,
+    })
 }
 
 /// Update every document matching `filters` with a `$set` built from

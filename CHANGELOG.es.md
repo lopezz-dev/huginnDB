@@ -10,6 +10,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pega un bloque de celdas en la tabla.**
+  - Copia varias celdas de una hoja de cálculo, de otra tabla o de cualquier
+    texto separado por tabuladores y pulsa Ctrl+V sobre una celda: el bloque
+    cae con su esquina superior izquierda ahí y se extiende hacia la derecha y
+    hacia abajo, por las columnas y filas tal como se ven. Las filas que pasan
+    de la última se convierten en **filas nuevas**. Un valor sin tabuladores ni
+    saltos de línea se sigue pegando en esa celda, como hasta ahora.
+  - Antes de escribir nada, una confirmación dice cuántas celdas cambian y
+    cuántas filas se añaden, muestra las primeras filas y nombra lo que se
+    queda fuera y por qué: una columna de la clave primaria, una columna que
+    bloquea la política de tu organización, una clave que genera la base de
+    datos. **Pegar solo las celdas permitidas** escribe el resto. Un valor
+    igual al que ya tiene la celda no se envía.
+  - **Todo o nada**: el pegado entero es una transacción en PostgreSQL, MySQL,
+    SQLite y SQL Server; si falla una celda, no cambia nada. En MongoDB es una
+    transacción en un replica set; un servidor independiente no tiene
+    transacciones, así que allí las escrituras van en orden y se paran en el
+    primer error, y la confirmación lo avisa antes. Ver el ADR #114.
+
 - **Política gestionada: limita qué columnas puede escribir un rol.**
   - Una regla puede decir ahora a qué columnas puede dar valor `insert` y
     cuáles puede modificar `update`: `"columns": { "insert": ["cliente",

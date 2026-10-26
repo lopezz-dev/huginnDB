@@ -21,6 +21,7 @@ pub mod mongo;
 pub mod mongo_indexes;
 pub mod origin_doc;
 pub mod origins;
+pub mod paste;
 pub mod policy;
 pub mod prefs;
 pub mod pulse;

@@ -24,20 +24,12 @@ import { PolicyLockHint } from "@/components/common/PolicyLock";
 import { BitInput } from "@/components/grid/BitInput";
 import { CellInput } from "@/components/grid/CellInput";
 import { FkCombobox } from "@/components/grid/FkCombobox";
-import { isBitType } from "@/lib/grid/columnKinds";
+import { isAutoPkColumn, isBitType } from "@/lib/grid/columnKinds";
 import type { ColumnInfo, ColumnMeta, DraftCell } from "@/types";
 
-/**
- * Whether the database generates this column's value on insert, so the draft
- * shows an "auto" placeholder instead of a control.
- *
- * Deliberately conservative: only an integer-ish primary key. A `uuid` or
- * `varchar` PK may well have no default, and hiding its input would make the
- * row impossible to insert.
- */
-export function isAutoPkColumn(info?: ColumnInfo): boolean {
-  return !!info?.is_primary_key && /int|serial|rowid/i.test(info.data_type);
-}
+// Lives in `lib/grid/columnKinds` so the multi-cell paste's plan can ask it
+// too; re-exported for the draft surfaces that already import it from here.
+export { isAutoPkColumn };
 
 /**
  * Index of the first column a draft can actually focus — the first one that

@@ -97,7 +97,7 @@ import {
 import { usePinnedColumns } from "@/lib/grid/usePinnedColumns";
 import { useCtrlWheelZoom } from "@/lib/grid/useCtrlWheelZoom";
 import { useGridColumns } from "@/lib/grid/useGridColumns";
-import { useGridKeyboardNav } from "@/lib/grid/useGridKeyboardNav";
+import { useGridKeyboardNav, type GridPaste } from "@/lib/grid/useGridKeyboardNav";
 import { useGridSelection } from "@/lib/grid/useGridSelection";
 import { useSavedCellFlash } from "@/lib/grid/useSavedCellFlash";
 import { removeSortLevel, toggleSortLevel } from "@/lib/grid/sortSpec";
@@ -130,6 +130,12 @@ interface Props {
    * value when adding a row. A locked draft cell is left to its default.
    */
   draftColumnLock?: (column: string) => string | null;
+  /**
+   * A block pasted with Ctrl+V — several cells copied from a spreadsheet or
+   * another grid — and where it lands (ADR #114). Without it, pasting writes
+   * the clipboard into the one cell as text.
+   */
+  onPasteBlock?: (paste: GridPaste) => void;
   /**
    * Connection + table coordinates. When set, draft-row cells whose
    * column carries a single-column FK constraint render a searchable
@@ -408,6 +414,7 @@ export function DataGrid({
   editable,
   columnLock,
   draftColumnLock,
+  onPasteBlock,
   connectionId,
   tableSchema,
   tableName,
@@ -1212,6 +1219,7 @@ export function DataGrid({
     expandCellCombo,
     editable,
     columnLock,
+    onPasteBlock,
     onCellSave,
   });
 
