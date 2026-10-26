@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.36.0] — 2026-10-26
+
 ### Añadido
 
 - **Bloqueo de la app: una contraseña maestra antes de que HuginnDB muestre

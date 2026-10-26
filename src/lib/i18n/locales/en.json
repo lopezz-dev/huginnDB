@@ -2720,6 +2720,35 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_36_0": {
+        "tagline": "A master password can now keep everything HuginnDB holds behind a lock, a block of cells pastes into the grid in one go, and a managed policy can limit which columns a role writes.",
+        "items": {
+          "appLock": {
+            "title": "App lock with a master password",
+            "body": "Turn it on in Settings → Security and every password HuginnDB stores moves into an encrypted vault only your master password opens. Locked, the app shows nothing and reaches no database, and the MCP connector refuses too. Forget the password and the saved secrets are lost, so the app warns you first."
+          },
+          "lockWithSession": {
+            "title": "It locks when you walk away",
+            "body": "HuginnDB locks at every start, after 15 minutes idle (or whenever you choose), with Ctrl+L, and when you press Win+L or disconnect from Remote Desktop. Locking closes every connection and SSH tunnel; unlocking reconnects nothing."
+          },
+          "pasteBlock": {
+            "title": "Paste a block of cells",
+            "body": "Copy cells from a spreadsheet or another grid and press Ctrl+V on a cell: the block spreads right and down, and rows past the last one become new rows. A confirmation shows what changes and what is left out first, and the whole paste is one transaction."
+          },
+          "columnLimits": {
+            "title": "A policy can limit columns, not just tables",
+            "body": "A managed policy rule can now say which columns a role may fill and which it may change. The grid marks locked columns, the policy editor picks them from the real tables, and Generate grants writes column grants so the database enforces them too. Update HuginnDB on every computer before using it."
+          },
+          "aiProfileImport": {
+            "title": "Let an AI write your connections, not hold your keys",
+            "body": "The MCP guide now documents the profile import file, so an assistant can write one for you. You import it with File → Import profiles… and type each password in the app — the assistant never sees them."
+          },
+          "sshRsa": {
+            "title": "RSA keys work with current SSH servers",
+            "body": "An SSH tunnel with an RSA key was refused by OpenSSH 8.8 and later because it signed with SHA-1. It now signs with rsa-sha2-512 or rsa-sha2-256, as the OpenSSH client does."
+          }
+        }
+      },
       "1_35_0": {
         "tagline": "An AI connected through the MCP connector now reads and writes in batches, checks its own changes in the same call and spends fewer tokens of your plan doing it.",
         "items": {

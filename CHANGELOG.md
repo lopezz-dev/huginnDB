@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.36.0] — 2026-10-26
+
 ### Added
 
 - **App lock: a master password before HuginnDB shows anything.**

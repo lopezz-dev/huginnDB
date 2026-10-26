@@ -2720,6 +2720,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_36_0": {
+        "tagline": "Una contraseña maestra puede guardar ya bajo llave todo lo que tiene HuginnDB, un bloque de celdas se pega en la tabla de una vez y una política gestionada puede limitar qué columnas escribe un rol.",
+        "items": {
+          "appLock": {
+            "title": "Bloqueo de la app con contraseña maestra",
+            "body": "Actívalo en Ajustes → Seguridad y todas las contraseñas que guarda HuginnDB pasan a una bóveda cifrada que solo abre tu contraseña maestra. Bloqueada, la app no muestra nada ni llega a ninguna base de datos, y el conector MCP también se niega. Si olvidas la contraseña se pierden los secretos guardados, así que la app te avisa antes."
+          },
+          "lockWithSession": {
+            "title": "Se bloquea cuando te levantas",
+            "body": "HuginnDB se bloquea en cada arranque, tras 15 minutos sin actividad (o cuando tú elijas), con Ctrl+L y al pulsar Win+L o desconectarte del Escritorio remoto. Al bloquearse cierra todas las conexiones y túneles SSH; al desbloquear no reconecta nada."
+          },
+          "pasteBlock": {
+            "title": "Pega un bloque de celdas",
+            "body": "Copia celdas de una hoja de cálculo o de otra tabla y pulsa Ctrl+V sobre una celda: el bloque se extiende hacia la derecha y hacia abajo, y las filas que pasan de la última se convierten en filas nuevas. Antes, una confirmación muestra qué cambia y qué se queda fuera, y el pegado entero es una sola transacción."
+          },
+          "columnLimits": {
+            "title": "Una política puede limitar columnas, no solo tablas",
+            "body": "Una regla de la política gestionada puede decir ahora qué columnas puede rellenar un rol y cuáles puede modificar. La tabla marca las columnas bloqueadas, el editor de políticas las elige de las tablas reales y Generar permisos escribe permisos por columna para que también los haga cumplir la base de datos. Actualiza HuginnDB en todos los equipos antes de usarlo."
+          },
+          "aiProfileImport": {
+            "title": "Que una IA escriba tus conexiones, sin tener tus llaves",
+            "body": "La guía del MCP documenta ahora el fichero de importación de perfiles, así que un asistente puede escribirte uno. Lo importas con Archivo → Importar perfiles… y escribes cada contraseña en la app: el asistente nunca las ve."
+          },
+          "sshRsa": {
+            "title": "Las claves RSA funcionan con servidores SSH actuales",
+            "body": "OpenSSH 8.8 y posteriores rechazaban un túnel SSH con clave RSA porque firmaba con SHA-1. Ahora firma con rsa-sha2-512 o rsa-sha2-256, como hace el cliente de OpenSSH."
+          }
+        }
+      },
       "1_35_0": {
         "tagline": "Una IA conectada por el conector MCP ya lee y escribe por lotes, comprueba sus propios cambios en la misma llamada y gasta menos tokens de tu plan para hacerlo.",
         "items": {

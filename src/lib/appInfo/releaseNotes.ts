@@ -31,6 +31,7 @@ import {
   Bug,
   BookOpen,
   Building2,
+  ClipboardPaste,
   Coins,
   Columns3,
   Copy,
@@ -39,6 +40,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  FileInput,
   FilePen,
   FolderTree,
   ImagePlus,
@@ -51,6 +53,8 @@ import {
   ListChecks,
   ListFilter,
   ListTree,
+  Lock,
+  MonitorOff,
   Package,
   Palette,
   PanelTop,
@@ -103,6 +107,43 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.36.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_36_0.tagline",
+    highlights: [
+      {
+        icon: Lock,
+        titleKey: "whatsNew.releases.1_36_0.items.appLock.title",
+        bodyKey: "whatsNew.releases.1_36_0.items.appLock.body",
+      },
+      {
+        icon: MonitorOff,
+        titleKey: "whatsNew.releases.1_36_0.items.lockWithSession.title",
+        bodyKey: "whatsNew.releases.1_36_0.items.lockWithSession.body",
+      },
+      {
+        icon: ClipboardPaste,
+        titleKey: "whatsNew.releases.1_36_0.items.pasteBlock.title",
+        bodyKey: "whatsNew.releases.1_36_0.items.pasteBlock.body",
+      },
+      {
+        icon: Columns3,
+        titleKey: "whatsNew.releases.1_36_0.items.columnLimits.title",
+        bodyKey: "whatsNew.releases.1_36_0.items.columnLimits.body",
+      },
+      {
+        icon: FileInput,
+        titleKey: "whatsNew.releases.1_36_0.items.aiProfileImport.title",
+        bodyKey: "whatsNew.releases.1_36_0.items.aiProfileImport.body",
+      },
+      {
+        icon: KeyRound,
+        titleKey: "whatsNew.releases.1_36_0.items.sshRsa.title",
+        bodyKey: "whatsNew.releases.1_36_0.items.sshRsa.body",
+      },
+    ],
+  },
   {
     version: "1.35.0",
     major: true,
