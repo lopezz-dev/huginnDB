@@ -1226,6 +1226,9 @@ export interface UpdatePrefs {
 export interface LockPrefs {
   /** Minutes without activity in any window before the app locks; `0` never. */
   idleMinutes: number;
+  /** Lock when the operating system's session locks (Win+L, a Remote Desktop
+   *  disconnect, logind on Linux). On by default. */
+  withSession: boolean;
 }
 
 /**
@@ -1240,6 +1243,9 @@ export interface LockStatus {
   /** The wait owed before the next unlock attempt. */
   retryAfterMs: number;
   idleMinutes: number;
+  /** Whether this machine reports its session locking (Windows, Linux with
+   *  logind). */
+  sessionWatch: boolean;
   language: string;
   minPasswordChars: number;
 }

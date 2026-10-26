@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Switch } from "@/components/ui/switch";
 import { useShortcutLabel } from "@/lib/keybindings/useShortcutLabel";
+import { isWindows } from "@/lib/platform";
 import { notify } from "@/lib/notify";
 import { api } from "@/lib/tauri";
 import { selectLockPrefs, usePreferences } from "@/stores/preferences/preferences";
@@ -128,6 +129,29 @@ export function SecuritySection() {
               </option>
             ))}
           </NativeSelect>
+        </PrefRow>
+        <PrefRow
+          label={t("settings.security.withSession.label")}
+          prefId="lock.withSession"
+          description={
+            isWindows()
+              ? t("settings.security.withSession.descWindows")
+              : t("settings.security.withSession.desc")
+          }
+          footer={
+            status && !status.sessionWatch ? (
+              <p className="text-2xs text-muted-foreground">
+                {t("settings.security.withSession.unavailable")}
+              </p>
+            ) : undefined
+          }
+        >
+          <Switch
+            checked={lock.withSession}
+            disabled={!!status && !status.sessionWatch}
+            onCheckedChange={(v) => updateLock({ withSession: v })}
+            aria-label={t("settings.security.withSession.label")}
+          />
         </PrefRow>
       </PrefGroup>
 

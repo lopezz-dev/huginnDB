@@ -59,6 +59,7 @@ export function LockGate({ children }: { children: ReactNode }) {
         problem: String(e),
         retryAfterMs: 0,
         idleMinutes: 0,
+        sessionWatch: false,
         language: "en",
         minPasswordChars: 12,
       }),

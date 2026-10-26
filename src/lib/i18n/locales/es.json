@@ -2125,6 +2125,12 @@
         "never": "Nunca",
         "minutes_one": "{{count}} minuto",
         "minutes_other": "{{count}} minutos"
+      },
+      "withSession": {
+        "label": "Bloquear con la sesión",
+        "descWindows": "Cuando se bloquea Windows (Win+L) o se desconecta una sesión de Escritorio remoto.",
+        "desc": "Cuando se bloquea la sesión del escritorio.",
+        "unavailable": "Este sistema no avisa cuando se bloquea la sesión, así que HuginnDB no puede seguirla."
       }
     }
   },

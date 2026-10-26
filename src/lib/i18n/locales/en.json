@@ -2125,6 +2125,12 @@
         "never": "Never",
         "minutes_one": "{{count}} minute",
         "minutes_other": "{{count}} minutes"
+      },
+      "withSession": {
+        "label": "Lock with the session",
+        "descWindows": "When Windows locks (Win+L) or a Remote Desktop session is disconnected.",
+        "desc": "When the desktop session locks.",
+        "unavailable": "This system does not report its session locking, so HuginnDB cannot follow it."
       }
     }
   },

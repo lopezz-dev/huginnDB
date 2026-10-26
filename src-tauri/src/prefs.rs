@@ -700,11 +700,20 @@ pub struct LockPrefs {
     /// mid-thought. The person stepping away for coffee is the case this
     /// covers; locking the Windows session covers the rest (phase 3).
     pub idle_minutes: u32,
+    /// Lock when the operating system's session locks — Win+L, a Remote
+    /// Desktop disconnect, logind's lock on Linux (`session_watch`). **On** by
+    /// default: someone who locks Windows before walking away has already said
+    /// what they want, and an unlocked HuginnDB behind a locked session is one
+    /// password away for whoever knows that one.
+    pub with_session: bool,
 }
 
 impl Default for LockPrefs {
     fn default() -> Self {
-        Self { idle_minutes: 15 }
+        Self {
+            idle_minutes: 15,
+            with_session: true,
+        }
     }
 }
 

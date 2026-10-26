@@ -22,7 +22,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     "HuginnDB is locked: open the HuginnDB app and unlock it" until you do;
     the connector has no way to open the vault on its own.
   - It locks at every start, after 15 minutes without activity (configurable,
-    or never), and with **Ctrl+L**. Locking closes every other window, every
+    or never), with **Ctrl+L**, and when the session locks: Win+L, or
+    disconnecting from Remote Desktop, which leaves the session running on
+    the server (on Linux, logind's session lock). See ADR #119. Locking closes every other window, every
     connection and SSH tunnel, and clears the AI panel's conversation;
     unlocking reconnects nothing.
   - After three wrong passwords each attempt waits longer, up to five minutes.

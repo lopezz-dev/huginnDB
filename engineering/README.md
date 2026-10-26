@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-118 entries: 94 ADRs, 15 gotchas, 9 conventions.
+119 entries: 95 ADRs, 15 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -158,4 +158,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 116 | Gotcha | [tiberius 0.13 bounds every query at 30 s and the handshake at 15 s by default, and its connect future is three times larger](gotchas/gotcha-116-tiberius-013-default-timeouts.md) | active | 2026-10-26 |
 | 117 | ADR | [the tunnel never asks for a host certificate, and one that arrives anyway is pinned by the key it certifies](adr/adr-117-a-host-certificate-is-pinned-by-the-key-it-certifies.md) | accepted | 2026-10-26 |
 | 118 | ADR | [the app lock is where the secrets are — a slotted vault replaces the keychain while it is on, and every command is refused by default behind it](adr/adr-118-the-app-lock-is-where-the-secrets-are.md) | accepted | 2026-10-26 |
+| 119 | ADR | [the app locks with the operating system's session, watched from a thread of its own, and a disconnect counts as a lock](adr/adr-119-the-app-locks-with-the-session-from-its-own-watcher.md) | accepted | 2026-10-26 |
 <!-- index:end -->
