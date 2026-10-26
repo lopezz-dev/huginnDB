@@ -35,7 +35,8 @@ type ResettableGroup =
   | "notifications"
   | "connections"
   | "pulse"
-  | "terminal";
+  | "terminal"
+  | "lock";
 
 const RESETTABLE_GROUPS: ReadonlySet<string> = new Set<ResettableGroup>([
   "editor",
@@ -45,6 +46,7 @@ const RESETTABLE_GROUPS: ReadonlySet<string> = new Set<ResettableGroup>([
   "connections",
   "pulse",
   "terminal",
+  "lock",
 ]);
 
 const NOT_RESETTABLE: ReadonlySet<string> = new Set<PrefId>(["ui.language"]);

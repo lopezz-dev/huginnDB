@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-117 entries: 93 ADRs, 15 gotchas, 9 conventions.
+118 entries: 94 ADRs, 15 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -157,4 +157,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 115 | Gotcha | [`russh` signs an RSA key with `ssh-rsa` (SHA-1) unless it is told the hash, and OpenSSH 8.8+ refuses that](gotchas/gotcha-115-russh-rsa-key-without-hash-signs-sha1.md) | active | 2026-10-26 |
 | 116 | Gotcha | [tiberius 0.13 bounds every query at 30 s and the handshake at 15 s by default, and its connect future is three times larger](gotchas/gotcha-116-tiberius-013-default-timeouts.md) | active | 2026-10-26 |
 | 117 | ADR | [the tunnel never asks for a host certificate, and one that arrives anyway is pinned by the key it certifies](adr/adr-117-a-host-certificate-is-pinned-by-the-key-it-certifies.md) | accepted | 2026-10-26 |
+| 118 | ADR | [the app lock is where the secrets are — a slotted vault replaces the keychain while it is on, and every command is refused by default behind it](adr/adr-118-the-app-lock-is-where-the-secrets-are.md) | accepted | 2026-10-26 |
 <!-- index:end -->

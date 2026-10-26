@@ -10,6 +10,38 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Bloqueo de la app: una contraseña maestra antes de que HuginnDB muestre
+  nada.**
+  - Actívalo en **Ajustes → Bloqueo de la app**. Todos los secretos que guarda
+    HuginnDB salen del llavero del sistema y pasan a una bóveda cifrada que
+    solo abre la contraseña maestra: contraseñas de las conexiones,
+    contraseñas y frases SSH, frases de los orígenes compartidos, la clave de
+    la IA y el token de GitHub del formulario de incidencias. Al desactivarlo
+    vuelven al llavero tal como estaban.
+  - **Nada detrás del muro.** Con la app bloqueada solo se ve la pantalla de
+    bloqueo: ni conexiones, ni pestañas restauradas, ni árbol del esquema, y
+    nada llega a una base de datos. El backend rechaza todos los comandos
+    salvo el de desbloquear, haga lo que haga la interfaz.
+  - **El conector MCP también queda cerrado.** Claude Desktop y los demás
+    clientes reciben "HuginnDB is locked: open the HuginnDB app and unlock it"
+    hasta que desbloquees; el conector no puede abrir la bóveda por su
+    cuenta.
+  - Se bloquea en cada arranque, tras 15 minutos sin actividad (configurable,
+    o nunca) y con **Ctrl+L**. Al bloquearse se cierran las demás ventanas,
+    todas las conexiones y túneles SSH, y se borra la conversación del panel
+    de IA; al desbloquear no se reconecta nada.
+  - Tras tres contraseñas incorrectas, cada intento espera más, hasta cinco
+    minutos.
+  - **Si olvidas la contraseña maestra, pierdes los secretos de la bóveda**, y
+    la app lo avisa antes de activar el bloqueo. **¿Has olvidado la contraseña
+    maestra?** en la pantalla de bloqueo restablece la bóveda: se borran los
+    secretos, y tus conexiones se conservan y vuelven a pedir sus contraseñas.
+  - Protege frente a alguien sentado en tu sesión de Windows abierta, también
+    si borra los ficheros de HuginnDB. No protege frente a malware ni a un
+    keylogger, y por ahora los nombres de las conexiones, el contenido de las
+    pestañas y el historial de Pulse se siguen guardando sin cifrar. Consulta
+    la nueva guía **Bloqueo de la app** y el ADR #118.
+
 - **Pega un bloque de celdas en la tabla.**
   - Copia varias celdas de una hoja de cálculo, de otra tabla o de cualquier
     texto separado por tabuladores y pulsa Ctrl+V sobre una celda: el bloque

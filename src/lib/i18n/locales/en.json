@@ -1434,6 +1434,10 @@
       "terminal": {
         "label": "Terminal",
         "desc": "mongosh and your shell"
+      },
+      "appLock": {
+        "label": "App lock",
+        "desc": "Master password and auto-lock"
       }
     },
     "general": {
@@ -1716,7 +1720,8 @@
       "clearTreeFilter": "Clear the schema search",
       "clearTreeFilterHint": "In layers: first the text, then the scope one level at a time, then focus moves to the tree.",
       "scopeFilterToConnection": "Search only the selected connection",
-      "togglePanelTerminal": "Toggle the Terminal panel"
+      "togglePanelTerminal": "Toggle the Terminal panel",
+      "lockNow": "Lock HuginnDB now"
     },
     "mcp": {
       "intro": "Expose the connections you choose below to an AI coding tool (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) over the Model Context Protocol — opt-in per connection, with a per-connection write policy (read-only by default).",
@@ -2090,6 +2095,28 @@
       "managed": "Downloaded by HuginnDB from MongoDB's official download page.",
       "update": "Update to {{version}}",
       "security": "mongosh signs in with the connection's own credentials and, over SSH, through its tunnel. The password is handed to it in its environment, never on the command line where other users could read it. Under a managed policy, mongosh is only offered on connections where you may run free queries that read and write anything."
+    },
+    "appLock": {
+      "intro": "Ask for a master password before HuginnDB shows anything. This protects against someone who sits at your computer while your session is open.",
+      "status": {
+        "title": "Status",
+        "on": "On",
+        "off": "Off"
+      },
+      "lockNow": "Lock now",
+      "change": "Change master password…",
+      "turnOff": "Turn off…",
+      "turnOn": "Turn on the app lock…",
+      "protects": "It protects your saved passwords, SSH passphrases and AI key. With the lock on, the system keychain no longer has them, and the MCP connector cannot reach your databases until HuginnDB is unlocked.",
+      "doesNot": "It does not protect against malware or a keylogger. Connection names, open tabs and Pulse history are still stored unencrypted on disk.",
+      "forgetting": "If you forget the master password, the secrets are lost. Your connections stay, but you will have to type their passwords again.",
+      "idleMinutes": {
+        "label": "Lock after inactivity",
+        "desc": "Minutes without a key press or click in any HuginnDB window.",
+        "never": "Never",
+        "minutes_one": "{{count}} minute",
+        "minutes_other": "{{count}} minutes"
+      }
     }
   },
   "notifications": {
@@ -2662,6 +2689,10 @@
       "policy": {
         "title": "Managed policy",
         "description": "What an organization lets the AI reach"
+      },
+      "appLock": {
+        "title": "App lock",
+        "description": "A master password before anything shows"
       }
     }
   },
@@ -4096,6 +4127,60 @@
       "title": "No terminal open",
       "hint": "Open mongosh on the current MongoDB connection, or a shell.",
       "hintShell": "Open a shell. Connect to a MongoDB connection to open mongosh on it too."
+    }
+  },
+  "lock": {
+    "notOn": "The app lock is off. Turn it on in Settings → App lock.",
+    "wall": {
+      "title": "HuginnDB is locked",
+      "subtitle": "Enter your master password to continue.",
+      "brokenSubtitle": "The app lock's vault cannot be opened.",
+      "password": "Master password",
+      "unlock": "Unlock",
+      "wait_one": "Try again in {{count}} second",
+      "wait_other": "Try again in {{count}} seconds",
+      "wrong_one": "Wrong password ({{count}} attempt).",
+      "wrong_other": "Wrong password ({{count}} attempts).",
+      "forgot": "Forgot your master password?"
+    },
+    "reset": {
+      "title": "Start over with a new master password.",
+      "explain": "Without the master password, nobody can recover the secrets in the vault. Resetting deletes them and starts an empty vault. Your connections stay, and each one asks for its password the next time you connect. The lock stays on.",
+      "action": "Delete the secrets and reset",
+      "back": "Back to unlock",
+      "confirm": "This deletes every password, SSH passphrase, origin passphrase and API key in the vault. They cannot be recovered. Continue?"
+    },
+    "fields": {
+      "password": "New master password",
+      "again": "Repeat it",
+      "mismatch": "The two passwords do not match.",
+      "current": "Current master password"
+    },
+    "strength": {
+      "tooShort": "At least {{n}} characters.",
+      "oneKind": "Mix kinds of character: letters and digits, or words and spaces.",
+      "repetitive": "Too repetitive."
+    },
+    "enable": {
+      "title": "Turn on the app lock",
+      "desc": "Your connection passwords, SSH passphrases, origin passphrases and AI key move from the system keychain into a vault that only this password opens. HuginnDB then asks for it every time it starts, after it has been idle, and when you lock it.",
+      "action": "Turn on",
+      "confirm": "If you forget the master password, nobody can recover the secrets in the vault, not even HuginnDB. Your connections stay, but you will have to type every password again. Turn the lock on?",
+      "done_one": "App lock on: {{count}} secret moved into the vault.",
+      "done_other": "App lock on: {{count}} secrets moved into the vault."
+    },
+    "change": {
+      "title": "Change the master password",
+      "desc": "The secrets stay as they are. Only the password that opens them changes.",
+      "action": "Change",
+      "done": "Master password changed."
+    },
+    "disable": {
+      "title": "Turn off the app lock",
+      "desc": "Every secret goes back to the system keychain, as it was before. Anyone using this Windows session will be able to open HuginnDB and connect again.",
+      "action": "Turn off",
+      "done_one": "App lock off: {{count}} secret returned to the keychain.",
+      "done_other": "App lock off: {{count}} secrets returned to the keychain."
     }
   }
 }

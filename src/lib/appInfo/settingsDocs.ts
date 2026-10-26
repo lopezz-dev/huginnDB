@@ -34,6 +34,7 @@ export const SETTINGS_DOCS: readonly SettingsDocLink[] = [
     headingKey: "docs.settingsHeadings.connections",
   },
   { section: "shortcuts", docId: "shortcuts" },
+  { section: "appLock", docId: "appLock" },
   { section: "jsonSchemas", docId: "jsonSchemas" },
   {
     // Shared origins are described in the environments guide, which is also

@@ -42,6 +42,7 @@ import {
   Cable,
   Network,
   Cog,
+  LockKeyhole,
   FolderSync,
   FileJson,
   FileText,
@@ -79,6 +80,7 @@ import {
 } from "@/lib/appInfo/settingsDocs";
 import { DEFAULT_PREFS, usePreferences } from "@/stores/preferences/preferences";
 import { GeneralSection } from "@/components/settings/sections/GeneralSection";
+import { AppLockSection } from "@/components/settings/sections/AppLockSection";
 import { EditorSection } from "@/components/settings/sections/EditorSection";
 import { GridSection } from "@/components/settings/sections/GridSection";
 import { NotificationsSection } from "@/components/settings/sections/NotificationsSection";
@@ -128,6 +130,9 @@ const NAV: { group: string; items: { id: SettingsSection; icon: SectionIcon }[] 
     group: "workspace",
     items: [
       { id: "general", icon: Cog },
+      // Who may open HuginnDB on this machine. Not "Security", which is the
+      // panel listing a server's users and privileges.
+      { id: "appLock", icon: LockKeyhole },
       { id: "editor", icon: FileText },
       { id: "grid", icon: Table2 },
       { id: "appearance", icon: Palette },
@@ -492,6 +497,7 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
                   {section === "pulse" && <PulseSection />}
                   {section === "ai" && <AiSection />}
                   {section === "terminal" && <TerminalSection />}
+                  {section === "appLock" && <AppLockSection />}
                   {section === "policy" && <PolicySection />}
                   {section === "about" && <AboutSection />}
                 </>

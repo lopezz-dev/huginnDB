@@ -188,7 +188,10 @@ fn handshake_refusal(hello: &Hello, token: &str) -> Option<String> {
 /// and removes the discovery file, so a sidecar that reconnects afterwards
 /// falls back to its own pools instead of dialling a dead port.
 pub async fn reconcile(app: &AppHandle) {
-    let want = app.state::<AppState>().prefs.read().connections.mcp_bridge;
+    // Served only while the app is unlocked: a sidecar that finds no bridge
+    // falls back to its own path, which refuses while the lock is on.
+    let want = app.state::<AppState>().prefs.read().connections.mcp_bridge
+        && !crate::app_lock::gate_closed();
     let running = app.state::<AppState>().mcp_bridge.lock().is_some();
     if want == running {
         return;
@@ -524,6 +527,12 @@ async fn dispatch(
 ) -> AppResult<Value> {
     let state = app.state::<AppState>();
     let state = state.inner();
+
+    // Locked, the app answers nothing (ADR #118). The bridge is stopped on
+    // lock anyway; this covers a request already in flight when it was.
+    if crate::app_lock::gate_closed() {
+        return Err(AppError::Locked);
+    }
 
     // The check covers the connection being reached *and* the profile whose
     // policy governs it; for a Mongo view those differ, and only checking one

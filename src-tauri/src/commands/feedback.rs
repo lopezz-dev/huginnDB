@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 /// Keychain account under which the GitHub PAT is stored. Namespaced so it
 /// can't collide with a connection-password account (`<id>::<user>`).
-const GITHUB_PAT_ACCOUNT: &str = "github::pat";
+pub(crate) const GITHUB_PAT_ACCOUNT: &str = "github::pat";
 
 /// Owner/repo the reporter files against.
 const REPO: &str = "lopezz-dev/huginnDB";

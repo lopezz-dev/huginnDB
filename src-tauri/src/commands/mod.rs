@@ -31,6 +31,7 @@ pub mod structure;
 pub mod terminal;
 pub mod themes;
 pub mod updater;
+pub mod vault;
 pub mod view;
 pub mod write_batch;
 

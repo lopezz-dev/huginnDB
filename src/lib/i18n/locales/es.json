@@ -1434,6 +1434,10 @@
       "terminal": {
         "label": "Terminal",
         "desc": "mongosh y tu shell"
+      },
+      "appLock": {
+        "label": "Bloqueo de la app",
+        "desc": "Contraseña maestra y bloqueo automático"
       }
     },
     "general": {
@@ -1716,7 +1720,8 @@
       "clearTreeFilter": "Limpiar la búsqueda del esquema",
       "clearTreeFilterHint": "Por capas: primero el texto, luego el ámbito nivel a nivel y por último el foco pasa al árbol.",
       "scopeFilterToConnection": "Buscar solo en la conexión seleccionada",
-      "togglePanelTerminal": "Mostrar u ocultar el panel Terminal"
+      "togglePanelTerminal": "Mostrar u ocultar el panel Terminal",
+      "lockNow": "Bloquear HuginnDB ahora"
     },
     "mcp": {
       "intro": "Expón las conexiones que elijas abajo a una herramienta de IA (Claude Code, Claude Desktop, Cursor, Antigravity, Codex, …) mediante el Model Context Protocol — opt-in por conexión, con un nivel de escritura por conexión (solo lectura por defecto).",
@@ -2090,6 +2095,28 @@
       "managed": "Descargado por HuginnDB desde la página oficial de descargas de MongoDB.",
       "update": "Actualizar a {{version}}",
       "security": "mongosh inicia sesión con las credenciales de la propia conexión y, por SSH, a través de su túnel. La contraseña se le pasa en su entorno, nunca en la línea de comandos, donde otros usuarios podrían leerla. Con una política gestionada, mongosh solo se ofrece en conexiones donde puedes ejecutar consultas libres que lean y escriban cualquier cosa."
+    },
+    "appLock": {
+      "intro": "Pide una contraseña maestra antes de que HuginnDB muestre nada. Protege frente a alguien que se siente en tu ordenador mientras tu sesión está abierta.",
+      "status": {
+        "title": "Estado",
+        "on": "Activado",
+        "off": "Desactivado"
+      },
+      "lockNow": "Bloquear ahora",
+      "change": "Cambiar la contraseña maestra…",
+      "turnOff": "Desactivar…",
+      "turnOn": "Activar el bloqueo de la app…",
+      "protects": "Protege tus contraseñas guardadas, las frases SSH y la clave de la IA. Con el bloqueo activado, el llavero del sistema deja de tenerlas, y el conector MCP no llega a tus bases de datos hasta que desbloquees HuginnDB.",
+      "doesNot": "No protege frente a malware ni a un keylogger. Los nombres de las conexiones, las pestañas abiertas y el historial de Pulse se siguen guardando sin cifrar en el disco.",
+      "forgetting": "Si olvidas la contraseña maestra, los secretos se pierden. Tus conexiones se conservan, pero tendrás que volver a escribir sus contraseñas.",
+      "idleMinutes": {
+        "label": "Bloquear tras inactividad",
+        "desc": "Minutos sin pulsar una tecla ni hacer clic en ninguna ventana de HuginnDB.",
+        "never": "Nunca",
+        "minutes_one": "{{count}} minuto",
+        "minutes_other": "{{count}} minutos"
+      }
     }
   },
   "notifications": {
@@ -2662,6 +2689,10 @@
       "policy": {
         "title": "Política gestionada",
         "description": "Lo que una organización deja alcanzar a la IA"
+      },
+      "appLock": {
+        "title": "Bloqueo de la app",
+        "description": "Una contraseña maestra antes de mostrar nada"
       }
     }
   },
@@ -4096,6 +4127,60 @@
       "title": "Ningún terminal abierto",
       "hint": "Abre mongosh en la conexión MongoDB actual, o un shell.",
       "hintShell": "Abre un shell. Conéctate a una conexión MongoDB para abrir también mongosh en ella."
+    }
+  },
+  "lock": {
+    "notOn": "El bloqueo de la app está desactivado. Actívalo en Ajustes → Bloqueo de la app.",
+    "wall": {
+      "title": "HuginnDB está bloqueado",
+      "subtitle": "Escribe tu contraseña maestra para continuar.",
+      "brokenSubtitle": "No se puede abrir la bóveda del bloqueo.",
+      "password": "Contraseña maestra",
+      "unlock": "Desbloquear",
+      "wait_one": "Vuelve a intentarlo en {{count}} segundo",
+      "wait_other": "Vuelve a intentarlo en {{count}} segundos",
+      "wrong_one": "Contraseña incorrecta ({{count}} intento).",
+      "wrong_other": "Contraseña incorrecta ({{count}} intentos).",
+      "forgot": "¿Has olvidado la contraseña maestra?"
+    },
+    "reset": {
+      "title": "Empieza de nuevo con otra contraseña maestra.",
+      "explain": "Sin la contraseña maestra, nadie puede recuperar los secretos de la bóveda. Restablecerla los borra y crea una bóveda vacía. Tus conexiones se conservan, y cada una te pedirá su contraseña la próxima vez que conectes. El bloqueo sigue activado.",
+      "action": "Borrar los secretos y restablecer",
+      "back": "Volver a desbloquear",
+      "confirm": "Esto borra todas las contraseñas, frases SSH, frases de orígenes y claves de API de la bóveda. No se pueden recuperar. ¿Continuar?"
+    },
+    "fields": {
+      "password": "Nueva contraseña maestra",
+      "again": "Repítela",
+      "mismatch": "Las dos contraseñas no coinciden.",
+      "current": "Contraseña maestra actual"
+    },
+    "strength": {
+      "tooShort": "Al menos {{n}} caracteres.",
+      "oneKind": "Mezcla tipos de carácter: letras y números, o palabras y espacios.",
+      "repetitive": "Demasiado repetitiva."
+    },
+    "enable": {
+      "title": "Activar el bloqueo de la app",
+      "desc": "Las contraseñas de tus conexiones, las frases SSH, las frases de los orígenes y la clave de la IA pasan del llavero del sistema a una bóveda que solo abre esta contraseña. A partir de entonces, HuginnDB la pide cada vez que arranca, después de un rato sin usarlo y cuando lo bloqueas.",
+      "action": "Activar",
+      "confirm": "Si olvidas la contraseña maestra, nadie puede recuperar los secretos de la bóveda, ni siquiera HuginnDB. Tus conexiones se conservan, pero tendrás que volver a escribir todas las contraseñas. ¿Activar el bloqueo?",
+      "done_one": "Bloqueo activado: {{count}} secreto ha pasado a la bóveda.",
+      "done_other": "Bloqueo activado: {{count}} secretos han pasado a la bóveda."
+    },
+    "change": {
+      "title": "Cambiar la contraseña maestra",
+      "desc": "Los secretos no cambian. Solo cambia la contraseña que los abre.",
+      "action": "Cambiar",
+      "done": "Contraseña maestra cambiada."
+    },
+    "disable": {
+      "title": "Desactivar el bloqueo de la app",
+      "desc": "Todos los secretos vuelven al llavero del sistema, como estaban antes. Cualquiera que use esta sesión de Windows podrá volver a abrir HuginnDB y conectarse.",
+      "action": "Desactivar",
+      "done_one": "Bloqueo desactivado: {{count}} secreto ha vuelto al llavero.",
+      "done_other": "Bloqueo desactivado: {{count}} secretos han vuelto al llavero."
     }
   }
 }

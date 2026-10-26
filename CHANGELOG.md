@@ -8,6 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **App lock: a master password before HuginnDB shows anything.**
+  - Turn it on in **Settings → App lock**. Every secret HuginnDB stores moves
+    out of the system keychain into an encrypted vault that only the master
+    password opens: connection passwords, SSH passwords and passphrases,
+    shared-origin passphrases, the AI key and the issue reporter's GitHub
+    token. Turning the lock off puts them back exactly as they were.
+  - **Nothing behind the wall.** Locked, HuginnDB shows only the lock screen:
+    no connections, no restored tabs, no schema tree, and nothing reaches a
+    database. The backend refuses every command except unlocking, whatever
+    the interface does.
+  - **The MCP connector is closed too.** Claude Desktop and other clients get
+    "HuginnDB is locked: open the HuginnDB app and unlock it" until you do;
+    the connector has no way to open the vault on its own.
+  - It locks at every start, after 15 minutes without activity (configurable,
+    or never), and with **Ctrl+L**. Locking closes every other window, every
+    connection and SSH tunnel, and clears the AI panel's conversation;
+    unlocking reconnects nothing.
+  - After three wrong passwords each attempt waits longer, up to five minutes.
+  - **Forgetting the master password loses the secrets in the vault**, and the
+    app says so before you turn the lock on. **Forgot your master password?**
+    on the lock screen resets the vault: the secrets are deleted, your
+    connections stay and ask for their passwords again.
+  - It protects against someone at your open Windows session, including one
+    who deletes HuginnDB's files. It does not protect against malware or a
+    keylogger, and connection names, tab contents and Pulse history are still
+    stored unencrypted for now. See the new **App lock** guide and ADR #118.
+
 - **Paste a block of cells into the grid.**
   - Copy several cells from a spreadsheet, another grid or any tab-separated
     text and press Ctrl+V on a cell: the block lands with its top-left cell

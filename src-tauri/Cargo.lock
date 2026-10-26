@@ -2780,6 +2780,7 @@ version = "1.35.0"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
+ "argon2",
  "base64 0.22.1",
  "bson",
  "chrono",
@@ -2819,6 +2820,7 @@ dependencies = [
  "whoami",
  "windows 0.61.3",
  "windows-registry",
+ "zeroize",
  "zip",
 ]
 

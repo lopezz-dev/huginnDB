@@ -171,6 +171,13 @@ zip = { version = "4", default-features = false, features = ["deflate"] }
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
 aes-gcm = "0.10"
+# The app lock's vault (`crate::vault`, ADR #118): Argon2id for the master
+# password, `zeroize` for the vault key. Both already in the tree — `argon2`
+# through `ssh-key` (russh), `zeroize` through `aes-gcm`, `rustls` and others
+# — so declaring them adds no crate. No `parallel` feature: it would bring in
+# `rayon`, and one lane costs the defender what it costs an attacker.
+argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
+zeroize = "1.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 sha2 = "0.10"
 rand = "0.8"

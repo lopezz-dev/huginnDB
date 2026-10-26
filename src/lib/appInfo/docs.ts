@@ -39,6 +39,8 @@ import aiRaw from "../../../docs/AI.md?raw";
 import aiEsRaw from "../../../docs/AI.es.md?raw";
 import policyRaw from "../../../docs/POLICY.md?raw";
 import policyEsRaw from "../../../docs/POLICY.es.md?raw";
+import appLockRaw from "../../../docs/APP_LOCK.md?raw";
+import appLockEsRaw from "../../../docs/APP_LOCK.es.md?raw";
 
 /**
  * Which rail heading a doc sits under. Ordered as the viewer draws them, and
@@ -104,6 +106,17 @@ export const DOCS: DocEntry[] = [
     path: "docs/SHORTCUTS.md",
     bodies: { en: shortcutsRaw, es: shortcutsEsRaw },
     updated: dates["docs/SHORTCUTS.md"] ?? null,
+  },
+  {
+    // Setting up the machine, like the three above, and for every driver:
+    // whether HuginnDB asks for a master password before it shows anything.
+    id: "appLock",
+    group: "start",
+    titleKey: "docs.entries.appLock.title",
+    descriptionKey: "docs.entries.appLock.description",
+    path: "docs/APP_LOCK.md",
+    bodies: { en: appLockRaw, es: appLockEsRaw },
+    updated: dates["docs/APP_LOCK.md"] ?? null,
   },
   {
     // Cross-driver rather than per-driver, so it sits before the per-engine
