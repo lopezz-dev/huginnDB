@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-114 entries: 92 ADRs, 13 gotchas, 9 conventions.
+115 entries: 92 ADRs, 14 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -154,4 +154,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 112 | ADR | [a write batch is one transaction of single row writes, and its verify reads run after the commit as ordinary reads](adr/adr-112-a-write-batch-is-one-transaction-and-verify-runs-after-it.md) | accepted | 2026-10-20 |
 | 113 | ADR | [a policy rule limits columns per verb, judged as a union beside the relation's verb, and free-form writes close under a limited verb](adr/adr-113-policy-column-limits-are-per-verb-and-unioned.md) | accepted | 2026-10-25 |
 | 114 | ADR | [a pasted block is planned in the grid, confirmed, and written by the backend in one transaction](adr/adr-114-a-pasted-block-is-planned-in-the-grid-and-written-in-one-transaction.md) | accepted | 2026-10-25 |
+| 116 | Gotcha | [tiberius 0.13 bounds every query at 30 s and the handshake at 15 s by default, and its connect future is three times larger](gotchas/gotcha-116-tiberius-013-default-timeouts.md) | active | 2026-10-26 |
 <!-- index:end -->

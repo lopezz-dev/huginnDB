@@ -556,10 +556,17 @@ pub fn is_output_clause_conflict(e: &AppError) -> bool {
 /// which is what made SQL Server the one driver whose schema explorer could
 /// simply never finish loading, instead of failing with a clear timeout like
 /// every other driver already does.
+///
+/// The connect future is boxed. tiberius 0.13's `Client::connect` carries its
+/// handshake timer and grew from ~11 KB to ~37 KB, and since a session can be
+/// opened from [`MsSqlPool::acquire`] on any query path, left inline that size
+/// was folded into nearly every command's future — the MCP connector's
+/// `read_many` tripled, past a 2 MiB thread stack in a debug build. One
+/// allocation per new session buys back all of it (gotcha #116).
 async fn connect(cfg: &Config, reach: Reach) -> AppResult<MsSqlClient> {
     bound_by_acquire_timeout(
         crate::db::pool::ACQUIRE_TIMEOUT,
-        connect_uncapped(cfg, reach),
+        Box::pin(connect_uncapped(cfg, reach)),
     )
     .await
 }
@@ -719,6 +726,13 @@ fn build_config(
         cfg.database(&profile.database);
     }
     cfg.application_name("HuginnDB");
+    // tiberius 0.13 bounds both of these by default (15 s handshake, 30 s per
+    // server round-trip). A query the user runs stays unbounded here, as on
+    // every other driver, and connecting is already bounded by `connect`'s
+    // `ACQUIRE_TIMEOUT`; a second, tighter limit underneath would cut a long
+    // `WAITFOR` or a slow login over a VPN short (gotcha #116).
+    cfg.handshake_timeout(None);
+    cfg.command_timeout(None);
 
     let reach = match instance {
         Some(inst) => {
@@ -917,6 +931,17 @@ mod tests {
                 fallback_port: Some(1450)
             }
         ));
+    }
+
+    /// tiberius 0.13 started bounding every server round-trip at 30 s and the
+    /// handshake at 15 s by default; a user's query is never bounded here.
+    #[test]
+    fn neither_a_query_nor_the_handshake_inherits_a_driver_timeout() {
+        let profile = mssql_profile();
+        let (cfg, _) =
+            build_config(&profile, "pw", "SVRSQL3", DEFAULT_PORT, None).expect("sql login builds");
+        assert_eq!(cfg.get_command_timeout(), None);
+        assert_eq!(cfg.get_handshake_timeout(), None);
     }
 
     #[test]

@@ -64,6 +64,30 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     todas las conexiones. El editor lo avisa al guardar. Ver `docs/POLICY.md` y
     el ADR #113.
 
+### Seguridad
+
+- **Dependencias al día tras una auditoría de seguridad.** Las que van
+  dentro de la aplicación:
+  - **La comprobación de certificados TLS** (todas las conexiones cifradas a
+    bases de datos, el endpoint de IA y el actualizador) ya no confía en los
+    certificados intermedios de emSign (eMudhra) retirados de confianza
+    (RUSTSEC-2026-0381/0382/0383), e incorpora cuatro correcciones de
+    `rustls`, entre ellas una degradación del intercambio de claves
+    post-cuántico (RUSTSEC-2026-0349) y mensajes de handshake aceptados en la
+    fase equivocada (RUSTSEC-2026-0285).
+  - **SQL Server** usa ahora la misma pila TLS actualizada que el resto de
+    bases de datos. Su driver pasa a tiberius 0.13, cuyas antiguas
+    bibliotecas TLS ya no recibían correcciones. Las consultas siguen durando
+    lo que necesiten: el nuevo driver corta cualquier consulta a los 30
+    segundos por defecto, y HuginnDB lo desactiva.
+  - **Tauri 2.12**, que corrige una forma de que una ventana leyera las
+    respuestas IPC de otra (GHSA-w28w-mhc8-qvjv). Las ventanas de HuginnDB
+    solo cargan su propia interfaz, así que no era alcanzable, pero la
+    corrección ya está.
+- Las herramientas de desarrollo (Vite 8, Vitest 5) resuelven 25 avisos que
+  solo afectaban a las máquinas donde se compila la aplicación, no a la
+  aplicación.
+
 ## [1.35.0] — 2026-10-22
 
 ### Añadido
