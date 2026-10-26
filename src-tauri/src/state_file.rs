@@ -45,6 +45,20 @@ pub fn path(file: &str) -> AppResult<PathBuf> {
     Ok(dir.join(file))
 }
 
+/// Resolve (and create on demand) the path of `file` inside the keystore
+/// directory — [`crate::app_identity::KEYSTORE_DIR`], shared by every build.
+///
+/// Only the app lock's vault lives there. Anything else is state and goes
+/// through [`path`]; reaching for this to share a file with the canary is how
+/// ADR #26's isolation would quietly erode.
+pub fn keystore_path(file: &str) -> AppResult<PathBuf> {
+    let base = dirs::config_dir()
+        .ok_or_else(|| AppError::InvalidInput("no config dir available".into()))?;
+    let dir = base.join(crate::app_identity::keystore_dir());
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir.join(file))
+}
+
 /// The raw contents of `file`, or `None` when it does not exist yet, cannot be
 /// located, or cannot be read.
 ///

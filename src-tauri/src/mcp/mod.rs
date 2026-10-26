@@ -1083,6 +1083,12 @@ impl Huginn {
                 }
             }
         }
+        // No app to ask: this process would open its own pools, with secrets
+        // it can only read when the app lock is off. It has no way to unlock,
+        // so the answer is to open the app (ADR #118).
+        if crate::vault::is_locked() {
+            return Err(crate::error::AppError::Locked);
+        }
         let audit_sink = AuditSink::new(&self.state);
         let noop = NoopSink;
         let sink: &dyn LogSink = if audit { &audit_sink } else { &noop };
@@ -1168,6 +1174,12 @@ impl Huginn {
         // process holds no pool in that mode, so it would always miss.
         if let Some(answer) = self.ensure_via_bridge(id).await {
             return answer;
+        }
+        // Opening a pool of our own needs the app lock off — and not only for
+        // connections with a password: with the lock on, nothing is reached
+        // without the app (ADR #118).
+        if crate::vault::is_locked() {
+            return Err(crate::error::AppError::Locked);
         }
         let profile = profiles
             .into_iter()
@@ -1565,6 +1577,11 @@ impl Huginn {
                       Settings → MCP."
     )]
     async fn list_connections(&self) -> Result<CallToolResult, ErrorData> {
+        // With the app lock on, even the names stay behind it unless the app
+        // is serving the bridge — which it does only while unlocked.
+        if crate::vault::is_locked() && crate::bridge::read_discovery().is_none() {
+            return Err(to_err(crate::error::AppError::Locked));
+        }
         #[derive(serde::Serialize)]
         struct Conn {
             id: String,
@@ -3267,6 +3284,45 @@ mod tests {
             huginn.ensure_via_bridge("t-fallback").await.is_none(),
             "an unreachable app must hand the open back, not fail it"
         );
+    }
+
+    /// With the app lock on and no app serving the bridge, the sidecar has no
+    /// way to unlock: every path refuses with the "locked" message rather
+    /// than reaching a database — even one, like this SQLite file, that needs
+    /// no password (ADR #118).
+    #[tokio::test]
+    async fn the_sidecar_alone_refuses_while_the_app_is_locked() {
+        let huginn = huginn_with_policy("t-locked", McpWritePolicy::ReadOnly, false);
+        crate::vault::force_locked_on_this_thread(Some(true));
+        let refused = huginn
+            .call(
+                BridgeRequest::ListDatabases {
+                    connection_id: "t-locked".into(),
+                },
+                false,
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        let listing = if crate::bridge::read_discovery().is_none() {
+            Some(
+                huginn
+                    .list_connections()
+                    .await
+                    .unwrap_err()
+                    .message
+                    .to_string(),
+            )
+        } else {
+            // A real, unlocked HuginnDB is publishing its bridge on this
+            // machine; the listing would rightly go ahead.
+            None
+        };
+        crate::vault::force_locked_on_this_thread(None);
+        assert!(refused.starts_with(crate::error::LOCKED_TAG), "{refused}");
+        if let Some(listing) = listing {
+            assert!(listing.starts_with(crate::error::LOCKED_TAG), "{listing}");
+        }
     }
 
     #[test]

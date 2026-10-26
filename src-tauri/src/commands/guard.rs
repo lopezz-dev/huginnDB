@@ -488,10 +488,21 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("terminal::terminal_mongosh_download_running", "none"),
     ("updater::get_auto_update_status", "none"),
     ("updater::note_update_check", "none"),
+    // The app lock (ADR #118). No database: they read and write the vault,
+    // and `app_lock::OPEN_WHILE_LOCKED` relies on that for the three the wall
+    // can call.
+    ("vault::vault_status", "none"),
+    ("vault::vault_unlock", "none"),
+    ("vault::vault_lock", "none"),
+    ("vault::vault_activity", "none"),
+    ("vault::vault_enable", "none"),
+    ("vault::vault_disable", "none"),
+    ("vault::vault_change_password", "none"),
+    ("vault::vault_reset", "none"),
 ];
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::HUMAN_POLICY;
     use std::collections::BTreeSet;
     use std::path::Path;
@@ -502,7 +513,7 @@ mod tests {
     }
 
     /// `module::name` for every command in `lib.rs`'s `generate_handler!`.
-    fn registered() -> BTreeSet<String> {
+    pub(crate) fn registered() -> BTreeSet<String> {
         let lib = source("src/lib.rs");
         let start = lib
             .find("generate_handler![")

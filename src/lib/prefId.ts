@@ -33,7 +33,8 @@ type PrefGroup =
   | "pulse"
   | "ai"
   | "updates"
-  | "terminal";
+  | "terminal"
+  | "lock";
 
 /** `"editor.wordWrap" | "grid.rowHeight" | …` — every real preference path. */
 type PrefPath = {

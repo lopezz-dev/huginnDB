@@ -47,6 +47,10 @@ pub fn spawn(app: AppHandle) {
 /// directly testable and it is where a future "sample now" affordance would
 /// hook in.
 async fn tick(app: &AppHandle) {
+    // Locked, no pool is open and none may be (ADR #118).
+    if crate::app_lock::gate_closed() {
+        return;
+    }
     let state = app.state::<AppState>();
 
     let (enabled, sample_when_minimized, retention_days, max_disk_mb) = {

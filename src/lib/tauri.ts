@@ -128,6 +128,8 @@ import type {
   JsonSchemaImportAnalysis,
   JsonSchemaImportResult,
   ResolvedJsonSchema,
+  LockStatus,
+  UnlockAnswer,
 } from "@/types";
 
 export const api = {
@@ -1916,4 +1918,27 @@ export const api = {
    *  its progress (it opened or reloaded after it began). */
   terminalMongoshDownloadRunning: () =>
     invoke<boolean>("terminal_mongosh_download_running"),
+
+  // ── App lock (ADR #118) ─────────────────────────────────────────────────
+  // The master password crosses the boundary only to be checked or sealed in
+  // Rust; nothing here keeps it. While locked, the backend refuses every
+  // command but the first, second and last of these.
+
+  /** Where the lock stands. Open while locked. */
+  vaultStatus: () => invoke<LockStatus>("vault_status"),
+  /** Unlock with the master password. Open while locked. */
+  vaultUnlock: (password: string) =>
+    invoke<UnlockAnswer>("vault_unlock", { password }),
+  /** Lock now: every window but the main one closes, every pool with it. */
+  vaultLock: () => invoke<void>("vault_lock"),
+  /** Count activity toward the idle timeout (throttled by the caller). */
+  vaultActivity: () => invoke<void>("vault_activity"),
+  /** Turn the lock on; resolves with how many secrets left the keychain. */
+  vaultEnable: (password: string) => invoke<number>("vault_enable", { password }),
+  /** Turn the lock off; resolves with how many secrets went back. */
+  vaultDisable: (password: string) => invoke<number>("vault_disable", { password }),
+  vaultChangePassword: (current: string, next: string) =>
+    invoke<void>("vault_change_password", { current, next }),
+  /** Forget every secret and start an empty vault. Open while locked. */
+  vaultReset: (password: string) => invoke<void>("vault_reset", { password }),
 };

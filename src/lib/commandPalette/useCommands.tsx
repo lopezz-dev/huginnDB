@@ -60,6 +60,7 @@ import {
   Star,
   Table as TableIcon,
   KeyRound,
+  LockKeyhole,
   Workflow,
   X,
   FileJson,
@@ -127,6 +128,7 @@ const TAB_ICON: Record<TabKind, React.ReactNode> = {
 /** Icon per Settings section, matching `SettingsDialog`'s rail. */
 const SECTION_ICON: Record<SettingsSection, React.ReactNode> = {
   general: <Settings className="h-4 w-4" />,
+  security: <LockKeyhole className="h-4 w-4" />,
   editor: <FileText className="h-4 w-4" />,
   grid: <TableIcon className="h-4 w-4" />,
   notifications: <Bell className="h-4 w-4" />,

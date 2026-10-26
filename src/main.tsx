@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import App from "./App";
 import { DetachedTabWindow } from "./components/shell/DetachedTabWindow";
 import { PulseWindow } from "./components/pulse/PulseWindow";
+import { LockGate } from "./components/lock/LockGate";
 import "./lib/monaco/monaco-setup";
 import "./lib/i18n";
 import "./index.css";
@@ -54,6 +55,10 @@ const Root = label.startsWith("tabwin-")
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Root />
+    {/* Every window kind answers to the app lock before anything in it
+        mounts — see `LockGate` and ADR #118. */}
+    <LockGate>
+      <Root />
+    </LockGate>
   </React.StrictMode>,
 );

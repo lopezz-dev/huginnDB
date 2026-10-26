@@ -82,6 +82,10 @@ pub struct Preferences {
     /// The terminal panel: whether it is offered, and which `mongosh` and
     /// shell it starts. See [`TerminalPrefs`].
     pub terminal: TerminalPrefs,
+    /// The app lock's own settings — how long the app may sit idle before it
+    /// locks itself. Whether the lock is on is not a preference: it is the
+    /// existence of the vault (`crate::vault`). See [`LockPrefs`].
+    pub lock: LockPrefs,
     /// User-rebound keyboard shortcuts, keyed by action id (e.g.
     /// `"openSettings"`, `"expandSelectedCell"`) to an ordered list of
     /// bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is
@@ -683,6 +687,27 @@ impl Default for UpdatePrefs {
     }
 }
 
+/// The app lock (`crate::vault`, ADR #118).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LockPrefs {
+    /// Minutes without a key press, click or scroll in any window before the
+    /// app locks itself; `0` never does. Only read while the lock is on.
+    ///
+    /// Fifteen by default: Windows' own screen-saver lock suggests ten to
+    /// fifteen, and a database client is often left open beside the work it
+    /// supports, reading rather than typing — shorter would lock someone
+    /// mid-thought. The person stepping away for coffee is the case this
+    /// covers; locking the Windows session covers the rest (phase 3).
+    pub idle_minutes: u32,
+}
+
+impl Default for LockPrefs {
+    fn default() -> Self {
+        Self { idle_minutes: 15 }
+    }
+}
+
 /// The terminal panel (`crate::terminal`).
 ///
 /// **On** by default, unlike the AI panel: a terminal adds no endpoint, sends
@@ -732,6 +757,7 @@ impl Default for Preferences {
             themes: ThemePrefs::default(),
             updates: UpdatePrefs::default(),
             terminal: TerminalPrefs::default(),
+            lock: LockPrefs::default(),
             keybindings: HashMap::new(),
         }
     }

@@ -22,6 +22,7 @@
 /// the metadata/rows coupling rule.
 mod ai;
 mod app_identity;
+mod app_lock;
 mod bridge;
 mod commands;
 mod credentials;
@@ -58,6 +59,7 @@ mod testkit;
 mod themes;
 mod transfer;
 mod updater;
+mod vault;
 mod window_chrome;
 
 use state::{AppState, StartupArgs};
@@ -226,6 +228,12 @@ fn handle_second_instance(app: &tauri::AppHandle, argv: Vec<String>) {
     // `StartupArgs`, which is the frontend's DTO and has nothing to say about
     // it; a cold start never gets here and just opens the main window.
     if argv.iter().skip(1).any(|a| a == jump_list::NEW_WINDOW_FLAG) {
+        // Locked, the focused main window is the wall; a second one would
+        // only be another wall. A connection intent below is still buffered:
+        // the interface drains it after the unlock, when it first mounts.
+        if app_lock::gate_closed() {
+            return;
+        }
         let app = app.clone();
         // `open_new_window` is async on purpose (gotcha #19: building a
         // `WebviewWindow` from a synchronous context deadlocks WebView2).
@@ -337,6 +345,11 @@ pub fn run() {
                     })),
                 );
             }
+            // The app lock's gate starts closed and is opened here only if the
+            // vault says so, before any window can ask for anything. Locked,
+            // the idle watcher waits; unlocked, it counts (ADR #118).
+            app_lock::sync_gate();
+            app_lock::spawn_idle_watcher(app.handle().clone());
             // The silent updater's schedule follows the preference; this only
             // fills in what is missing (an installer hook that failed, a task
             // someone deleted). `schtasks` blocks, so off the async runtime.
@@ -392,7 +405,9 @@ pub fn run() {
                 });
             }
         })
-        .invoke_handler(tauri::generate_handler![
+        // Every command passes the app lock's gate first (ADR #118): while
+        // locked, anything but the wall's own commands is refused here.
+        .invoke_handler(app_lock::gate(tauri::generate_handler![
             commands::connection::list_profiles,
             commands::connection::edited_connections,
             commands::policy::policy_status,
@@ -593,7 +608,15 @@ pub fn run() {
             commands::terminal::terminal_mongosh_download,
             commands::terminal::terminal_mongosh_cancel_download,
             commands::terminal::terminal_mongosh_download_running,
-        ])
+            commands::vault::vault_status,
+            commands::vault::vault_unlock,
+            commands::vault::vault_lock,
+            commands::vault::vault_activity,
+            commands::vault::vault_enable,
+            commands::vault::vault_disable,
+            commands::vault::vault_change_password,
+            commands::vault::vault_reset,
+        ]))
         .build(context())
         .expect("error while building HuginnDB")
         .run(|app, event| {

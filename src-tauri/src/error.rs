@@ -96,6 +96,20 @@ pub enum AppError {
     #[error("{MISSING_PASSWORD_TAG} for keychain account {0}")]
     MissingPassword(String),
 
+    /// The app lock is on and this process does not hold the vault key, so
+    /// no secret can be read or written (`crate::vault`). What a command
+    /// refused behind the wall returns, and what the MCP sidecar returns when
+    /// it would need a password: it has no way to unlock, so the answer is to
+    /// open the app and unlock it there.
+    #[error("{LOCKED_TAG}: open the HuginnDB app and unlock it")]
+    Locked,
+
+    /// The vault file is missing, unreadable, from a newer version, or was
+    /// replaced underneath this process. Never read as "no secrets": the
+    /// person resets the vault knowingly, or nothing changes.
+    #[error("vault error: {0}")]
+    Vault(String),
+
     /// A network operation exceeded its allotted budget. Most likely the
     /// underlying socket died silently — a NAT/firewall dropping an idle
     /// connection without a FIN/RST — rather than the server refusing
@@ -189,6 +203,10 @@ pub enum AppError {
 /// breaks `isTooManyConnections` in `src/lib/db/driver.ts` — keep the two in
 /// sync.
 pub const TOO_MANY_CONNECTIONS_TAG: &str = "too many connections";
+
+/// Stable marker every [`AppError::Locked`] message starts with. Matched by
+/// `isLocked` in `src/lib/lock/status.ts`; keep the two in sync.
+pub const LOCKED_TAG: &str = "HuginnDB is locked";
 
 /// Stable marker every [`AppError::MissingPassword`] message starts with. The
 /// same text `require_password` has always produced, so nothing that already

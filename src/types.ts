@@ -1029,6 +1029,8 @@ export interface Preferences {
   updates: UpdatePrefs;
   /** The terminal panel. See {@link TerminalPrefs}. */
   terminal: TerminalPrefs;
+  /** The app lock's own settings. See {@link LockPrefs}. */
+  lock: LockPrefs;
   /**
    * User-rebound keyboard shortcuts, keyed by action id to an ordered list of
    * bindings (e.g. `["Mod+K"]`, `["Mod+Enter", "F9"]`). The first entry is the
@@ -1214,6 +1216,39 @@ export interface ThemePrefs {
  */
 export interface UpdatePrefs {
   autoInstall: boolean;
+}
+
+/**
+ * The app lock's settings. Mirrors `LockPrefs` in `src-tauri/src/prefs.rs`.
+ * Whether the lock is on is not a preference — it is whether the vault exists
+ * (`vault_status`).
+ */
+export interface LockPrefs {
+  /** Minutes without activity in any window before the app locks; `0` never. */
+  idleMinutes: number;
+}
+
+/**
+ * Where the app lock stands. Mirrors `app_lock::LockStatus`. Holds nothing
+ * from behind the wall: the interface language is here so the wall can speak
+ * it without reading the preferences.
+ */
+export interface LockStatus {
+  mode: "off" | "locked" | "unlocked" | "broken";
+  /** Why the vault is broken, when it is. */
+  problem: string | null;
+  /** The wait owed before the next unlock attempt. */
+  retryAfterMs: number;
+  idleMinutes: number;
+  language: string;
+  minPasswordChars: number;
+}
+
+/** Mirrors `commands::vault::UnlockAnswer`. */
+export interface UnlockAnswer {
+  opened: boolean;
+  failures: number;
+  retryAfterMs: number;
 }
 
 /**

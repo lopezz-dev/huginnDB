@@ -36,6 +36,7 @@ export const CATEGORY_ORDER: Category[] = [
 export type ActionId =
   // general
   | "openSettings"
+  | "lockNow"
   | "toggleCommandPalette"
   | "openCommandActions"
   | "newConnection"
@@ -92,6 +93,16 @@ export const ACTIONS: ActionSpec[] = [
     scope: "global",
     defaults: ["Mod+,"],
     labelKey: "settings.shortcuts.openSettings",
+  },
+  // The app lock (ADR #118). Mod+L for the letter Windows already uses for
+  // Win+L; global, so it wins inside an editor too, which is where a person
+  // stepping away is most likely to have left the focus.
+  {
+    id: "lockNow",
+    category: "general",
+    scope: "global",
+    defaults: ["Mod+L"],
+    labelKey: "settings.shortcuts.lockNow",
   },
   {
     id: "toggleCommandPalette",

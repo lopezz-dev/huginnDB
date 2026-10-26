@@ -1,0 +1,402 @@
+/*
+ * The app lock's padlock (Padlock.tsx). Sticker style: the H mark's ink
+ * outline and white rim, the brand blue body, the cylinder's steel and LEDs.
+ * Every phase is a `data-phase` on the <svg>; the geometry never changes, only
+ * what moves. Transforms are in viewBox units (`transform-box: view-box`).
+ */
+
+.padlock {
+  --padlock-ink: #0b1020;
+  --padlock-led-off: #26324a;
+  --padlock-blue: #4d8dff;
+  --padlock-green: #34d27b;
+  --padlock-amber: #ffb020;
+  --padlock-red: #ff4d5e;
+  overflow: visible;
+}
+
+.padlock g,
+.padlock path,
+.padlock circle,
+.padlock rect {
+  transform-box: view-box;
+}
+
+/* ── Shackle ─────────────────────────────────────────────────────────── */
+
+.padlock-shackle path {
+  fill: none;
+  stroke-linecap: round;
+}
+.padlock-shackle-rim {
+  stroke: #fff;
+  stroke-width: 40;
+}
+.padlock-shackle-line {
+  stroke: var(--padlock-ink);
+  stroke-width: 30;
+}
+.padlock-shackle-steel {
+  stroke: url(#padlock-steel);
+  stroke-width: 18;
+}
+.padlock-shackle-shine {
+  stroke: #fff;
+  stroke-opacity: 0.7;
+  stroke-width: 3.5;
+}
+.padlock-shackle {
+  /* The right leg's top: the hinge it swings on. */
+  transform-origin: 162px 132px;
+}
+
+/* ── Body ────────────────────────────────────────────────────────────── */
+
+.padlock-body-rim {
+  fill: #fff;
+  stroke: #fff;
+  stroke-width: 22;
+  stroke-linejoin: round;
+}
+.padlock-body-fill {
+  stroke: var(--padlock-ink);
+  stroke-width: 8;
+  stroke-linejoin: round;
+}
+.padlock-body {
+  transform-origin: 120px 236px;
+}
+.padlock-band {
+  stroke: var(--padlock-ink);
+  stroke-opacity: 0.35;
+  stroke-width: 3;
+}
+.padlock-gloss {
+  fill: #fff;
+  opacity: 0.42;
+}
+.padlock-keyhole {
+  fill: var(--padlock-ink);
+}
+.padlock-led {
+  fill: var(--padlock-led-off);
+  stroke: var(--padlock-ink);
+  stroke-width: 3;
+  transition: fill 180ms ease-out;
+}
+
+/* ── Effects ─────────────────────────────────────────────────────────── */
+
+.padlock-ring {
+  fill: none;
+  stroke: var(--padlock-amber);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 0;
+  opacity: 0;
+  transform: rotate(-90deg);
+  transform-origin: 120px 160px;
+}
+.padlock-impact {
+  stroke: var(--padlock-blue);
+  stroke-width: 6;
+  opacity: 0;
+  transform-origin: 120px 160px;
+}
+.padlock-sparks {
+  fill: #9cc2ff;
+  stroke: var(--padlock-ink);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  opacity: 0;
+  transform-origin: 120px 140px;
+}
+.padlock-float,
+.padlock-shake {
+  transform-origin: 120px 150px;
+}
+
+/* ── Phases ──────────────────────────────────────────────────────────── */
+
+/* At rest, the lock breathes a little: alive, not busy. */
+.padlock:is([data-phase="locked"], [data-phase="waiting"], [data-phase="checking"], [data-phase="broken"])
+  .padlock-float {
+  animation: padlock-float 4.2s ease-in-out infinite;
+}
+
+/* Closing: the shackle drops in, the body takes the hit, the lines flash. */
+.padlock[data-phase="closing"] .padlock-shackle {
+  animation: padlock-drop 620ms cubic-bezier(0.3, 0, 0.25, 1) both;
+}
+.padlock[data-phase="closing"] .padlock-body {
+  animation: padlock-clunk 620ms ease-out both;
+}
+.padlock[data-phase="closing"] .padlock-impact {
+  animation: padlock-impact 620ms ease-out both;
+}
+.padlock[data-phase="closing"] .padlock-led {
+  animation: padlock-led-blink 620ms steps(1) both;
+}
+
+/* Checking: the LEDs chase while the password is derived. */
+.padlock[data-phase="checking"] .padlock-led {
+  animation: padlock-led-chase 720ms ease-in-out infinite;
+}
+.padlock[data-phase="checking"] .padlock-led-2 {
+  animation-delay: 120ms;
+}
+.padlock[data-phase="checking"] .padlock-led-3 {
+  animation-delay: 240ms;
+}
+
+/* Wrong: shake and flash red. */
+.padlock[data-phase="wrong"] .padlock-shake {
+  animation: padlock-shake 440ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+.padlock:is([data-phase="wrong"], [data-phase="broken"]) .padlock-led {
+  fill: var(--padlock-red);
+}
+
+/* Waiting: amber, and the ring drains over the wait. */
+.padlock[data-phase="waiting"] .padlock-led {
+  fill: var(--padlock-amber);
+  animation: padlock-led-pulse 1.2s ease-in-out infinite;
+}
+.padlock[data-phase="waiting"] .padlock-ring {
+  opacity: 0.85;
+  animation: padlock-drain var(--padlock-wait) linear forwards;
+}
+
+/* Opening: up, then the swing; green; a burst. */
+.padlock:is([data-phase="opening"], [data-phase="open"]) .padlock-led {
+  fill: var(--padlock-green);
+}
+.padlock[data-phase="opening"] .padlock-shackle {
+  animation: padlock-unlatch 700ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+.padlock[data-phase="opening"] .padlock-body {
+  animation: padlock-release 700ms ease-out both;
+}
+.padlock[data-phase="opening"] .padlock-sparks {
+  animation: padlock-sparks 700ms ease-out 180ms both;
+}
+.padlock[data-phase="open"] .padlock-shackle {
+  transform: translateY(-18px) rotate(26deg);
+}
+
+@keyframes padlock-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+@keyframes padlock-drop {
+  0% {
+    transform: translateY(-34px) rotate(18deg);
+  }
+  40% {
+    transform: translateY(-34px) rotate(0deg);
+  }
+  62% {
+    transform: translateY(5px);
+  }
+  78% {
+    transform: translateY(-3px);
+  }
+  100% {
+    transform: translateY(0);
+  }
+}
+@keyframes padlock-clunk {
+  0%,
+  58% {
+    transform: scale(1, 1);
+  }
+  66% {
+    transform: scale(1.05, 0.93);
+  }
+  82% {
+    transform: scale(0.98, 1.02);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+@keyframes padlock-impact {
+  0%,
+  60% {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.12);
+  }
+}
+@keyframes padlock-led-blink {
+  0%,
+  62% {
+    fill: var(--padlock-led-off);
+  }
+  66% {
+    fill: var(--padlock-blue);
+  }
+  86%,
+  100% {
+    fill: var(--padlock-led-off);
+  }
+}
+@keyframes padlock-led-chase {
+  0%,
+  100% {
+    fill: var(--padlock-led-off);
+  }
+  35% {
+    fill: var(--padlock-blue);
+  }
+}
+@keyframes padlock-led-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes padlock-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  18% {
+    transform: translateX(-11px) rotate(-2deg);
+  }
+  38% {
+    transform: translateX(9px) rotate(1.5deg);
+  }
+  58% {
+    transform: translateX(-6px);
+  }
+  78% {
+    transform: translateX(3px);
+  }
+}
+@keyframes padlock-drain {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 100;
+  }
+}
+@keyframes padlock-unlatch {
+  0% {
+    transform: translateY(0) rotate(0deg);
+  }
+  35% {
+    transform: translateY(-22px) rotate(0deg);
+  }
+  100% {
+    transform: translateY(-18px) rotate(26deg);
+  }
+}
+@keyframes padlock-release {
+  0% {
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.04, 0.96);
+  }
+  60%,
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes padlock-sparks {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(-20deg);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1.1) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.35) rotate(12deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Every state stays readable — LED colours, the open shackle, the ring —
+     but nothing moves. */
+  .padlock *,
+  .padlock {
+    animation: none !important;
+  }
+  .padlock[data-phase="opening"] .padlock-shackle {
+    transform: translateY(-18px) rotate(26deg);
+  }
+  .padlock[data-phase="waiting"] .padlock-ring {
+    opacity: 0.85;
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ── Lock screen (LockScreen.tsx) ────────────────────────────────────── */
+
+/* The caption and the form arrive just after the padlock lands, staggered by
+   `animation-delay` at the call site. */
+.lock-reveal {
+  animation: lock-reveal 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.lock-bloom {
+  transition: background-color 400ms ease-out;
+}
+/* Unlocked: the stage lifts towards the viewer and the wall dissolves into
+   the app mounting behind it. */
+.lock-screen-exit .lock-stage {
+  animation: lock-stage-exit 320ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+.lock-screen-exit {
+  animation: lock-screen-exit 320ms ease-in forwards;
+}
+
+@keyframes lock-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes lock-stage-exit {
+  to {
+    opacity: 0;
+    transform: scale(1.08);
+    filter: blur(2px);
+  }
+}
+@keyframes lock-screen-exit {
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lock-reveal,
+  .lock-screen-exit,
+  .lock-screen-exit .lock-stage {
+    animation: none !important;
+  }
+}

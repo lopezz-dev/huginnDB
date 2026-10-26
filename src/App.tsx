@@ -407,6 +407,15 @@ export default function App() {
   const shortcutHandlers = useMemo(
     () => ({
       openSettings: () => openSettings(),
+      // With the lock off there is nothing to lock yet: say so where it is
+      // turned on, rather than ignoring the key.
+      lockNow: () => {
+        void api.vaultStatus().then((s) => {
+          if (s.mode === "unlocked") return api.vaultLock();
+          notify.info(t("lock.notOn"));
+          openSettings("security");
+        });
+      },
       toggleCommandPalette: () => togglePalette(),
       // Same palette, pre-filtered to its actions mode (VS Code's
       // Ctrl+Shift+P), so "run a command" never competes with the tables and
@@ -525,6 +534,7 @@ export default function App() {
     }),
     [
       openSettings,
+      t,
       togglePalette,
       openPaletteWith,
       toggleSwitcher,

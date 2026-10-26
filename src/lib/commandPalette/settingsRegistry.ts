@@ -663,6 +663,17 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     toggle: (p, w) => w.updateUpdates({ autoInstall: !p.updates.autoInstall }),
   },
 
+  // ── Security ──────────────────────────────────────────────────────────────
+  {
+    prefId: "lock.idleMinutes",
+    section: "security",
+    labelKey: "settings.security.idleMinutes.label",
+    descKey: "settings.security.idleMinutes.desc",
+    keywords:
+      "lock idle inactivity timeout minutes master password vault bloqueo inactividad minutos contraseña maestra",
+    value: num((p) => p.lock.idleMinutes),
+  },
+
   // ── Terminal ──────────────────────────────────────────────────────────────
   {
     prefId: "terminal.enabled",

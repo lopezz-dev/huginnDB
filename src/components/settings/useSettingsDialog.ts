@@ -27,6 +27,7 @@ import type { PrefId } from "@/lib/prefId";
 
 export type SettingsSection =
   | "general"
+  | "security"
   | "editor"
   | "grid"
   | "notifications"
