@@ -8,6 +8,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Política gestionada: exigir el bloqueo de la app y acotarlo.** El
+  `appLock` de un rol fija `required` (HuginnDB se abre en una pantalla que
+  pide crear la contraseña maestra y el bloqueo no se puede desactivar),
+  `maxIdleMinutes` y `lockWithSession`; `allowWindowsHello` se acepta y queda
+  reservado. Una política solo endurece el bloqueo, nunca lo relaja, y una
+  política que no se puede leer mantiene el bloqueo que haya. Actualiza todas
+  las instalaciones antes de añadir `appLock`: las anteriores leen el campo
+  como una política no válida. Consulta `docs/POLICY.es.md` y el ADR #120.
+
 ## [1.36.0] — 2026-10-26
 
 ### Añadido

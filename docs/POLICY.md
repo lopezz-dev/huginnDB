@@ -264,6 +264,39 @@ cannot be applied, blocks downloads too. Without any policy, downloading is on.
 "roles": { "analyst": { "allowToolDownloads": true, "rules": [ … ] } }
 ```
 
+### Requiring the app lock
+
+`"appLock"` on a **role** sets what the people in it may choose about the app
+lock (see `APP_LOCK.md`). Every field only tightens; none of them turns off a
+lock someone turned on.
+
+```json
+"roles": { "analyst": {
+  "appLock": { "required": true, "maxIdleMinutes": 15, "lockWithSession": true },
+  "rules": [ … ]
+} }
+```
+
+- `required`: the lock must be on. On a computer without one, HuginnDB opens on
+  a screen that asks for a master password before anything else, and turning
+  the lock off is refused.
+- `maxIdleMinutes`: the longest HuginnDB may sit idle before it locks. A
+  shorter time stays the person's choice; "Never" stops being one. Must be at
+  least 1.
+- `lockWithSession`: whether HuginnDB locks with the computer's session
+  (Win+L, a Remote Desktop disconnect), decided for the person.
+- `allowWindowsHello`: accepted, and has no effect yet. It is reserved for when
+  Windows Hello can unlock HuginnDB, so a policy written today keeps working.
+
+A policy that is still being read, or that cannot be applied, keeps the lock
+that is there: it cannot be turned off until the policy is read. It does not
+make anyone set one up, since what it would ask is unknown. Without `appLock`,
+or without any policy, the lock is the person's to decide.
+
+> **Update every installation before you add `appLock`.** A HuginnDB older than
+> this one does not know the field, reads the whole policy as invalid, and
+> blocks every connection.
+
 ## Each person with their own database user
 
 The app's policy is a guardrail for people, because the database password

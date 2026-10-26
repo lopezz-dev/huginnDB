@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Managed policy: require the app lock and bound it.** A role's `appLock`
+  sets `required` (HuginnDB opens on a "set a master password" screen and the
+  lock cannot be turned off), `maxIdleMinutes` and `lockWithSession`;
+  `allowWindowsHello` is accepted and reserved. A policy only ever tightens
+  the lock, and a policy that cannot be read keeps the lock that is there.
+  Update every installation before adding `appLock`: older ones read the
+  field as an invalid policy. See `docs/POLICY.md` and ADR #120.
+
 ## [1.36.0] — 2026-10-26
 
 ### Added

@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { listen } from "@tauri-apps/api/event";
-import { KeyRound, Lock, TriangleAlert } from "lucide-react";
+import { KeyRound, Lock, ShieldCheck, TriangleAlert } from "lucide-react";
 
 import { LOCK_CHANGED_EVENT } from "@/components/lock/LockGate";
 import {
@@ -57,6 +57,24 @@ export function SecuritySection() {
   }, []);
 
   const on = status?.mode === "unlocked";
+  const policy = status?.policy;
+  // The organization's demands (ADR #120). The backend enforces them; these
+  // only show the controls as they will behave.
+  const lockPinned = on && policy?.mayDisable === false;
+  const maxIdle = policy?.maxIdleMinutes ?? null;
+  const idleChoices = maxIdle
+    ? [...new Set([...IDLE_CHOICES.filter((m) => m > 0 && m <= maxIdle), maxIdle])].sort(
+        (a, b) => a - b,
+      )
+    : IDLE_CHOICES;
+  const idleValue = status ? status.idleMinutes : lock.idleMinutes;
+  const sessionPinned = policy?.lockWithSession ?? null;
+  const managedNote = (key: string, values: Record<string, unknown> = {}) => (
+    <p className="flex items-start gap-2 text-2xs leading-relaxed text-muted-foreground">
+      <ShieldCheck aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-brand" />
+      {t(key, { role: policy?.role ?? "", ...values })}
+    </p>
+  );
 
   return (
     <div className="space-y-5 text-sm">
@@ -67,17 +85,21 @@ export function SecuritySection() {
           label={t("settings.security.lock.label")}
           description={on ? t("settings.security.lock.descOn") : t("settings.security.lock.descOff")}
           footer={
-            !on && (
+            !on ? (
               <p className="flex items-start gap-2 text-2xs leading-relaxed text-muted-foreground">
                 <TriangleAlert aria-hidden className="mt-px h-3.5 w-3.5 shrink-0 text-warning" />
                 {t("settings.security.lock.forgetting")}
               </p>
-            )
+            ) : lockPinned ? (
+              managedNote(
+                policy?.role ? "settings.security.managed.required" : "settings.security.managed.unreadable",
+              )
+            ) : undefined
           }
         >
           <Switch
             checked={on}
-            disabled={!status}
+            disabled={!status || lockPinned}
             onCheckedChange={(v) => setDialog(v ? "enable" : "disable")}
             aria-label={t("settings.security.lock.label")}
           />
@@ -114,14 +136,15 @@ export function SecuritySection() {
           prefId="lock.idleMinutes"
           description={t("settings.security.idleMinutes.desc")}
           htmlFor="prefs-lock-idle"
+          footer={maxIdle ? managedNote("settings.security.managed.maxIdle", { count: maxIdle }) : undefined}
         >
           <NativeSelect
             id="prefs-lock-idle"
-            value={String(lock.idleMinutes)}
+            value={String(idleValue)}
             onChange={(e) => updateLock({ idleMinutes: Number(e.target.value) })}
             className="w-40"
           >
-            {IDLE_CHOICES.map((m) => (
+            {idleChoices.map((m) => (
               <option key={m} value={m}>
                 {m === 0
                   ? t("settings.security.idleMinutes.never")
@@ -143,12 +166,14 @@ export function SecuritySection() {
               <p className="text-2xs text-muted-foreground">
                 {t("settings.security.withSession.unavailable")}
               </p>
+            ) : sessionPinned !== null ? (
+              managedNote("settings.security.managed.withSession")
             ) : undefined
           }
         >
           <Switch
-            checked={lock.withSession}
-            disabled={!!status && !status.sessionWatch}
+            checked={sessionPinned ?? lock.withSession}
+            disabled={(!!status && !status.sessionWatch) || sessionPinned !== null}
             onCheckedChange={(v) => updateLock({ withSession: v })}
             aria-label={t("settings.security.withSession.label")}
           />

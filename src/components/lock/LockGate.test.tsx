@@ -46,6 +46,14 @@ function status(mode: LockStatus["mode"], extra: Partial<LockStatus> = {}): Lock
     sessionWatch: true,
     language: "en",
     minPasswordChars: 12,
+    policy: {
+      role: null,
+      required: false,
+      mayDisable: true,
+      maxIdleMinutes: null,
+      lockWithSession: null,
+      allowWindowsHello: true,
+    },
     ...extra,
   };
 }
@@ -122,6 +130,26 @@ describe("LockGate", () => {
     // The wait is said where the status goes, and the field is closed for it.
     expect(await screen.findByText(/Try again in 4 seconds/, {}, { timeout: 2000 })).toBeTruthy();
     expect((screen.getByPlaceholderText("Master password") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByText("behind the wall")).toBeNull();
+  });
+
+  it("asks for a master password before anything when the organization requires the lock", async () => {
+    vaultStatus.mockResolvedValue(
+      status("setup", {
+        policy: {
+          role: "sales",
+          required: true,
+          mayDisable: false,
+          maxIdleMinutes: 10,
+          lockWithSession: true,
+          allowWindowsHello: false,
+        },
+      }),
+    );
+    mount();
+    expect(await screen.findByText("Set up the app lock")).toBeTruthy();
+    expect(screen.getByText(/role "sales"/)).toBeTruthy();
+    expect(screen.getByText("Set the master password")).toBeTruthy();
     expect(screen.queryByText("behind the wall")).toBeNull();
   });
 

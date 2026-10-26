@@ -2131,6 +2131,13 @@
         "descWindows": "Cuando se bloquea Windows (Win+L) o se desconecta una sesión de Escritorio remoto.",
         "desc": "Cuando se bloquea la sesión del escritorio.",
         "unavailable": "Este sistema no avisa cuando se bloquea la sesión, así que HuginnDB no puede seguirla."
+      },
+      "managed": {
+        "required": "Tu organización exige el bloqueo de la app (rol «{{role}}»).",
+        "unreadable": "Ahora mismo no se puede leer la política de tu organización, así que el bloqueo sigue activado.",
+        "maxIdle_one": "Tu organización permite como máximo {{count}} minuto.",
+        "maxIdle_other": "Tu organización permite como máximo {{count}} minutos.",
+        "withSession": "Esto lo decide tu organización (rol «{{role}}»)."
       }
     }
   },
@@ -4227,6 +4234,13 @@
       "action": "Desactivar",
       "done_one": "Bloqueo desactivado: {{count}} secreto ha vuelto al llavero.",
       "done_other": "Bloqueo desactivado: {{count}} secretos han vuelto al llavero."
+    },
+    "setup": {
+      "title": "Configura el bloqueo de la app",
+      "subtitle": "Tu organización exige una contraseña maestra antes de abrir HuginnDB.",
+      "subtitleRole": "Tu organización exige una contraseña maestra para el rol «{{role}}» antes de abrir HuginnDB.",
+      "explain": "Tus contraseñas, frases SSH y la clave de la IA se guardarán en una bóveda cifrada que solo abre esta contraseña. Si la olvidas, los secretos se pierden y tendrás que volver a escribir las contraseñas.",
+      "action": "Crear la contraseña maestra"
     }
   }
 }

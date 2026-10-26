@@ -1237,7 +1237,8 @@ export interface LockPrefs {
  * it without reading the preferences.
  */
 export interface LockStatus {
-  mode: "off" | "locked" | "unlocked" | "broken";
+  /** `setup`: the organization requires the lock and there is no vault yet. */
+  mode: "off" | "locked" | "unlocked" | "broken" | "setup";
   /** Why the vault is broken, when it is. */
   problem: string | null;
   /** The wait owed before the next unlock attempt. */
@@ -1248,6 +1249,21 @@ export interface LockStatus {
   sessionWatch: boolean;
   language: string;
   minPasswordChars: number;
+  /** What the organization's policy asks of the lock. */
+  policy: LockPolicy;
+}
+
+/** Mirrors `policy::LockPolicy` (ADR #120). */
+export interface LockPolicy {
+  /** The role whose `appLock` this is; `null` without an active policy. */
+  role: string | null;
+  required: boolean;
+  /** False when the lock is required, or the policy cannot be read. */
+  mayDisable: boolean;
+  maxIdleMinutes: number | null;
+  lockWithSession: boolean | null;
+  /** Reserved for Windows Hello. */
+  allowWindowsHello: boolean;
 }
 
 /** Mirrors `commands::vault::UnlockAnswer`. */
