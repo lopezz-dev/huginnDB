@@ -471,12 +471,14 @@ impl PolicyDoc {
             if let Some(lock) = &role.app_lock {
                 if lock.max_idle_minutes == Some(0) {
                     return Err(format!(
-                        "role {name:?}: appLock.maxIdleMinutes is 0; leave it out to let                          people choose, or give the longest idle time in minutes"
+                        "role {name:?}: appLock.maxIdleMinutes is 0; leave it out to let \
+                         people choose, or give the longest idle time in minutes"
                     ));
                 }
                 if lock.max_idle_minutes.is_some() && !lock.required {
                     warnings.push(format!(
-                        "role {name:?}: appLock.maxIdleMinutes applies only while the lock is                          on, and appLock.required is false, so people may still leave it off"
+                        "role {name:?}: appLock.maxIdleMinutes applies only while the lock is \
+                         on, and appLock.required is false, so people may still leave it off"
                     ));
                 }
             }

@@ -126,9 +126,11 @@ pub async fn vault_disable(
     if !policy.may_disable {
         return Err(AppError::InvalidInput(match policy.role {
             Some(role) => format!(
-                "your organization's HuginnDB policy requires the app lock for the role                  \"{role}\" (appLock.required), so it cannot be turned off"
+                "your organization's HuginnDB policy requires the app lock for the role \
+                 \"{role}\" (appLock.required), so it cannot be turned off"
             ),
-            None => "your organization's HuginnDB policy cannot be read right now, so the app                      lock stays on until it can"
+            None => "your organization's HuginnDB policy cannot be read right now, so the app \
+                     lock stays on until it can"
                 .into(),
         }));
     }
