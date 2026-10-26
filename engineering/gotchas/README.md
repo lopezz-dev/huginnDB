@@ -80,6 +80,12 @@ Template: [`../templates/gotcha.md`](../templates/gotcha.md).
 | 51 | ADR: [Markdown's navigator is React context, and its scroll-to-anchor clears last](../adr/adr-051-markdown-navigator-context-scroll-order.md) | In a React effect that schedules a requestAnimationFrame, updating a dependency before the frame runs triggers the effect cleanup, which cancels the frame so the scroll never happens. | accepted |
 | 85 | Gotcha: ["Adjust state when a prop changes" must remember the previous prop in *state* — a ref survives the render StrictMode throws away](gotcha-085-adjust-state-during-render-needs-state-not-a-ref.md) | Under StrictMode a component body runs twice and the first pass is discarded, but a useRef mutation is not, so a ref-based 'last applied' marker makes the second pass skip the setState and the update is lost; tests not mounted in StrictMode cannot see it. | active |
 
+### russh
+
+| # | Entry | Trap | Status |
+| - | ----- | ---- | ------ |
+| 115 | Gotcha: [`russh` signs an RSA key with `ssh-rsa` (SHA-1) unless it is told the hash, and OpenSSH 8.8+ refuses that](gotcha-115-russh-rsa-key-without-hash-signs-sha1.md) | An RSA key wrapped with `PrivateKeyWithHashAlg::new(key, None)` signs with SHA-1 `ssh-rsa`, which OpenSSH 8.8+ rejects by default; `russh` never negotiates `rsa-sha2-*` unless the caller asks `best_supported_rsa_hash()` and passes the hash. | active |
+
 ### security
 
 | # | Entry | Trap | Status |
