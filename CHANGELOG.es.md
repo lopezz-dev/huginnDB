@@ -109,6 +109,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     versiones anteriores leen una política con ese campo como rota y bloquean
     todas las conexiones. El editor lo avisa al guardar. Ver `docs/POLICY.md` y
     el ADR #113.
+- **Añadir conexiones con ayuda de una IA, sin darle las llaves.** La guía del
+  MCP (también en **Ayuda → Documentación**) tiene una sección nueva, *Añadir
+  conexiones*, que documenta el fichero de importación de perfiles lo bastante
+  bien como para que un asistente lo escriba: el bloque `meta`, los siete
+  campos obligatorios, los opcionales y un perfil por driver (PostgreSQL, MySQL
+  por túnel SSH, SQLite, MongoDB desde una URI, SQL Server).
+  - Es la respuesta a «¿puede el conector crear conexiones?»: no, a propósito.
+    Una herramienta que las creara dejaría al asistente decidir adónde se
+    conecta HuginnDB, y la contraseña pasaría por la conversación. El asistente
+    escribe un fichero sin secretos; tú lo importas con **Archivo → Importar
+    perfiles…**, ves lo que añade y escribes cada contraseña en la app.
+  - Lo importado se queda en local (publicarlo en un origen compartido sigue
+    siendo decisión tuya) y no queda expuesto ni al conector MCP ni al panel de
+    IA.
+  - Un test del backend importa todos los ejemplos de la guía en inglés y en
+    español, así que el formato documentado no puede separarse de lo que acepta
+    el importador.
 
 ### Corregido
 

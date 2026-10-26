@@ -594,6 +594,209 @@ conexión son baratas. Una conexión de una sola base de datos (con
 `/nombrebd` ya en su URI) ignora esto — solo hace falta cuando
 `list_connections` muestra un `database` vacío.
 
+## Añadir conexiones: que el asistente escriba un fichero de importación
+
+El conector no tiene ninguna herramienta que cree, edite o borre una conexión, y
+es a propósito. Todo lo anterior se apoya en una regla: el asistente solo llega
+a las conexiones que *tú* has configurado y expuesto. Una herramienta que las
+creara le dejaría decidir adónde se conecta HuginnDB, y la contraseña tendría
+que pasar por la conversación, que el cliente suele enviar a un modelo alojado
+en otra parte.
+
+Lo que sí puede hacer es ahorrarte el tecleo. Pídele que escriba un **fichero
+de importación de perfiles sin secretos** e impórtalo tú:
+
+1. El asistente escribe un fichero `.json` con el formato de abajo.
+2. **Archivo → Importar perfiles…** lo abre. El diálogo muestra lo que va a
+   añadir y qué hacer con cualquier perfil que choque con uno que ya tengas.
+3. Cada conexión importada pide su contraseña antes de conectar. Ábrela en el
+   diálogo de conexión para ponerla, y también la contraseña SSH o la frase de
+   paso de la clave si lleva túnel.
+
+Lo que importas es solo tuyo. Es **local** (no está ligado a ningún origen
+compartido, así que publicarlo en uno sigue siendo decisión tuya), **no está
+expuesto** ni al conector MCP ni al panel de IA (el importador quita las dos
+cosas, diga lo que diga el fichero) y conserva el nombre que le da el fichero,
+con un sufijo si ya existe una conexión con ese nombre.
+
+Basta con un prompt de este estilo:
+
+> Escribe un fichero de importación de perfiles de HuginnDB, sin contraseñas,
+> para estas conexiones: …. El formato está en la guía del MCP de HuginnDB, en
+> «Añadir conexiones».
+
+### El formato del fichero
+
+```json
+{
+  "meta": {
+    "version": 1,
+    "app": "huginndb",
+    "kind": "profiles",
+    "exported_at": "2026-10-26T09:00:00Z",
+    "encrypted": false
+  },
+  "profiles": [
+    {
+      "id": "import-pg-orders",
+      "name": "Pedidos · producción",
+      "driver": "postgres",
+      "host": "pg.example.internal",
+      "port": 5432,
+      "database": "orders",
+      "username": "orders_reader",
+      "ssl": true,
+      "group": "Acme",
+      "secrets": null
+    }
+  ]
+}
+```
+
+`meta` es fijo salvo `exported_at`, que admite cualquier marca de tiempo (por
+convención, RFC 3339). `encrypted` es `false` y cada `secrets` es `null` o no
+aparece: eso es lo que significa «sin secretos». Un fichero con
+`encrypted: true` pide una frase de paso, y solo lo escribe la exportación de
+la propia HuginnDB.
+
+Los nombres de campo van en `snake_case`. Cada perfil necesita estos siete:
+
+| Campo | Valor |
+| --- | --- |
+| `id` | Cualquier texto que no se repita dentro del fichero. El importador lo sustituye por un id nuevo, así que no tiene que coincidir con nada. |
+| `name` | Lo que muestra la lista de conexiones. |
+| `driver` | `postgres`, `mysql`, `sqlite`, `mongodb` o `sqlserver`. |
+| `host` | Nombre de host o IP. `""` en SQLite. |
+| `port` | `0` significa el puerto por defecto del driver. |
+| `database` | La base de datos que se abre, o la ruta del fichero en SQLite. En un driver de servidor, `""` conecta al servidor y te deja elegir la base de datos en el explorador. |
+| `username` | El usuario de la base de datos. `""` en SQLite. |
+
+Y estos son opcionales:
+
+| Campo | Valor |
+| --- | --- |
+| `ssl` | `true` para negociar TLS. Por defecto, `false`. |
+| `group` | Etiqueta de carpeta en la lista de conexiones. Las conexiones con la misma etiqueta salen juntas. |
+| `ssh_tunnel` | `{ "host", "port", "username", "auth", "host_key_policy" }`. `auth` es `{ "kind": "password" }` o `{ "kind": "key", "path": "…" }`; `host_key_policy` es `accept-new` (por defecto), `strict` o `accept-any`. Con túnel, `host` y `port` son la base de datos vista *desde el servidor SSH*. |
+| `connection_string` | Solo MongoDB: una URI `mongodb://` o `mongodb+srv://`, que se usa en lugar de `host`/`port`/`database`. |
+| `auth_source` | Solo MongoDB: la base de datos de autenticación, normalmente `admin`. |
+| `mssql` | Solo SQL Server: `{ "instance", "trust_server_certificate", "auth" }`. `auth` es `sql` (por defecto) o `windows` (`DOMINIO\usuario` + contraseña, solo en builds de Windows). |
+| `visible_databases` | Una lista de nombres que limita qué bases de datos muestra el explorador. |
+| `operation_timeout_secs` | Timeout de las lecturas que la app lanza por su cuenta (listar tablas, describir una). Si no está, se usa el ajuste global. |
+
+Todo lo demás, fuera. En concreto:
+
+- **Ninguna credencial en ningún sitio.** Ni en `secrets` ni dentro de un
+  `connection_string` de MongoDB (`mongodb://usuario:contraseña@…`): la URI se
+  guarda tal cual en `profiles.json`, en texto plano. Pon el usuario en
+  `username` y deja la contraseña para el paso de importación. HuginnDB la saca
+  del llavero del sistema al conectar.
+- **Sin `origin_id`.** Liga una conexión a un origen compartido, y un fichero
+  escrito a mano no tiene ningún origen al que ligarla.
+- `mcp_exposed`, `mcp_write`, `ai_enabled` y `ai_rows_allowed` no sirven de
+  nada: el importador quita los permisos de exposición, y lo que el asistente
+  puede hacer con una conexión se decide en **Ajustes → MCP** y **Ajustes →
+  IA**, no en el fichero que la creó.
+
+### Un perfil por driver
+
+Cada objeto de abajo va en el array `profiles` del fichero de arriba.
+
+**PostgreSQL**, con TLS:
+
+```json
+{
+  "id": "import-pg",
+  "name": "Pedidos · producción",
+  "driver": "postgres",
+  "host": "pg.example.internal",
+  "port": 5432,
+  "database": "orders",
+  "username": "orders_reader",
+  "ssl": true,
+  "group": "Acme"
+}
+```
+
+**MySQL**, por un túnel SSH con clave, sin base de datos fija:
+
+```json
+{
+  "id": "import-mysql",
+  "name": "Tienda · staging",
+  "driver": "mysql",
+  "host": "127.0.0.1",
+  "port": 3306,
+  "database": "",
+  "username": "shop",
+  "group": "Acme",
+  "ssh_tunnel": {
+    "host": "bastion.example.internal",
+    "port": 22,
+    "username": "deploy",
+    "auth": { "kind": "key", "path": "C:\\Users\\me\\.ssh\\id_ed25519" },
+    "host_key_policy": "accept-new"
+  }
+}
+```
+
+**SQLite**, un fichero local. No hay con qué iniciar sesión, así que queda
+lista nada más importarla:
+
+```json
+{
+  "id": "import-sqlite",
+  "name": "Ejemplo Chinook",
+  "driver": "sqlite",
+  "host": "",
+  "port": 0,
+  "database": "C:\\data\\chinook.db",
+  "username": ""
+}
+```
+
+**MongoDB**, desde una URI sin credenciales:
+
+```json
+{
+  "id": "import-mongo",
+  "name": "Eventos · producción",
+  "driver": "mongodb",
+  "host": "mongo.example.internal",
+  "port": 27017,
+  "database": "",
+  "username": "events_reader",
+  "connection_string": "mongodb://mongo.example.internal:27017/?authSource=admin",
+  "auth_source": "admin",
+  "group": "Acme"
+}
+```
+
+**SQL Server**, con un login SQL contra una instancia con certificado
+autofirmado:
+
+```json
+{
+  "id": "import-mssql",
+  "name": "ERP · producción",
+  "driver": "sqlserver",
+  "host": "sql.example.internal",
+  "port": 1433,
+  "database": "erp",
+  "username": "erp_reader",
+  "mssql": {
+    "instance": null,
+    "trust_server_certificate": true,
+    "auth": "sql"
+  },
+  "group": "Acme"
+}
+```
+
+Un test del backend (`commands::connection`) importa cada ejemplo de esta
+sección, así que un cambio de formato que los rompa hace fallar la build en
+lugar de dejar esta guía desactualizada.
+
 ## Seguridad
 
 - **Escrituras controladas por conexión.** Cada conexión expuesta tiene un
