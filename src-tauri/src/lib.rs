@@ -48,6 +48,7 @@ mod policy;
 mod pool_reaper;
 mod prefs;
 mod pulse;
+mod session_watch;
 mod ssh_known_hosts;
 mod state;
 mod state_file;
@@ -350,6 +351,8 @@ pub fn run() {
             // the idle watcher waits; unlocked, it counts (ADR #118).
             app_lock::sync_gate();
             app_lock::spawn_idle_watcher(app.handle().clone());
+            // And it locks with the operating system's session (ADR #119).
+            session_watch::spawn(app.handle().clone());
             // The silent updater's schedule follows the preference; this only
             // fills in what is missing (an installer hook that failed, a task
             // someone deleted). `schtasks` blocks, so off the async runtime.

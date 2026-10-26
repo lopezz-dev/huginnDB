@@ -43,6 +43,7 @@ function status(mode: LockStatus["mode"], extra: Partial<LockStatus> = {}): Lock
     problem: null,
     retryAfterMs: 0,
     idleMinutes: 15,
+    sessionWatch: true,
     language: "en",
     minPasswordChars: 12,
     ...extra,

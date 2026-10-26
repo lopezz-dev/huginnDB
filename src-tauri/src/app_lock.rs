@@ -88,6 +88,9 @@ pub struct LockStatus {
     /// The wait owed before the next unlock attempt.
     pub retry_after_ms: u64,
     pub idle_minutes: u32,
+    /// Whether this machine reports its session locking (Windows, Linux with
+    /// logind). Settings disables the "lock with the session" row without it.
+    pub session_watch: bool,
     pub language: String,
     pub min_password_chars: usize,
 }
@@ -107,6 +110,7 @@ pub fn status(state: &AppState) -> LockStatus {
         problem,
         retry_after_ms: u64::try_from(retry_after.as_millis()).unwrap_or(u64::MAX),
         idle_minutes: prefs.lock.idle_minutes,
+        session_watch: crate::session_watch::watching(),
         language: prefs.ui.language.clone(),
         min_password_chars: crate::vault::MIN_PASSWORD_CHARS,
     }

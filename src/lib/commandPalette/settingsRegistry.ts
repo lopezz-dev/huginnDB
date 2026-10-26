@@ -49,6 +49,7 @@ export interface PrefsWriters {
   updateAi: (patch: Partial<Preferences["ai"]>) => void;
   updateUpdates: (patch: Partial<Preferences["updates"]>) => void;
   updateTerminal: (patch: Partial<Preferences["terminal"]>) => void;
+  updateLock: (patch: Partial<Preferences["lock"]>) => void;
 }
 
 export interface SettingEntry {
@@ -672,6 +673,16 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     keywords:
       "lock idle inactivity timeout minutes master password vault bloqueo inactividad minutos contraseña maestra",
     value: num((p) => p.lock.idleMinutes),
+  },
+  {
+    prefId: "lock.withSession",
+    section: "security",
+    labelKey: "settings.security.withSession.label",
+    descKey: "settings.security.withSession.desc",
+    keywords:
+      "lock session windows win+l remote desktop disconnect logind bloqueo sesión escritorio remoto desconectar",
+    value: onOff((p) => p.lock.withSession),
+    toggle: (p, w) => w.updateLock({ withSession: !p.lock.withSession }),
   },
 
   // ── Terminal ──────────────────────────────────────────────────────────────

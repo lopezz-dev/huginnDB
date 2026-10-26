@@ -182,6 +182,7 @@ export const DEFAULT_PREFS: Preferences = {
   // Mirrors `LockPrefs::default()`: fifteen minutes, see its reasoning.
   lock: {
     idleMinutes: 15,
+    withSession: true,
   },
   keybindings: {},
 };

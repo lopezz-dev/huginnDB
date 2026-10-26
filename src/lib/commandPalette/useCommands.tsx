@@ -182,6 +182,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   const updateAi = usePreferences((s) => s.updateAi);
   const updateUpdates = usePreferences((s) => s.updateUpdates);
   const updateTerminal = usePreferences((s) => s.updateTerminal);
+  const updateLock = usePreferences((s) => s.updateLock);
   const customThemes = useThemeStore((s) => s.customThemes);
   const themeId = useThemeStore((s) => s.themeId);
   const setThemeId = useThemeStore((s) => s.setThemeId);
@@ -208,6 +209,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       updateAi,
       updateUpdates,
       updateTerminal,
+      updateLock,
     };
     /** The action's current primary binding, for the row's badge. `undefined`
      *  when it ships or was left unbound, so no empty chip renders. */
@@ -883,6 +885,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
     updateAi,
     updateUpdates,
     updateTerminal,
+    updateLock,
     customThemes,
     themeId,
     setThemeId,

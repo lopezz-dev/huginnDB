@@ -71,6 +71,11 @@ Díselo claramente a quien dependa de él:
 - Tras un rato sin pulsar una tecla, hacer clic ni desplazarte en ninguna
   ventana de HuginnDB: 15 minutos por defecto. Puedes cambiarlo, o
   desactivarlo, en **Bloquear tras inactividad**.
+- Cuando se bloquea la sesión de tu equipo: **Win+L**, el bloqueo del
+  protector de pantalla, o al desconectarte de una sesión de Escritorio remoto
+  (cerrar el cliente deja la sesión abierta en el servidor). En Linux, cuando
+  el escritorio bloquea la sesión a través de logind, como hacen GNOME y KDE.
+  Se desactiva con **Bloquear con la sesión**.
 - Cuando pulsas **Ctrl+L** (o eliges **Bloquear ahora** en Ajustes). El atajo
   se puede cambiar en **Ajustes → Atajos**.
 

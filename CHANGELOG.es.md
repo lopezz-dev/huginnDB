@@ -27,7 +27,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     hasta que desbloquees; el conector no puede abrir la bóveda por su
     cuenta.
   - Se bloquea en cada arranque, tras 15 minutos sin actividad (configurable,
-    o nunca) y con **Ctrl+L**. Al bloquearse se cierran las demás ventanas,
+    o nunca), con **Ctrl+L** y cuando se bloquea la sesión: Win+L, o al
+    desconectarte del Escritorio remoto, que deja la sesión abierta en el
+    servidor (en Linux, el bloqueo de sesión de logind). Consulta el ADR
+    #119. Al bloquearse se cierran las demás ventanas,
     todas las conexiones y túneles SSH, y se borra la conversación del panel
     de IA; al desbloquear no se reconecta nada.
   - Tras tres contraseñas incorrectas, cada intento espera más, hasta cinco

@@ -64,6 +64,11 @@ Say this plainly to anyone who relies on it:
 - After a period without a key press, click or scroll in any HuginnDB window:
   15 minutes by default. Change it, or turn it off, under **Lock after
   inactivity**.
+- When your computer's session locks: **Win+L**, the screen saver's lock, or
+  disconnecting from a Remote Desktop session (closing the client leaves the
+  session running on the server). On Linux, when the desktop locks the
+  session through logind, as GNOME and KDE do. Turn it off with **Lock with
+  the session**.
 - When you press **Ctrl+L** (or choose **Lock now** in Settings). The shortcut
   can be changed in **Settings → Shortcuts**.
 

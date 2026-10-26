@@ -2820,6 +2820,7 @@ dependencies = [
  "whoami",
  "windows 0.61.3",
  "windows-registry",
+ "zbus 5.19.0",
  "zeroize",
  "zip",
 ]

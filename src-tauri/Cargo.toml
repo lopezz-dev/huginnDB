@@ -212,7 +212,15 @@ windows-registry = "0.6"
 # links it holds, plus `PKEY_Title` and the `PROPVARIANT` that names each one.
 # Already in the tree through `webview2-com` (the WebView2 bindings Tauri uses),
 # at this same version, so declaring it adds no crate — only these features.
+#
+# Also the app lock's session watcher (`session_watch`, ADR #119): a
+# message-only window registered for `WM_WTSSESSION_CHANGE`.
 windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_RemoteDesktop",
+    "Win32_UI_WindowsAndMessaging",
     "Win32_Storage_EnhancedStorage",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
@@ -221,6 +229,13 @@ windows = { version = "0.61", features = [
     "Win32_UI_Shell_Common",
     "Win32_UI_Shell_PropertiesSystem",
 ] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The app lock's session watcher on Linux (`session_watch`, ADR #119): logind's
+# `LockedHint` and `Lock` signal over D-Bus, on the blocking API. Already in the
+# tree through `tauri-plugin-single-instance`, at this major version and with
+# its default features, so declaring it adds no crate.
+zbus = "5"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
