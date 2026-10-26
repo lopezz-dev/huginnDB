@@ -35,9 +35,12 @@ class NoopResizeObserver {
 }
 
 /** jsdom has no layout, so the list's virtualizer would window nothing —
- *  `virtual-core` reads these two properties, not `getBoundingClientRect`.
+ *  `virtual-core` reads these properties, not `getBoundingClientRect`.
  *  Same shims, and the same reasoning, as `DocumentListView.test.tsx`. */
-function stubSize(prop: "offsetHeight" | "offsetWidth", value: number) {
+function stubSize(
+  prop: "offsetHeight" | "offsetWidth" | "clientHeight" | "clientWidth",
+  value: number,
+) {
   Object.defineProperty(HTMLElement.prototype, prop, {
     configurable: true,
     get: () => value,
@@ -81,6 +84,8 @@ beforeEach(() => {
     NoopResizeObserver;
   stubSize("offsetHeight", 400);
   stubSize("offsetWidth", 600);
+  stubSize("clientHeight", 400);
+  stubSize("clientWidth", 600);
 });
 
 afterEach(() => {

@@ -41,7 +41,7 @@ function docDates(): Record<string, string | undefined> {
       const iso = execFileSync(
         "git",
         ["log", "-1", "--format=%cI", "--", file],
-        { cwd: __dirname, stdio: ["ignore", "pipe", "ignore"] },
+        { cwd: import.meta.dirname, stdio: ["ignore", "pipe", "ignore"] },
       )
         .toString()
         .trim();
@@ -51,7 +51,7 @@ function docDates(): Record<string, string | undefined> {
     }
     if (!date) {
       try {
-        date = fs.statSync(path.resolve(__dirname, file)).mtime.toISOString();
+        date = fs.statSync(path.resolve(import.meta.dirname, file)).mtime.toISOString();
       } catch {
         date = undefined;
       }
@@ -68,7 +68,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
   },
   optimizeDeps: {

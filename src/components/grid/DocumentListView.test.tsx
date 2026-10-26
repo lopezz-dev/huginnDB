@@ -82,13 +82,18 @@ let originalT: typeof i18n.t;
  * as 0-high and windows nothing — the probe below would read zero and this test
  * would "pass" its memo assertion while proving nothing.
  *
- * It has to be `offsetHeight`/`offsetWidth` specifically: `virtual-core`'s
- * `getRect` reads those two properties and not `getBoundingClientRect`, so
- * stubbing the rect (the obvious move) changes nothing at all. The shims live
- * here rather than as an `initialRect` escape hatch in the component, which
- * would be production code existing for jsdom's benefit.
+ * It has to be these properties specifically, not `getBoundingClientRect`:
+ * `virtual-core` sizes the scroll container from `clientHeight`/`clientWidth`
+ * (since 3.19; `offsetHeight`/`offsetWidth` before) and measures each item
+ * from `offsetHeight`/`offsetWidth`, so stubbing the rect (the obvious move)
+ * changes nothing at all. Both pairs are stubbed. The shims live here rather
+ * than as an `initialRect` escape hatch in the component, which would be
+ * production code existing for jsdom's benefit.
  */
-function stubSize(prop: "offsetHeight" | "offsetWidth", value: number) {
+function stubSize(
+  prop: "offsetHeight" | "offsetWidth" | "clientHeight" | "clientWidth",
+  value: number,
+) {
   Object.defineProperty(HTMLElement.prototype, prop, {
     configurable: true,
     get: () => value,
@@ -113,6 +118,8 @@ beforeEach(() => {
     NoopResizeObserver;
   stubSize("offsetHeight", 400);
   stubSize("offsetWidth", 600);
+  stubSize("clientHeight", 400);
+  stubSize("clientWidth", 600);
   calls = [];
   originalT = i18n.t.bind(i18n);
   i18n.t = ((...args: unknown[]) => {
