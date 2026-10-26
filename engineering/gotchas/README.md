@@ -112,6 +112,7 @@ Template: [`../templates/gotcha.md`](../templates/gotcha.md).
 | - | ----- | ---- | ------ |
 | 105 | ADR: [an SSH tunnel redials its own session, views ride their parent's tunnel, and every pool check is bounded](../adr/adr-105-ssh-tunnels-heal-and-pool-checks-are-bounded.md) | russh sends no keepalive by default, so a firewall-dropped session goes unnoticed; sqlx's test_before_acquire ping has no timeout (a silently dropped socket costs 30 s and surfaces as 'too many connections'); sqlx 0.8 also pings unconditionally on release. | accepted |
 | 110 | ADR: [a tunnel holds one SSH session — a slow channel is not a dead session, and a replaced session is closed](../adr/adr-110-a-tunnel-holds-one-ssh-session.md) | `russh` ends a client session only when its `Handle` and every `Channel` opened on it are dropped (each channel holds a clone of the session's sender), so dropping the handle of a session with open channels leaves it connected. | accepted |
+| 117 | ADR: [the tunnel never asks for a host certificate, and one that arrives anyway is pinned by the key it certifies](../adr/adr-117-a-host-certificate-is-pinned-by-the-key-it-certifies.md) | since `russh` 0.65 a server that holds a host certificate presents it *instead of* its bare key whenever the client lists the `*-cert-v01@openssh.com` algorithms (`Preferred::host_key_certificates`), and the certificate is a different blob with a different fingerprint from the key it certifies. | accepted |
 
 ### tanstack
 

@@ -4,7 +4,7 @@ version = "1.35.0"
 description = "HuginnDB headless MCP (Model Context Protocol) connector"
 authors = ["HuginnDB contributors"]
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.90"
 
 # A thin shim over `huginndb_lib::mcp::serve` (see src/main.rs); all the logic
 # lives in the library crate. This is a separate workspace member — not a

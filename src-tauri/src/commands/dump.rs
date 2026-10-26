@@ -345,9 +345,7 @@ pub async fn export_table(
         .await?
         .into_iter()
         .filter(|t| {
-            t.kind == "table"
-                && t.name == table
-                && schema.as_deref().map_or(true, |s| t.schema == s)
+            t.kind == "table" && t.name == table && schema.as_deref().is_none_or(|s| t.schema == s)
         })
         .collect();
     if tables.is_empty() {

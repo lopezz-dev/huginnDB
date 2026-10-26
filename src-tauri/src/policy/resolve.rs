@@ -370,7 +370,7 @@ impl<'a> Ctx<'a> {
     /// discovery, so nobody learns the names of what they cannot reach.
     pub fn relation_visible(&self, schema: Option<&str>, name: &str) -> bool {
         self.relation_grant(schema, name)
-            .map_or(true, |g| !g.is_empty())
+            .is_none_or(|g| !g.is_empty())
     }
 
     /// Everything the subject may do on one relation: the union of what every
@@ -567,9 +567,9 @@ pub fn endpoint_matches(pattern: &EndpointPattern, profile: &ConnectionProfile) 
         }
         EndpointPattern::Server { driver, host, port } => {
             profile.driver != Driver::Sqlite
-                && driver.map_or(true, |d| d == profile.driver)
+                && driver.is_none_or(|d| d == profile.driver)
                 && normalise_host(host) == normalise_host(&profile.host)
-                && port.map_or(true, |p| p == profile.effective_port())
+                && port.is_none_or(|p| p == profile.effective_port())
         }
     }
 }

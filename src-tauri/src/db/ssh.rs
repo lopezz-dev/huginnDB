@@ -30,6 +30,21 @@
 //! handshake with a generic error. We stash a richer human-readable
 //! reason in a shared cell and substitute it on the way out so the user
 //! actually sees what happened.
+//!
+//! ### Host certificates
+//!
+//! Since `russh` 0.65 the server may prove its identity with an OpenSSH host
+//! certificate instead of a bare key — but only if the client advertises the
+//! `*-cert-v01@openssh.com` algorithms, and we never do ([`client_config`]).
+//! A server configured with `HostCertificate` therefore presents its bare key
+//! to us, exactly as before, and every stored fingerprint keeps matching.
+//!
+//! Should a certificate arrive anyway, it is pinned by the key *inside* it
+//! ([`pinned_fingerprint`]): the same fingerprint the bare key has, and the
+//! same guarantee, because that key is what signs the key exchange. The
+//! certificate's own signature is not trusted — no certificate authority is
+//! configured here — which is what OpenSSH does for a host it has no
+//! `@cert-authority` line for. See ADR #117.
 
 use crate::error::{AppError, AppResult};
 use crate::ssh_known_hosts::{self, SharedKnownHosts};
@@ -37,7 +52,9 @@ use crate::state::{HostKeyPolicy, SshAuth, SshTunnel};
 use parking_lot::Mutex;
 use russh::client::{self, Handle};
 use russh::keys::ssh_key::HashAlg;
-use russh::keys::{load_secret_key, PrivateKeyWithHashAlg, PublicKey};
+use russh::keys::{load_secret_key, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
+use russh::Preferred;
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::copy_bidirectional;
@@ -113,6 +130,10 @@ struct VerifyOutcome {
     /// `true` when we accepted an unknown key under [`HostKeyPolicy::AcceptNew`]
     /// and the store needs to be flushed to disk.
     persisted_new: bool,
+    /// The server proved its identity with a certificate rather than a bare
+    /// key — so a test can tell it exercised that arm.
+    #[cfg(test)]
+    certificate_presented: bool,
 }
 
 /// `russh` client handler that runs host-key verification according to the
@@ -125,16 +146,55 @@ struct Client {
     outcome: Arc<Mutex<VerifyOutcome>>,
 }
 
+/// The fingerprint a server's host key is pinned by in
+/// [`crate::ssh_known_hosts`]: OpenSSH-style `SHA256:<base64>`, stable across
+/// crate versions because it is the on-wire fingerprint format.
+///
+/// A certificate is pinned by the key it certifies, so a host that starts
+/// presenting one keeps the fingerprint its bare key was trusted under. Its
+/// authority is not consulted (see "Host certificates" in the module docs).
+fn pinned_fingerprint(server_key: &PublicKeyOrCertificate) -> String {
+    server_key
+        .public_key()
+        .fingerprint(HashAlg::Sha256)
+        .to_string()
+}
+
+/// The `russh` client configuration every tunnel dials with.
+fn client_config() -> client::Config {
+    client::Config {
+        keepalive_interval: Some(SSH_KEEPALIVE_INTERVAL),
+        keepalive_max: SSH_KEEPALIVE_MAX,
+        // `russh` leaves Nagle's algorithm on by default. A database
+        // conversation is small writes waiting on small answers — exactly
+        // the traffic Nagle holds back until the previous segment is
+        // acknowledged, and the peer's delayed ACK can take tens of
+        // milliseconds to come. See `accept_loop` for the other half.
+        nodelay: true,
+        preferred: Preferred {
+            // Never ask for a host certificate. `russh` advertises none by
+            // default; this keeps it so should that default change, because
+            // a server holding one would then present it instead of the bare
+            // key it was trusted under (ADR #117).
+            host_key_certificates: Cow::Borrowed(&[]),
+            ..Preferred::DEFAULT
+        },
+        ..client::Config::default()
+    }
+}
+
 impl client::Handler for Client {
     type Error = russh::Error;
 
     async fn check_server_key(
         &mut self,
-        server_public_key: &PublicKey,
+        server_key: &PublicKeyOrCertificate,
     ) -> Result<bool, Self::Error> {
-        // OpenSSH-style "SHA256:<base64>" representation. Stable across
-        // crate versions because it's the on-wire fingerprint format.
-        let fp = server_public_key.fingerprint(HashAlg::Sha256).to_string();
+        let fp = pinned_fingerprint(server_key);
+        #[cfg(test)]
+        {
+            self.outcome.lock().certificate_presented = server_key.certificate().is_some();
+        }
 
         match self.policy {
             HostKeyPolicy::AcceptAny => Ok(true),
@@ -266,17 +326,7 @@ impl Dialer {
             outcome: outcome.clone(),
         };
 
-        let config = Arc::new(client::Config {
-            keepalive_interval: Some(SSH_KEEPALIVE_INTERVAL),
-            keepalive_max: SSH_KEEPALIVE_MAX,
-            // `russh` leaves Nagle's algorithm on by default. A database
-            // conversation is small writes waiting on small answers — exactly
-            // the traffic Nagle holds back until the previous segment is
-            // acknowledged, and the peer's delayed ACK can take tens of
-            // milliseconds to come. See `accept_loop` for the other half.
-            nodelay: true,
-            ..client::Config::default()
-        });
+        let config = Arc::new(client_config());
         let mut session = client::connect(config, (tunnel.host.as_str(), tunnel.port), handler)
             .await
             .map_err(|e| {
@@ -833,6 +883,160 @@ PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
 -----END OPENSSH PRIVATE KEY-----
 ";
 
+    /// [`TEST_HOST_KEY`] certified as a host key by a throwaway CA
+    /// (`ssh-keygen -s ca -I huginndb-test-bastion -h -n 127.0.0.1`), valid
+    /// forever. It guards nothing either.
+    const TEST_HOST_CERT: &str = "ssh-ed25519-cert-v01@openssh.com AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIO1i7WZXKfGu+of2alHk0ruQjH+72+YKweg7Cxk6hakxAAAAIEWSENdUdXEFjYurq621G6d4PNG6q7XCrCk/meLAEfTyAAAAAAAAAAAAAAACAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbgAAAA0AAAAJMTI3LjAuMC4xAAAAAAAAAAD//////////wAAAAAAAAAAAAAAAAAAADMAAAALc3NoLWVkMjU1MTkAAAAg1ncTwf7aM61FIdGLx9tbkov52zhWddzGRJh+mvMgz0sAAABTAAAAC3NzaC1lZDI1NTE5AAAAQHkHGaIZH91h8aGP3+74TZWIuBTN9T/luc4Veimvpbl6UFYcdKu2IJW44l/FnTzL0e9bizlQYEz+CgiGp2EZYAU= huginndb-test-bastion";
+
+    fn test_host_key() -> russh::keys::PrivateKey {
+        russh::keys::decode_secret_key(TEST_HOST_KEY, None).unwrap()
+    }
+
+    fn test_host_cert() -> russh::keys::Certificate {
+        russh::keys::Certificate::from_openssh(TEST_HOST_CERT).unwrap()
+    }
+
+    /// The fingerprint of [`TEST_HOST_KEY`] as the bare key a server presents.
+    fn bare_key_fingerprint() -> String {
+        pinned_fingerprint(&test_host_key().public_key().clone().into())
+    }
+
+    /// A user who trusted a host by its bare key must not see "host key
+    /// changed" the day it presents a certificate for that same key.
+    #[test]
+    fn a_host_certificate_is_pinned_by_the_key_it_certifies() {
+        let presented: PublicKeyOrCertificate = test_host_cert().into();
+        assert_eq!(pinned_fingerprint(&presented), bare_key_fingerprint());
+        // Nor is the authority that signed it ever what gets pinned.
+        assert_ne!(
+            pinned_fingerprint(&presented),
+            test_host_cert()
+                .signature_key()
+                .fingerprint(HashAlg::Sha256)
+                .to_string()
+        );
+    }
+
+    /// The tunnel never asks for a host certificate, so a server holding one
+    /// presents the bare key every stored fingerprint was taken from.
+    #[test]
+    fn the_tunnel_never_advertises_host_certificate_algorithms() {
+        assert!(client_config().preferred.host_key_certificates.is_empty());
+    }
+
+    /// An in-process server holding [`TEST_HOST_CERT`]; returns its port.
+    async fn certified_server() -> u16 {
+        let config = Arc::new(server::Config {
+            keys: vec![test_host_key()],
+            certificates: vec![test_host_cert()],
+            auth_rejection_time: Duration::from_millis(0),
+            ..Default::default()
+        });
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let handler = BastionSession {
+                    seen: Default::default(),
+                    forward_to: 1,
+                    authenticated: false,
+                };
+                let config = config.clone();
+                tokio::spawn(async move {
+                    if let Ok(running) = server::run_stream(config, socket, handler).await {
+                        let _ = running.await;
+                    }
+                });
+            }
+        });
+        port
+    }
+
+    /// Dial `port` with the tunnel's handler under `policy`, advertising host
+    /// certificates when `ask_for_certificate` — which the tunnel never does,
+    /// and is the only way to make a server present one.
+    async fn handshake(
+        port: u16,
+        policy: HostKeyPolicy,
+        store: SharedKnownHosts,
+        ask_for_certificate: bool,
+    ) -> (bool, Arc<Mutex<VerifyOutcome>>) {
+        let outcome = Arc::new(Mutex::new(VerifyOutcome::default()));
+        let handler = Client {
+            policy,
+            host_port: format!("127.0.0.1:{port}"),
+            store,
+            outcome: outcome.clone(),
+        };
+        let mut config = client_config();
+        if ask_for_certificate {
+            config.preferred.host_key_certificates =
+                Cow::Owned(vec![russh::keys::Algorithm::Ed25519]);
+        }
+        let connected = client::connect(Arc::new(config), ("127.0.0.1", port), handler)
+            .await
+            .is_ok();
+        (connected, outcome)
+    }
+
+    /// Both arms of the certificate decision against a server that holds one:
+    /// as the tunnel dials, it presents the bare key; made to present the
+    /// certificate, it is pinned by the same fingerprint, so a stored entry
+    /// keeps matching, `Strict` still refuses a host it does not know, and
+    /// `AcceptNew` stores what the bare key would have stored.
+    #[tokio::test]
+    async fn a_server_with_a_host_certificate_keeps_its_stored_fingerprint() {
+        let port = certified_server().await;
+        let host_port = format!("127.0.0.1:{port}");
+        let trusted = || -> SharedKnownHosts {
+            let store = SharedKnownHosts::default();
+            store
+                .write()
+                .insert(host_port.clone(), bare_key_fingerprint());
+            store
+        };
+
+        for ask_for_certificate in [false, true] {
+            // Trusted before the certificate existed: still trusted.
+            let (connected, outcome) =
+                handshake(port, HostKeyPolicy::Strict, trusted(), ask_for_certificate).await;
+            assert!(
+                connected,
+                "certificate asked for: {ask_for_certificate}; {:?}",
+                outcome.lock().rejection
+            );
+            // The server presents its certificate only when asked for it.
+            assert_eq!(outcome.lock().certificate_presented, ask_for_certificate);
+
+            // Unknown to a strict policy: refused.
+            let (connected, outcome) = handshake(
+                port,
+                HostKeyPolicy::Strict,
+                Default::default(),
+                ask_for_certificate,
+            )
+            .await;
+            assert!(!connected);
+            assert!(outcome.lock().rejection.is_some());
+
+            // Trusted on first use: by the bare key's fingerprint.
+            let store = SharedKnownHosts::default();
+            let (connected, outcome) = handshake(
+                port,
+                HostKeyPolicy::AcceptNew,
+                store.clone(),
+                ask_for_certificate,
+            )
+            .await;
+            assert!(connected);
+            assert!(outcome.lock().persisted_new);
+            assert_eq!(
+                store.read().get(&host_port).cloned(),
+                Some(bare_key_fingerprint())
+            );
+        }
+    }
+
     /// What the in-process bastion has seen: how many logins it accepted, and
     /// how many of those sessions are still alive — the number a server-side
     /// limit on SSH sessions counts.
@@ -914,11 +1118,13 @@ PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
             _port_to_connect: u32,
             _originator_address: &str,
             _originator_port: u32,
+            reply: server::ChannelOpenHandle,
             _session: &mut server::Session,
-        ) -> Result<bool, Self::Error> {
+        ) -> Result<(), Self::Error> {
             if self.seen.stall_next.swap(false, Ordering::SeqCst) {
                 tokio::time::sleep(STALL).await;
             }
+            reply.accept().await;
             let port = self.forward_to;
             tokio::spawn(async move {
                 if let Ok(mut upstream) = tokio::net::TcpStream::connect(("127.0.0.1", port)).await
@@ -927,7 +1133,7 @@ PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
                     let _ = copy_bidirectional(&mut stream, &mut upstream).await;
                 }
             });
-            Ok(true)
+            Ok(())
         }
     }
 
@@ -945,9 +1151,8 @@ PNG6q7XCrCk/meLAEfTyAAAAFWh1Z2lubmRiLXRlc3QtYmFzdGlvbg==
             }
         });
 
-        let key = russh::keys::decode_secret_key(TEST_HOST_KEY, None).unwrap();
         let config = Arc::new(server::Config {
-            keys: vec![key],
+            keys: vec![test_host_key()],
             auth_rejection_time: Duration::from_millis(0),
             ..Default::default()
         });

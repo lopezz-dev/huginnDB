@@ -85,8 +85,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - **Tauri 2.12**, which fixes a way for one window to read another's IPC
     replies (GHSA-w28w-mhc8-qvjv). HuginnDB's windows only load its own
     interface, so this was not reachable, but the fix is in.
+  - **SSH tunnels** moved to russh 0.65, which drops the forked key library
+    that carried a `crypto-bigint` with timing side channels
+    (RUSTSEC-2026-0387). Saved host-key fingerprints keep matching: a server
+    that has an OpenSSH host certificate is still trusted by the key it was
+    trusted under before, never by an authority you did not configure. See
+    ADR #117. The `rsa` crate's Marvin advisory (RUSTSEC-2023-0071) still
+    shows, as it has no fixed version.
 - The development toolchain (Vite 8, Vitest 5) clears 25 advisories that only
   affected the machines the app is built on, not the app itself.
+- Building HuginnDB from source now declares the Rust version it actually
+  needs, 1.90; the dependencies had required it for a while.
 
 ## [1.35.0] — 2026-10-22
 
