@@ -93,6 +93,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - **Update HuginnDB on every computer before adding `columns`**: older
     versions read a policy with it as broken and block every connection. The
     editor says so when you save. See `docs/POLICY.md` and ADR #113.
+- **Adding connections with an AI's help, without giving it the keys.** The MCP
+  guide (also in **Help → Documentation**) has a new section, *Adding
+  connections*, that documents the profile import file well enough for an
+  assistant to write one: the `meta` block, the seven required fields, the
+  optional ones, and one profile per driver (PostgreSQL, MySQL over an SSH
+  tunnel, SQLite, MongoDB from a URI, SQL Server).
+  - It is the answer to "can the connector create connections?" — no, on
+    purpose. A tool that created them would let the assistant decide where
+    HuginnDB connects, and the password would travel through the conversation.
+    The assistant writes a file without secrets; you import it with **File →
+    Import profiles…**, see what it adds, and type each password in the app.
+  - What you import stays local (publishing it to a shared origin is still your
+    call) and is not exposed to the MCP connector or the AI panel.
+  - A backend test imports every example in both the English and the Spanish
+    guide, so the documented format cannot drift from what the importer
+    accepts.
 
 ### Fixed
 

@@ -2960,4 +2960,121 @@ mod tests {
         // repointed either (see the third return value).
         assert!(overwritten.is_empty());
     }
+
+    /// The `json` fences of a guide that describe a profile: a whole import
+    /// file (it has a `meta`) or one entry of its `profiles` array. Every
+    /// other `json` block in `docs/MCP.md` is client configuration, and none
+    /// of those has a `"driver"` key.
+    fn documented_profiles(guide: &str) -> Vec<transfer::ExportedProfile> {
+        let mut blocks = Vec::new();
+        let mut current: Option<String> = None;
+        for line in guide.lines() {
+            match current.as_mut() {
+                None if line.trim_start() == "```json" => current = Some(String::new()),
+                None => {}
+                Some(_) if line.trim_start() == "```" => blocks.push(current.take().unwrap()),
+                Some(block) => {
+                    block.push_str(line);
+                    block.push('\n');
+                }
+            }
+        }
+        blocks
+            .into_iter()
+            .filter(|b| b.contains("\"driver\""))
+            .flat_map(|b| {
+                if b.contains("\"meta\"") {
+                    let file: transfer::ExportFile = serde_json::from_str(&b).unwrap_or_else(|e| {
+                        panic!("documented import file does not parse: {e}\n{b}")
+                    });
+                    transfer::check_meta(&file.meta, KIND_PROFILES).unwrap();
+                    assert!(
+                        !file.meta.encrypted,
+                        "a documented file must not be encrypted"
+                    );
+                    file.profiles
+                } else {
+                    let one: transfer::ExportedProfile = serde_json::from_str(&b)
+                        .unwrap_or_else(|e| panic!("documented profile does not parse: {e}\n{b}"));
+                    vec![one]
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn the_import_file_examples_in_the_mcp_guide_import_cleanly() {
+        // docs/MCP.md tells an assistant how to write a profile import file
+        // instead of giving the connector a tool that creates connections. An
+        // example that no longer parses would teach it to write files the
+        // importer rejects, so both languages are imported here for real.
+        for (guide, text) in [
+            ("docs/MCP.md", include_str!("../../../docs/MCP.md")),
+            ("docs/MCP.es.md", include_str!("../../../docs/MCP.es.md")),
+        ] {
+            let examples = documented_profiles(text);
+            let drivers: std::collections::HashSet<_> =
+                examples.iter().map(|e| e.profile.driver).collect();
+            for driver in [
+                Driver::Postgres,
+                Driver::Mysql,
+                Driver::Sqlite,
+                Driver::Mongo,
+                Driver::MsSql,
+            ] {
+                assert!(
+                    drivers.contains(&driver),
+                    "{guide} has no {driver:?} example"
+                );
+            }
+            for e in &examples {
+                // What the guide promises the reader: no secret of any kind.
+                assert!(
+                    e.secrets.is_none(),
+                    "{guide}: {} carries secrets",
+                    e.profile.name
+                );
+                assert!(
+                    e.profile.origin_id.is_none(),
+                    "{guide}: {} sets origin_id",
+                    e.profile.name
+                );
+                assert!(
+                    !e.profile
+                        .connection_string
+                        .as_deref()
+                        .unwrap_or("")
+                        .contains('@'),
+                    "{guide}: {} puts credentials in its URI",
+                    e.profile.name
+                );
+            }
+
+            let total = examples.len();
+            let mut profiles = Vec::new();
+            let (result, _map, _overwritten) = apply_profile_imports(
+                &mut profiles,
+                examples,
+                None,
+                &std::collections::HashMap::new(),
+                |_, _| {},
+            )
+            .unwrap();
+            assert_eq!(
+                result.imported.len(),
+                total,
+                "{guide}: not every example imported"
+            );
+            // Every server driver lands asking for its password; SQLite is ready.
+            let needs: std::collections::HashSet<_> = result.needs_password.iter().collect();
+            for p in &profiles {
+                assert_eq!(
+                    needs.contains(&p.id),
+                    !matches!(p.driver, Driver::Sqlite),
+                    "{guide}: {} has the wrong password state",
+                    p.name
+                );
+            }
+        }
+    }
 }
