@@ -175,6 +175,12 @@ interface DocumentListViewProps {
   /** MongoDB only: `$unset` a field. Absent → no delete/add/type affordances,
    *  which is also what tells this component it is rendering a SQL row. */
   onFieldDelete?: (rowValues: CellValue[], path: string[]) => Promise<void>;
+  /**
+   * Why the policy will not let the person change a top-level field (ADR
+   * #113), or `null`. A locked field reads as any read-only one: no inline
+   * edit, retype or removal. Stable identity expected (it reaches the memo).
+   */
+  fieldLock?: (field: string) => string | null;
   onDeleteRow?: (rowValues: CellValue[]) => void;
   /** Escalate a field to the heavyweight (Monaco) editor. */
   onExpandField?: (
@@ -244,6 +250,8 @@ export interface ListDraft {
   tableSchema?: string;
   /** Receives the first editable control, so the grid can focus it on mount. */
   focusRef?: MutableRefObject<HTMLElement | null>;
+  /** Why the policy will not let the person fill a field (ADR #113). */
+  columnLock?: (column: string) => string | null;
   onChange: (column: string, cell: DraftCell) => void;
   onCommit: () => void;
   onCancel: () => void;
@@ -313,6 +321,7 @@ export function DocumentListView({
   lineNumbers,
   onFieldSave,
   onFieldDelete,
+  fieldLock,
   onDeleteRow,
   onExpandField,
   copyToClipboard,
@@ -501,6 +510,7 @@ export function DocumentListView({
                 }
                 documentMode={!!onFieldDelete}
                 hasFieldSave={!!onFieldSave}
+                fieldLock={fieldLock}
                 hasDeleteRow={!!onDeleteRow}
                 hasExpandField={!!onExpandField}
                 sort={sort ?? NO_SORT}
@@ -553,8 +563,8 @@ function DraftDocumentCard({
     return m;
   }, [draft.columns]);
   const firstEditableIdx = useMemo(
-    () => firstEditableColumn(columns, infoByName),
-    [columns, infoByName],
+    () => firstEditableColumn(columns, infoByName, draft.columnLock),
+    [columns, infoByName, draft.columnLock],
   );
   const saving = draft.row.saving;
 
@@ -639,6 +649,7 @@ function DraftDocumentCard({
                     connectionId={draft.connectionId}
                     tableSchema={draft.tableSchema}
                     bitDisplay={draft.bitDisplay}
+                    locked={draft.columnLock?.(col.name)}
                     onChange={(next) => draft.onChange(col.name, next)}
                   />
                 </span>
@@ -722,6 +733,8 @@ interface DocumentCardProps {
    *  read from `callbacksRef`. */
   documentMode: boolean;
   hasFieldSave: boolean;
+  /** See `DocumentListViewProps.fieldLock`. */
+  fieldLock?: (field: string) => string | null;
   hasDeleteRow: boolean;
   hasExpandField: boolean;
   /** The active sort — a stable array (the tab's state), so it breaks the memo
@@ -804,6 +817,7 @@ const DocumentCard = memo(function DocumentCard({
   lineNumbers,
   documentMode,
   hasFieldSave,
+  fieldLock,
   hasDeleteRow,
   hasExpandField,
   sort,
@@ -966,14 +980,22 @@ const DocumentCard = memo(function DocumentCard({
 
   /** Whether this field's value may be edited inline. */
   function canEdit(f: DocField): boolean {
-    return hasFieldSave && f.editable && isAddressable(f) && !isImmutableId(f);
+    return (
+      hasFieldSave &&
+      f.editable &&
+      isAddressable(f) &&
+      !isImmutableId(f) &&
+      !fieldLock?.(f.path[0] ?? "")
+    );
   }
 
   /** Whether this field may be retyped, removed, or have a sibling added.
    *  Unlike {@link canEdit} this stays true for an opaque type — replacing it
    *  via the type picker is exactly how such a field is edited at all. */
   function canMutate(f: DocField): boolean {
-    return documentMode && hasFieldSave && !isImmutableId(f);
+    return (
+      documentMode && hasFieldSave && !isImmutableId(f) && !fieldLock?.(f.path[0] ?? "")
+    );
   }
 
   async function save(

@@ -122,12 +122,29 @@ pub async fn policy_generate_grants(
             let child = crate::state::database_view_id(&parent, &db.name);
             crate::commands::ensure_view(&app, &window, state.inner(), &child).await;
             // Names only: the figures would cost MongoDB a round trip per
-            // collection, and a grant needs none of them.
+            // collection, and a grant needs none of them. Columns are read
+            // only where a rule limits them (ADR #113), since a column grant
+            // has to name each one.
             for t in crate::commands::schema::list_table_names_inner(state.inner(), &child).await? {
+                let columns = if grants::wants_columns(&rules, &db.name, &t.schema, &t.name) {
+                    crate::commands::schema::list_columns_inner(
+                        state.inner(),
+                        &child,
+                        Some(t.schema.clone()),
+                        t.name.clone(),
+                    )
+                    .await?
+                    .into_iter()
+                    .map(|c| c.name)
+                    .collect()
+                } else {
+                    Vec::new()
+                };
                 relations.push(Relation {
                     database: db.name.clone(),
                     schema: t.schema,
                     name: t.name,
+                    columns,
                 });
             }
             databases.push(db.name);

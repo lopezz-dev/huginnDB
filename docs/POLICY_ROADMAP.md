@@ -354,6 +354,16 @@ edit the managed source — which holds here too.
    JSON over one draft, validated by the parser that applies it, "view as"
    under the draft, saved only where the share accepts a write, and a "create
    policy" wizard. ADMX/ADML templates for GPO — *open*.
+5. **Column limits** — *shipped* (ADR #113). A rule's `columns.insert` /
+   `columns.update` narrow which columns those verbs write, on every relation
+   the rule reaches; checked as a `Need::Columns` beside the relation's verb,
+   for the AI at the bridge and for people in each row-writing wrapper; locked
+   per column in the grid, picked from the rule's tables in the editor, and
+   granted per column by the script (`UPDATE (…)` everywhere, `INSERT (…)`
+   except on SQL Server, which has no such permission). Hiding columns from
+   reading is *open*: it touches every surface that shows a row (browse,
+   export, copy, the AI's tools), and on SQL Server a `SELECT *` over a denied
+   column fails outright.
 
 Not in any phase: AD/LDAP identity, a gateway server, filtering free SQL.
 

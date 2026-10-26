@@ -430,6 +430,11 @@ impl Verbs {
         Verbs(self.0 & other.0)
     }
 
+    /// `self` without the verbs in `other`.
+    pub fn without(self, other: Verbs) -> Verbs {
+        Verbs(self.0 & !other.0)
+    }
+
     /// The tier this set needs: any DDL makes it `Ddl`, any row write
     /// `DataWrite`, otherwise it is a `Read`.
     pub fn class(self) -> StmtClass {

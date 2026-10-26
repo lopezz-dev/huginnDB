@@ -27,6 +27,8 @@ interface DraftRowViewProps {
   tableName?: string;
   /** Grid preference for BIT option labels in the dedicated control. */
   bitDisplay: "true_false" | "zero_one";
+  /** Why the policy will not let the person fill a column (ADR #113). */
+  columnLock?: (column: string) => string | null;
   onChange?: (column: string, cell: DraftCell) => void;
   onCommit?: () => void;
   onCancel?: () => void;
@@ -42,6 +44,7 @@ export function DraftRowView({
   tableSchema,
   tableName: _tableName,
   bitDisplay,
+  columnLock,
   onChange,
   onCommit,
   onCancel,
@@ -54,8 +57,8 @@ export function DraftRowView({
 
   /** First non-auto-PK column index — used to bind the focus-on-mount ref. */
   const firstEditableIdx = useMemo(
-    () => firstEditableColumn(columns, infoByName),
-    [columns, infoByName],
+    () => firstEditableColumn(columns, infoByName, columnLock),
+    [columns, infoByName, columnLock],
   );
 
   function handleRowBlur() {
@@ -110,6 +113,7 @@ export function DraftRowView({
                 connectionId={connectionId}
                 tableSchema={tableSchema}
                 bitDisplay={bitDisplay}
+                locked={columnLock?.(col.name)}
                 onChange={(next) => onChange?.(col.name, next)}
               />
             </td>

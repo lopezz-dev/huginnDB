@@ -44,6 +44,7 @@ function conn(id: string, managed = true): ConnectionAccess {
     verbs: ["select"],
     export: false,
     monitor: false,
+    columns: { insert: null, update: null },
     reason: null,
   };
 }
@@ -86,6 +87,7 @@ describe("policyAccess store", () => {
         visible: r.name !== "payroll",
         verbs: r.name === "payroll" ? [] : ["select"],
         export: false,
+        columns: { insert: null, update: null },
       })),
     );
     const { requestRelations } = usePolicyAccess.getState();

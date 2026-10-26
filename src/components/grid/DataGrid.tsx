@@ -70,6 +70,7 @@ import type {
 } from "@/types";
 import { CellEditor } from "@/components/grid/dialogs/CellEditor";
 import { CellPreview } from "@/components/grid/CellPreview";
+import { isAutoPkColumn } from "@/components/grid/DraftCellControl";
 import { DraftRowView } from "@/components/grid/DraftRowView";
 import { IconButton } from "@/components/ui/icon-button";
 import {
@@ -117,6 +118,18 @@ const NO_ROWS: CellValue[][] = [];
 interface Props {
   result: QueryResult;
   editable?: boolean;
+  /**
+   * Why the person may not change one column, when the managed policy limits
+   * which columns they may write (ADR #113) — `null` for a column they may.
+   * Narrows `editable` per column: a locked cell opens read-only. Stable
+   * identity expected (it reaches the memoised rows).
+   */
+  columnLock?: (column: string) => string | null;
+  /**
+   * The same for the draft row: why the person may not give this column a
+   * value when adding a row. A locked draft cell is left to its default.
+   */
+  draftColumnLock?: (column: string) => string | null;
   /**
    * Connection + table coordinates. When set, draft-row cells whose
    * column carries a single-column FK constraint render a searchable
@@ -393,6 +406,8 @@ export interface SelectedCell {
 export function DataGrid({
   result,
   editable,
+  columnLock,
+  draftColumnLock,
   connectionId,
   tableSchema,
   tableName,
@@ -787,11 +802,54 @@ export function DataGrid({
     cellEditorMode,
     columnInfoByName,
     columnIndexByName,
+    columnLock,
     // The quiet pair: the only commit this hook performs is the docked side
     // editor's, which keeps the panel open and prints the driver message there.
     onCellSave: onCellSaveQuiet,
     onFieldSave: onFieldSaveQuiet,
   });
+
+  // Whether the open heavy editor's column is one the policy locks: it then
+  // shows the value read-only. A list-view field is judged by its top-level
+  // field, as the backend judges a MongoDB path.
+  const editorLocked =
+    editorTarget && columnLock
+      ? columnLock(editorTarget.field?.path[0] ?? editorTarget.column.name)
+      : null;
+
+  // The columns the policy will not let this person change, split by whether
+  // a new row may still fill them: a lock in the header for a column they can
+  // neither change nor fill, and an "only when adding a row" mark for one the
+  // draft row still offers — a plain lock there read as a contradiction next
+  // to the Insert button. Derived once per result rather than asked of
+  // `columnLock` in the renderer, since the column definitions must not
+  // depend on a function.
+  // A boolean, not the callback: `onInsertRow` is a fresh function on every
+  // render of the tab, and these sets feed the column definitions, whose
+  // rebuild remounts the table body (see `useGridColumns`).
+  const canInsert = !!onInsertRow;
+  const [lockedNameSet, insertOnlyNameSet] = useMemo(() => {
+    const locked = new Set<string>();
+    const insertOnly = new Set<string>();
+    if (editable && columnLock) {
+      for (const c of result.columns) {
+        if (!columnLock(c.name)) continue;
+        const fillable =
+          canInsert &&
+          !draftColumnLock?.(c.name) &&
+          !isAutoPkColumn(columnInfoByName.get(c.name));
+        (fillable ? insertOnly : locked).add(c.name);
+      }
+    }
+    return [locked, insertOnly] as const;
+  }, [
+    editable,
+    columnLock,
+    draftColumnLock,
+    canInsert,
+    columnInfoByName,
+    result.columns,
+  ]);
 
   // Key-icon lookups for the header (PK = amber, FK = sky), HeidiSQL-style.
   const pkNameSet = useMemo(
@@ -849,6 +907,7 @@ export function DataGrid({
         20 +
         (pkNameSet.has(name) ? 16 : 0) +
         (fkNameSet.has(name) ? 16 : 0) +
+        (lockedNameSet.has(name) || insertOnlyNameSet.has(name) ? 16 : 0) +
         ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === name)
           ? 12
           : 0),
@@ -1046,6 +1105,8 @@ export function DataGrid({
       columnIndexByName,
       pkNameSet,
       fkNameSet,
+      lockedNameSet,
+      insertOnlyNameSet,
       boundSchemaNames,
     },
     editing: {
@@ -1150,6 +1211,7 @@ export function DataGrid({
     bitDisplay,
     expandCellCombo,
     editable,
+    columnLock,
     onCellSave,
   });
 
@@ -1230,6 +1292,7 @@ export function DataGrid({
               lineNumbers={listLineNumbers}
               onFieldSave={editable ? onFieldSave : undefined}
               onFieldDelete={editable ? onFieldDelete : undefined}
+              fieldLock={editable ? columnLock : undefined}
               onDeleteRow={onDeleteRow}
               sort={sort}
               onSortChange={onSortSpecsChange}
@@ -1269,6 +1332,7 @@ export function DataGrid({
                       connectionId,
                       tableSchema,
                       focusRef: firstDraftInputRef,
+                      columnLock: draftColumnLock,
                       onChange: onDraftCellChange,
                       onCommit: onDraftCommit,
                       onCancel: onDraftCancel,
@@ -1453,6 +1517,7 @@ export function DataGrid({
                       tableSchema={tableSchema}
                       tableName={tableName}
                       bitDisplay={bitDisplay}
+                      columnLock={draftColumnLock}
                       onChange={onDraftCellChange}
                       onCommit={onDraftCommit}
                       onCancel={onDraftCancel}
@@ -1541,6 +1606,7 @@ export function DataGrid({
                               tableName={tableName}
                               pkColumnNames={pkColumnNames}
                               editable={editable}
+                              columnLock={columnLock}
                               onCellSave={onCellSave}
                               onNavigateFk={onNavigateFk}
                               onAddFilter={onAddFilter}
@@ -1686,7 +1752,7 @@ export function DataGrid({
             setSelectedCell(null);
           }}
           onSave={
-            editable && onCellSave
+            editable && onCellSave && !columnLock?.(selectedCell.column.name)
               ? async (v) => {
                   await onCellSave(
                     selectedCell.rowValues,
@@ -1698,7 +1764,7 @@ export function DataGrid({
               : undefined
           }
           onSetNull={
-            editable && onCellSave
+            editable && onCellSave && !columnLock?.(selectedCell.column.name)
               ? async () => {
                   await onCellSave(
                     selectedCell.rowValues,
@@ -1722,12 +1788,16 @@ export function DataGrid({
           ownerId={tabId}
           binding={bindingContextFor(editorTarget.column, editorTarget.field)}
           readonly={
-            !editable || !(editorTarget.field ? onFieldSave : onCellSave)
+            !editable ||
+            !(editorTarget.field ? onFieldSave : onCellSave) ||
+            !!editorLocked
           }
           onSave={
             // Quiet: `CellEditor` stays open on failure and renders the message
             // beside the value that caused it (`cellEditor.saveFailed`).
-            editable && (editorTarget.field ? onFieldSaveQuiet : onCellSaveQuiet)
+            editable &&
+            !editorLocked &&
+            (editorTarget.field ? onFieldSaveQuiet : onCellSaveQuiet)
               ? async (newValue) => {
                   const field = editorTarget.field;
                   if (field) {

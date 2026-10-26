@@ -463,6 +463,18 @@ pub async fn insert_rows(
         &table,
         crate::db::sql::Verbs::INSERT,
     )?;
+    // The columns a paste writes are its keys. Parsing here as well as in the
+    // core keeps the policy out of `insert_rows_inner` (ADR #95); the text is
+    // a paste, so reading it twice costs nothing worth a second signature.
+    let rows = parse_rows_source(&source)?;
+    crate::commands::guard::columns(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::INSERT,
+        rows.iter().flat_map(|r| r.keys()),
+    )?;
     insert_rows_inner(&sink, state.inner(), connection_id, schema, table, source).await
 }
 

@@ -258,7 +258,12 @@ function Mark({ on, label }: { on: boolean; label: string }) {
 }
 
 function verbsText(a: ConnectionAccess, none: string): string {
-  const all = [...a.verbs, ...(a.export ? ["export"] : []), ...(a.monitor ? ["monitor"] : [])];
+  // A verb limited to some columns names them: "update (estado, obs*)".
+  const verbs = a.verbs.map((v) => {
+    const limit = v === "insert" || v === "update" ? a.columns?.[v] : null;
+    return limit ? `${v} (${limit.length > 0 ? limit.join(", ") : "—"})` : v;
+  });
+  const all = [...verbs, ...(a.export ? ["export"] : []), ...(a.monitor ? ["monitor"] : [])];
   return all.length > 0 ? all.join(", ") : none;
 }
 

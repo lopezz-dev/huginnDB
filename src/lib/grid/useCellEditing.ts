@@ -67,6 +67,11 @@ export interface CellEditingOptions {
   columnInfoByName: ReadonlyMap<string, ColumnInfo>;
   /** Backend index by column name; display order can differ. */
   columnIndexByName: ReadonlyMap<string, number>;
+  /**
+   * Why the policy will not let the person change a column (ADR #113), or
+   * `null`. A locked cell opens the way a read-only grid's does: as a viewer.
+   */
+  columnLock?: (column: string) => string | null;
   onCellSave: CellSave | undefined;
   onFieldSave: FieldSave | undefined;
 }
@@ -110,6 +115,7 @@ export function useCellEditing(opts: CellEditingOptions) {
     cellEditorMode,
     columnInfoByName,
     columnIndexByName,
+    columnLock,
     onCellSave,
     onFieldSave,
   } = opts;
@@ -191,7 +197,8 @@ export function useCellEditing(opts: CellEditingOptions) {
   ) {
     // A list-view field commits through `onFieldSave` (it may be nested and
     // carries its own type); a table cell through `onCellSave` as before.
-    const canSave = !!(editable && (field ? onFieldSave : onCellSave));
+    const locked = columnLock?.(field?.path[0] ?? column.name);
+    const canSave = !!(editable && !locked && (field ? onFieldSave : onCellSave));
     useCellEditor.getState().open({
       ownerId: tabId,
       columnName: column.name,
@@ -231,13 +238,15 @@ export function useCellEditing(opts: CellEditingOptions) {
    */
   function openCellEdit(rowValues: CellValue[], column: ColumnMeta) {
     const info = columnInfoByName.get(column.name);
-    if (editable && onCellSave && connectionId && info?.referenced_table) {
+    // A column the policy locks opens as a viewer, like a read-only grid.
+    const writable = !!(editable && onCellSave && !columnLock?.(column.name));
+    if (writable && connectionId && info?.referenced_table) {
       setFkEditCell({ rowValues, column });
       return;
     }
     const cur = rowValues[columnIndexByName.get(column.name) ?? -1];
     const fmt = cur === null || cur === undefined ? null : formatValue(cur);
-    if (editable && onCellSave) {
+    if (writable) {
       setInlineEdit({ rowValues, column, value: fmt, original: fmt });
       return;
     }

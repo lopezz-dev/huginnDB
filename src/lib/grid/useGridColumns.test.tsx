@@ -11,7 +11,7 @@
  * hook's own half of the contract: stable input in, stable `columns` out.
  */
 import "@/lib/i18n";
-import { renderHook } from "@testing-library/react";
+import { render, renderHook, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useGridColumns, type GridColumnsOptions } from "./useGridColumns";
 import type { ColumnMeta } from "@/types";
@@ -117,5 +117,33 @@ describe("useGridColumns", () => {
     );
     expect(result.current).not.toBe(first);
     expect(result.current).toHaveLength(3);
+  });
+});
+
+describe("useGridColumns policy marks", () => {
+  it("marks a column it can't change apart from one only a new row may fill", () => {
+    const options = baseOptions();
+    const { result } = renderHook(() =>
+      useGridColumns({
+        ...options,
+        meta: {
+          ...options.meta,
+          lockedNameSet: new Set(["id"]),
+          insertOnlyNameSet: new Set(["name"]),
+        },
+      }),
+    );
+    const header = (i: number) => {
+      const h = result.current[i].header as () => JSX.Element;
+      return render(h());
+    };
+    header(0);
+    expect(screen.getByLabelText("Locked by your organization's policy")).toBeTruthy();
+    header(1);
+    expect(
+      screen.getByLabelText(
+        "Locked by your organization's policy — only filled when adding a row",
+      ),
+    ).toBeTruthy();
   });
 });

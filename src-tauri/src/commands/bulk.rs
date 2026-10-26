@@ -261,6 +261,14 @@ pub async fn apply_bulk_update(
         &args.table,
         crate::db::sql::Verbs::UPDATE,
     )?;
+    crate::commands::guard::columns(
+        state.inner(),
+        &args.connection_id,
+        args.schema.as_deref(),
+        &args.table,
+        crate::db::sql::Verbs::UPDATE,
+        args.set_values.iter().map(|v| &v.column),
+    )?;
     apply_bulk_update_inner(&sink, state.inner(), args).await
 }
 

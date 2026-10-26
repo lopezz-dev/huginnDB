@@ -497,6 +497,28 @@ mod tests {
     }
 
     #[test]
+    fn the_preview_says_which_columns_a_limited_verb_writes() {
+        let text = GOOD.replacen(
+            "\"human\": [\"select\", \"insert\"]",
+            "\"human\": [\"select\", \"insert\"], \"columns\": { \"insert\": [\"number\"] }",
+            1,
+        );
+        assert_ne!(text, GOOD, "the fixture's human list moved");
+        let (doc, _) = PolicyDoc::parse(&text).unwrap();
+        let erp = ConnectionProfile {
+            driver: Driver::Postgres,
+            host: "erp.local".into(),
+            database: "billing".into(),
+            ..testkit::profile("erp")
+        };
+        let ana = preview(&doc, r"ACME\Ana", &[erp]);
+        let columns = &ana.connections[0].human.columns;
+        assert_eq!(columns.insert, Some(vec!["number".to_string()]));
+        // Not granted at all: an empty list, not "every column".
+        assert_eq!(columns.update, Some(Vec::new()));
+    }
+
+    #[test]
     fn validation_reports_the_parsers_own_message() {
         let (doc, v) = validate(GOOD);
         assert!(doc.is_some() && v.error.is_none());

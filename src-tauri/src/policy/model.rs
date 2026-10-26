@@ -8,7 +8,7 @@
 
 use crate::db::sql::Verbs;
 use crate::state::Driver;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// The only document version this build understands. A newer one is refused
@@ -90,6 +90,48 @@ pub struct Rule {
     /// enforce the policy (§7). Absent: the connection's own user.
     #[serde(default)]
     pub db_user: Option<String>,
+    /// Which columns `insert` may give a value to and `update` may change, on
+    /// every relation the rule reaches (ADR #113). Absent means every column;
+    /// it narrows the verbs the rule grants and never adds one.
+    #[serde(default)]
+    pub columns: Columns,
+}
+
+/// Column limits per verb. A list holds globs matched against a column's name
+/// — on MongoDB, against a field's top-level name, since `a.b` is part of `a`.
+/// `None` means every column, which is not the same as an empty list: an
+/// empty list grants the verb on no column at all.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Columns {
+    #[serde(default)]
+    pub insert: Option<Vec<String>>,
+    #[serde(default)]
+    pub update: Option<Vec<String>>,
+}
+
+impl Columns {
+    /// The limit on one verb, if the rule sets one. Only `INSERT` and
+    /// `UPDATE` can be limited; any other verb has none.
+    pub fn limit(&self, verb: Verbs) -> Option<&[String]> {
+        if verb == Verbs::INSERT {
+            self.insert.as_deref()
+        } else if verb == Verbs::UPDATE {
+            self.update.as_deref()
+        } else {
+            None
+        }
+    }
+}
+
+/// What a subject may write, per verb, once every rule that applies is
+/// folded together — what the interface reads to lock a column (ADR #96).
+/// `None` means every column; an empty list, none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnScope {
+    pub insert: Option<Vec<String>>,
+    pub update: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -305,6 +347,16 @@ impl Rule {
             || self.relations.allow.is_some()
             || !self.relations.deny.is_empty()
     }
+
+    /// Whether the rule limits which columns one of `verbs` may write. Free
+    /// SQL needing such a verb is withheld under it, for the same reason as
+    /// under a scoped rule: a statement's text does not reliably say which
+    /// columns it writes (triggers, views, dynamic SQL).
+    pub fn limits_columns_of(&self, verbs: Verbs) -> bool {
+        [Verbs::INSERT, Verbs::UPDATE]
+            .into_iter()
+            .any(|v| verbs.contains(v) && self.columns.limit(v).is_some())
+    }
 }
 
 /// The only token a `dbUser` template may carry.
@@ -399,6 +451,31 @@ impl PolicyDoc {
                         "role {name:?}, rule {}: a database or relation pattern is empty",
                         i + 1
                     ));
+                }
+                for (verb, key, list) in [
+                    (Verbs::INSERT, "insert", rule.columns.insert.as_ref()),
+                    (Verbs::UPDATE, "update", rule.columns.update.as_ref()),
+                ] {
+                    let Some(list) = list else { continue };
+                    if list.iter().any(|g| g.trim().is_empty()) {
+                        return Err(format!(
+                            "role {name:?}, rule {}: a pattern in columns.{key} is empty",
+                            i + 1
+                        ));
+                    }
+                    if !rule.human_grant().verbs.contains(verb) {
+                        warnings.push(format!(
+                            "role {name:?}, rule {}: columns.{key} limits a permission the rule \
+                             does not grant, so it changes nothing",
+                            i + 1
+                        ));
+                    } else if list.is_empty() {
+                        warnings.push(format!(
+                            "role {name:?}, rule {}: columns.{key} is empty, so `{key}` reaches \
+                             no column at all",
+                            i + 1
+                        ));
+                    }
                 }
                 if let Some(problem) = rule.db_user.as_deref().and_then(db_user_problem) {
                     return Err(format!("role {name:?}, rule {}: dbUser {problem}", i + 1));
@@ -553,6 +630,64 @@ mod tests {
         assert!(rule(r#","databases":["billing"]"#).is_scoped());
         assert!(rule(r#","relations":{"allow":["t"]}"#).is_scoped());
         assert!(rule(r#","relations":{"deny":["t"]}"#).is_scoped());
+        // Column limits narrow what may be written, not what may be seen.
+        assert!(!rule(r#","human":["update"],"columns":{"update":["estado"]}"#).is_scoped());
+    }
+
+    fn with_columns(human: &str, columns: &str) -> Result<(PolicyDoc, Vec<String>), String> {
+        PolicyDoc::parse(&format!(
+            r#"{{"version":1,"defaultRole":"r","roles":{{"r":{{"rules":[
+                {{"endpoint":"*","human":{human},"columns":{columns}}}]}}}}}}"#
+        ))
+    }
+
+    #[test]
+    fn columns_are_read_per_verb_and_absent_means_every_column() {
+        let (doc, warnings) = with_columns(
+            r#"["select","insert","update"]"#,
+            r#"{"insert":["Cliente","Importe"],"update":["Estado"]}"#,
+        )
+        .unwrap();
+        assert!(warnings.is_empty(), "{warnings:?}");
+        let rule = &doc.roles["r"].rules[0];
+        assert_eq!(
+            rule.columns.limit(Verbs::INSERT),
+            Some(&["Cliente".to_string(), "Importe".to_string()][..])
+        );
+        assert_eq!(
+            rule.columns.limit(Verbs::UPDATE),
+            Some(&["Estado".to_string()][..])
+        );
+        assert_eq!(rule.columns.limit(Verbs::DELETE), None);
+        assert!(rule.limits_columns_of(Verbs::UPDATE));
+        assert!(!rule.limits_columns_of(Verbs::SELECT | Verbs::DELETE));
+
+        // A rule written before columns existed limits nothing.
+        let (doc, _) = PolicyDoc::parse(
+            r#"{"version":1,"defaultRole":"r","roles":{"r":{"rules":[{"endpoint":"*"}]}}}"#,
+        )
+        .unwrap();
+        assert_eq!(doc.roles["r"].rules[0].columns, Columns::default());
+    }
+
+    #[test]
+    fn a_columns_typo_or_an_empty_pattern_breaks_the_policy() {
+        assert!(with_columns(r#"["update"]"#, r#"{"updates":["a"]}"#)
+            .unwrap_err()
+            .contains("updates"));
+        assert!(with_columns(r#"["update"]"#, r#"{"update":[" "]}"#)
+            .unwrap_err()
+            .contains("columns.update is empty"));
+    }
+
+    #[test]
+    fn columns_that_change_nothing_are_warned_about() {
+        // A limit on a verb the rule does not grant.
+        let (_, warnings) = with_columns(r#"["select"]"#, r#"{"update":["a"]}"#).unwrap();
+        assert!(warnings[0].contains("does not grant"), "{warnings:?}");
+        // An empty list: the verb reaches no column.
+        let (_, warnings) = with_columns(r#"["insert"]"#, r#"{"insert":[]}"#).unwrap();
+        assert!(warnings[0].contains("reaches no column"), "{warnings:?}");
     }
 
     #[test]

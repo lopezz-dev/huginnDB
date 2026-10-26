@@ -2,7 +2,9 @@
 //! and what a request needs, is it allowed? Everything that reads disks, the
 //! registry or the clock lives elsewhere, so this can be tested exhaustively.
 
-use super::model::{expand_db_user, EndpointPattern, Grant, PolicyDoc, Rule, Subject, Unmanaged};
+use super::model::{
+    expand_db_user, ColumnScope, EndpointPattern, Grant, PolicyDoc, Rule, Subject, Unmanaged,
+};
 use crate::db::sql::Verbs;
 use crate::state::{ConnectionProfile, Driver};
 
@@ -34,6 +36,18 @@ pub enum Need {
     /// Creating or dropping a database (or a MongoDB collection in one): DDL
     /// granted by a rule that covers that database by name.
     DatabaseDdl(String),
+    /// The columns one `INSERT` gives a value to, or one `UPDATE` changes, on
+    /// a named relation (ADR #113). Judged *in addition to* the matching
+    /// [`Need::Relation`], which still decides whether the verb is granted at
+    /// all; this only narrows it. On MongoDB a column is a field path and is
+    /// judged by its top-level field.
+    Columns {
+        schema: Option<String>,
+        name: String,
+        /// `Verbs::INSERT` or `Verbs::UPDATE`, the only verbs a rule limits.
+        verb: Verbs,
+        columns: Vec<String>,
+    },
 }
 
 /// Why a request was refused — worded for the person who reads it in the
@@ -158,9 +172,9 @@ impl<'a> Ctx<'a> {
     pub fn decide(&self, need: &Need) -> Result<(), Refusal> {
         let Some(rules) = self.rules_for_database(match need {
             Need::Database(db) | Need::DatabaseDdl(db) => Some(db.as_str()),
-            Need::Relation { schema, .. } | Need::Export { schema, .. } => {
-                self.database_for(schema.as_deref())
-            }
+            Need::Relation { schema, .. }
+            | Need::Export { schema, .. }
+            | Need::Columns { schema, .. } => self.database_for(schema.as_deref()),
             _ => self.database,
         }) else {
             return Ok(());
@@ -215,6 +229,58 @@ impl<'a> Ctx<'a> {
                     )))
                 }
             }
+            Need::Columns {
+                schema,
+                name,
+                verb,
+                columns,
+            } => {
+                let granting: Vec<&&Rule> = rules
+                    .iter()
+                    .filter(|r| {
+                        relation_allowed(r, schema.as_deref(), name)
+                            && self.grant(r).verbs.contains(*verb)
+                    })
+                    .collect();
+                let what = qualified(schema.as_deref(), name);
+                if granting.is_empty() {
+                    return Err(
+                        self.refuse(format!("{actor} may not {} {what:?}", verbs_phrase(*verb)))
+                    );
+                }
+                let mut refused: Vec<&str> = Vec::new();
+                for column in columns {
+                    let key = self.column_key(column);
+                    if self.column_exempt(*verb, key) {
+                        continue;
+                    }
+                    if !granting.iter().any(|r| column_covered(r, *verb, key))
+                        && !refused.contains(&key)
+                    {
+                        refused.push(key);
+                    }
+                }
+                if refused.is_empty() {
+                    return Ok(());
+                }
+                let allowed = union_limits(granting.iter().map(|r| &***r), *verb)
+                    .map(|globs| {
+                        if globs.is_empty() {
+                            "none".to_string()
+                        } else {
+                            globs.join(", ")
+                        }
+                    })
+                    .unwrap_or_default();
+                Err(self.refuse(format!(
+                    "{actor} may not {} column{} {} of {what:?}; the columns {actor} may {} \
+                     there are: {allowed}",
+                    column_verb(*verb),
+                    if refused.len() == 1 { "" } else { "s" },
+                    refused.join(", "),
+                    column_verb(*verb),
+                )))
+            }
             Need::Export { schema, name } => {
                 let exportable = rules.iter().any(|r| {
                     let g = self.grant(r);
@@ -244,11 +310,23 @@ impl<'a> Ctx<'a> {
                 }
             }
             Need::FreeSql(verbs) => {
+                let unscoped_grant =
+                    |r: &Rule| !r.is_scoped() && self.grant(r).verbs.contains(*verbs);
                 if rules
                     .iter()
-                    .any(|r| !r.is_scoped() && self.grant(r).verbs.contains(*verbs))
+                    .any(|r| unscoped_grant(r) && !r.limits_columns_of(*verbs))
                 {
                     Ok(())
+                } else if rules.iter().any(|r| unscoped_grant(r)) {
+                    // Granted, but only on some columns — and a statement's
+                    // text cannot be checked against that (ADR #113).
+                    Err(self.refuse(format!(
+                        "free-form {} statements are disabled on {connection}, because the \
+                         policy limits which columns {actor} may write and a query's text cannot \
+                         be checked against that. {}",
+                        verbs_phrase(*verbs),
+                        self.free_sql_alternative()
+                    )))
                 } else if rules
                     .iter()
                     .any(|r| r.is_scoped() && !self.grant(r).is_empty())
@@ -308,6 +386,59 @@ impl<'a> Ctx<'a> {
         )
     }
 
+    /// Which columns the subject may write on one relation, per verb: the
+    /// union of what every covering rule that grants the verb allows, where a
+    /// rule without a limit allows every column. `None` when unmanaged.
+    pub fn relation_columns(&self, schema: Option<&str>, name: &str) -> Option<ColumnScope> {
+        let rules = self.rules_for_database(self.database_for(schema))?;
+        let covering: Vec<&Rule> = rules
+            .into_iter()
+            .filter(|r| relation_allowed(r, schema, name))
+            .collect();
+        Some(self.column_scope(&covering))
+    }
+
+    /// [`Self::relation_columns`] over the whole addressed database — an upper
+    /// bound for a connection, as [`Self::database_grant`] is.
+    pub fn database_columns(&self) -> Option<ColumnScope> {
+        let rules = self.rules_for_database(self.database)?;
+        Some(self.column_scope(&rules))
+    }
+
+    fn column_scope(&self, rules: &[&Rule]) -> ColumnScope {
+        let per_verb = |verb: Verbs| {
+            union_limits(
+                rules
+                    .iter()
+                    .copied()
+                    .filter(|r| self.grant(r).verbs.contains(verb)),
+                verb,
+            )
+        };
+        ColumnScope {
+            insert: per_verb(Verbs::INSERT),
+            update: per_verb(Verbs::UPDATE),
+        }
+    }
+
+    /// The name a column is judged by: on MongoDB a field path is judged by
+    /// its top-level field, since writing `a.b` writes part of `a`.
+    fn column_key<'c>(&self, column: &'c str) -> &'c str {
+        if self.profile.is_some_and(|p| p.driver == Driver::Mongo) {
+            top_level_field(column)
+        } else {
+            column
+        }
+    }
+
+    /// A MongoDB document's `_id` is its key, as an identity column is a
+    /// row's: giving one on insert is never limited.
+    fn column_exempt(&self, verb: Verbs, key: &str) -> bool {
+        verb == Verbs::INSERT
+            && key == "_id"
+            && self.profile.is_some_and(|p| p.driver == Driver::Mongo)
+    }
+
     /// Everything the subject may do somewhere in the addressed database — an
     /// upper bound for one connection, which a single relation may narrow.
     /// `None` when unmanaged.
@@ -362,6 +493,47 @@ fn verbs_phrase(verbs: Verbs) -> String {
     } else {
         names.join(" + ")
     }
+}
+
+/// "give a value to" / "change", for a column refusal.
+fn column_verb(verb: Verbs) -> &'static str {
+    if verb == Verbs::INSERT {
+        "give a value to"
+    } else {
+        "change"
+    }
+}
+
+/// Whether `rule` lets `verb` write `column` — it sets no limit for the verb,
+/// or one of its globs matches. Whether the rule grants the verb at all is the
+/// caller's question.
+pub(super) fn column_covered(rule: &Rule, verb: Verbs, column: &str) -> bool {
+    match rule.columns.limit(verb) {
+        None => true,
+        Some(globs) => globs.iter().any(|g| glob_matches(g, column)),
+    }
+}
+
+/// The union of what `rules` allow `verb` to write: `None` (every column)
+/// when any of them sets no limit, otherwise every glob any of them lists, in
+/// order and without repeats. Rules that do not grant the verb must already
+/// be filtered out.
+fn union_limits<'r>(rules: impl IntoIterator<Item = &'r Rule>, verb: Verbs) -> Option<Vec<String>> {
+    let mut globs: Vec<String> = Vec::new();
+    for rule in rules {
+        let limit = rule.columns.limit(verb)?;
+        for g in limit {
+            if !globs.iter().any(|seen| seen.eq_ignore_ascii_case(g)) {
+                globs.push(g.clone());
+            }
+        }
+    }
+    Some(globs)
+}
+
+/// The top-level field of a MongoDB field path: `address.zip` → `address`.
+pub fn top_level_field(path: &str) -> &str {
+    path.split('.').next().unwrap_or(path)
 }
 
 fn qualified(schema: Option<&str>, name: &str) -> String {
@@ -578,6 +750,150 @@ mod tests {
         assert!(elsewhere.decide(&rel("invoices", Verbs::SELECT)).is_err());
         assert!(!elsewhere.database_visible("prod_line"));
         assert!(sales.database_visible("billing"));
+    }
+
+    /// Two rules on one server: `orders` limited to some columns, `notes`
+    /// limited on update by one rule and open by another.
+    const COLUMNS: &str = r#"{
+        "version": 1,
+        "defaultRole": "r",
+        "roles": { "r": { "rules": [
+            { "endpoint": "*", "relations": { "allow": ["orders"] },
+              "human": ["select", "insert", "update"], "ai": ["select", "update"],
+              "columns": { "insert": ["customer", "status"], "update": ["status", "note_*"] } },
+            { "endpoint": "*", "relations": { "allow": ["notes"] },
+              "human": ["select", "update"], "columns": { "update": ["body"] } },
+            { "endpoint": "*", "relations": { "allow": ["notes"] },
+              "human": ["select", "update"] }
+        ] } }
+    }"#;
+
+    fn cols(name: &str, verb: Verbs, columns: &[&str]) -> Need {
+        Need::Columns {
+            schema: None,
+            name: name.into(),
+            verb,
+            columns: columns.iter().map(|c| c.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn a_column_limit_narrows_what_a_verb_writes() {
+        let doc = doc(COLUMNS);
+        let erp = erp();
+        let me = person(&doc, "anyone", &erp, None);
+        assert!(me
+            .decide(&cols("orders", Verbs::UPDATE, &["status"]))
+            .is_ok());
+        assert!(me
+            .decide(&cols("orders", Verbs::UPDATE, &["Note_Internal"]))
+            .is_ok());
+        let err = me
+            .decide(&cols(
+                "orders",
+                Verbs::UPDATE,
+                &["status", "amount", "total"],
+            ))
+            .unwrap_err();
+        assert!(
+            err.contains("may not change columns amount, total"),
+            "{err}"
+        );
+        assert!(err.contains("are: status, note_*"), "{err}");
+        // Insert reads its own list.
+        assert!(me
+            .decide(&cols("orders", Verbs::INSERT, &["customer", "status"]))
+            .is_ok());
+        let err = me
+            .decide(&cols("orders", Verbs::INSERT, &["note_x"]))
+            .unwrap_err();
+        assert!(
+            err.contains("may not give a value to column note_x"),
+            "{err}"
+        );
+        // The AI reads the same list, through its own grant.
+        let ai = ctx(&doc, "anyone", &erp, None);
+        assert!(ai
+            .decide(&cols("orders", Verbs::UPDATE, &["status"]))
+            .is_ok());
+        assert!(ai
+            .decide(&cols("orders", Verbs::UPDATE, &["amount"]))
+            .is_err());
+        assert!(ai
+            .decide(&cols("orders", Verbs::INSERT, &["status"]))
+            .is_err());
+    }
+
+    #[test]
+    fn a_rule_without_a_column_limit_wins_the_union() {
+        let doc = doc(COLUMNS);
+        let erp = erp();
+        let me = person(&doc, "anyone", &erp, None);
+        assert!(me
+            .decide(&cols("notes", Verbs::UPDATE, &["anything"]))
+            .is_ok());
+        let scope = me.relation_columns(None, "notes").unwrap();
+        assert_eq!(scope.update, None);
+        let scope = me.relation_columns(None, "orders").unwrap();
+        assert_eq!(
+            scope.update,
+            Some(vec!["status".to_string(), "note_*".to_string()])
+        );
+        assert_eq!(
+            scope.insert,
+            Some(vec!["customer".to_string(), "status".to_string()])
+        );
+    }
+
+    #[test]
+    fn on_mongodb_a_field_is_judged_by_its_top_level_name() {
+        let doc = doc(COLUMNS);
+        let mongo = ConnectionProfile {
+            driver: Driver::Mongo,
+            ..erp()
+        };
+        let me = person(&doc, "anyone", &mongo, None);
+        assert!(me
+            .decide(&cols("orders", Verbs::UPDATE, &["status.code"]))
+            .is_ok());
+        assert!(me
+            .decide(&cols("orders", Verbs::UPDATE, &["amount.value"]))
+            .is_err());
+        // `_id` is the document's key: inserting it is never limited.
+        assert!(me
+            .decide(&cols("orders", Verbs::INSERT, &["_id", "customer"]))
+            .is_ok());
+        // On SQL a dotted name is a column like any other.
+        let erp = erp();
+        let sql = person(&doc, "anyone", &erp, None);
+        assert!(sql
+            .decide(&cols("orders", Verbs::UPDATE, &["status.code"]))
+            .is_err());
+    }
+
+    #[test]
+    fn column_limits_close_free_writes_but_not_free_reads() {
+        let text = r#"{"version":1,"defaultRole":"r","roles":{"r":{"rules":[
+            {"endpoint":"*","human":["select","update"],"columns":{"update":["status"]}}]}}}"#;
+        let doc = doc(text);
+        let erp = erp();
+        let me = person(&doc, "anyone", &erp, None);
+        assert!(me.decide(&Need::FreeSql(Verbs::SELECT)).is_ok());
+        assert!(!me.free_sql_blocked());
+        let err = me.decide(&Need::FreeSql(Verbs::UPDATE)).unwrap_err();
+        assert!(err.contains("limits which columns"), "{err}");
+    }
+
+    #[test]
+    fn an_unmanaged_connection_has_no_column_limits() {
+        let text = r#"{"version":1,"defaultRole":"r","unmanagedConnections":"allow",
+            "roles":{"r":{"rules":[{"endpoint":{"host":"elsewhere"},"human":["update"],
+            "columns":{"update":["a"]}}]}}}"#;
+        let doc = doc(text);
+        let erp = erp();
+        let me = person(&doc, "anyone", &erp, None);
+        assert!(me.decide(&cols("t", Verbs::UPDATE, &["b"])).is_ok());
+        assert_eq!(me.relation_columns(None, "t"), None);
     }
 
     #[test]

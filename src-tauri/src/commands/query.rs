@@ -2482,6 +2482,14 @@ pub async fn update_cell(
         &table,
         crate::db::sql::Verbs::UPDATE,
     )?;
+    crate::commands::guard::columns(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::UPDATE,
+        [&column],
+    )?;
     update_cell_inner(
         &sink,
         state.inner(),
@@ -2685,6 +2693,15 @@ pub async fn unset_field(
         None,
         &collection,
         crate::db::sql::Verbs::UPDATE,
+    )?;
+    // Removing a field changes it, as setting one does.
+    crate::commands::guard::columns(
+        state.inner(),
+        &connection_id,
+        None,
+        &collection,
+        crate::db::sql::Verbs::UPDATE,
+        [&field],
     )?;
     let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
@@ -2929,6 +2946,14 @@ pub async fn insert_row(
         &table,
         crate::db::sql::Verbs::INSERT,
     )?;
+    crate::commands::guard::columns(
+        state.inner(),
+        &connection_id,
+        schema.as_deref(),
+        &table,
+        crate::db::sql::Verbs::INSERT,
+        values.iter().map(|v| &v.column),
+    )?;
     insert_row_inner(
         &sink,
         state.inner(),
@@ -2993,6 +3018,14 @@ pub async fn insert_documents(
     // partially-applied insert.
     let documents = crate::db::mongo::query::parse_insert_source(&source)?;
     let count = documents.len() as u64;
+    crate::commands::guard::columns(
+        state.inner(),
+        &connection_id,
+        None,
+        &collection,
+        crate::db::sql::Verbs::INSERT,
+        documents.iter().flat_map(|d| d.keys()),
+    )?;
 
     let start = Instant::now();
     let res = crate::db::mongo::query::insert_documents(conn, &collection, documents).await;

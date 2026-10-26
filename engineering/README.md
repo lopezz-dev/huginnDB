@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-112 entries: 90 ADRs, 13 gotchas, 9 conventions.
+113 entries: 91 ADRs, 13 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -152,4 +152,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 110 | ADR | [a tunnel holds one SSH session — a slow channel is not a dead session, and a replaced session is closed](adr/adr-110-a-tunnel-holds-one-ssh-session.md) | accepted | 2026-10-19 |
 | 111 | ADR | [a tunnel whose redial failed waits before dialling again, and fails every channel at once meanwhile](adr/adr-111-a-failed-redial-backs-off.md) | accepted | 2026-10-19 |
 | 112 | ADR | [a write batch is one transaction of single row writes, and its verify reads run after the commit as ordinary reads](adr/adr-112-a-write-batch-is-one-transaction-and-verify-runs-after-it.md) | accepted | 2026-10-20 |
+| 113 | ADR | [a policy rule limits columns per verb, judged as a union beside the relation's verb, and free-form writes close under a limited verb](adr/adr-113-policy-column-limits-are-per-verb-and-unioned.md) | accepted | 2026-10-25 |
 <!-- index:end -->

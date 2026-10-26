@@ -18,7 +18,9 @@
  */
 
 import type { MutableRefObject } from "react";
+import { Lock } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { PolicyLockHint } from "@/components/common/PolicyLock";
 import { BitInput } from "@/components/grid/BitInput";
 import { CellInput } from "@/components/grid/CellInput";
 import { FkCombobox } from "@/components/grid/FkCombobox";
@@ -46,8 +48,11 @@ export function isAutoPkColumn(info?: ColumnInfo): boolean {
 export function firstEditableColumn(
   columns: ColumnMeta[],
   infoByName: Map<string, ColumnInfo>,
+  columnLock?: (column: string) => string | null,
 ): number {
   for (let i = 0; i < columns.length; i++) {
+    // A column the policy will not let this person fill is not focusable.
+    if (columnLock?.(columns[i].name)) continue;
     const info = infoByName.get(columns[i].name);
     // No catalog info → a plain input, which is focusable.
     if (!info) return i;
@@ -73,6 +78,12 @@ interface DraftCellControlProps {
   tableSchema?: string;
   /** Grid preference for BIT option labels. */
   bitDisplay: "true_false" | "zero_one";
+  /**
+   * Why the managed policy will not let the person give this column a value
+   * (ADR #113). The cell then shows a lock instead of a control and is left
+   * out of the INSERT, so the database fills it.
+   */
+  locked?: string | null;
   onChange: (cell: DraftCell) => void;
 }
 
@@ -85,9 +96,19 @@ export function DraftCellControl({
   connectionId,
   tableSchema,
   bitDisplay,
+  locked,
   onChange,
 }: DraftCellControlProps) {
   const { t } = useTranslation();
+  if (locked && !isAutoPkColumn(info)) {
+    return (
+      <PolicyLockHint reason={`${locked} ${t("dataGrid.draftLocked")}`}>
+        <span className="flex items-center gap-1 px-1 font-mono text-2xs text-muted-foreground/60">
+          <Lock aria-hidden className="h-2.5 w-2.5 shrink-0" />—
+        </span>
+      </PolicyLockHint>
+    );
+  }
   if (isAutoPkColumn(info)) {
     return (
       <span

@@ -37,7 +37,14 @@ import {
 import { api } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { useConnections } from "@/stores/session/connections";
+import { globMatches } from "@/lib/policy/glob";
 import type { ConnectionProfile } from "@/types";
+import {
+  ColumnScopeField,
+  ColumnWarnings,
+  type CatalogColumn,
+  type ColumnCatalog,
+} from "./columns";
 import {
   EndpointField,
   Field,
@@ -47,6 +54,11 @@ import {
   PermissionGrid,
   profileFor,
 } from "./fields";
+
+/** The driver a rule's endpoint names, if it names one. */
+function endpointDriver(e: EndpointJson): string | undefined {
+  return e === "*" ? undefined : e.driver;
+}
 
 function endpointLabel(
   e: EndpointJson,
@@ -60,13 +72,27 @@ function endpointLabel(
   return [e.host || "…", e.port].filter(Boolean).join(":");
 }
 
+/** A relation of the catalog, with the pool id its structure is read through. */
+interface CatalogRelation {
+  target: string;
+  schema: string;
+  name: string;
+}
+
 /** Database and relation names on the rule's server, best effort. */
 function useCatalog(
   profile: ConnectionProfile | undefined,
   databases: string[] | undefined,
-): { databases: string[] | null; relations: string[] | null; loading: boolean } {
+): {
+  databases: string[] | null;
+  relations: string[] | null;
+  /** The same relations, with where each one lives — for its columns. */
+  relationRefs: CatalogRelation[] | null;
+  loading: boolean;
+} {
   const [dbs, setDbs] = useState<string[] | null>(null);
   const [rels, setRels] = useState<string[] | null>(null);
+  const [refs, setRefs] = useState<CatalogRelation[] | null>(null);
   const [pending, setPending] = useState(0);
   const id = profile?.id;
   const sqlite = profile?.driver === "sqlite";
@@ -95,6 +121,7 @@ function useCatalog(
   const key = targets.join("|");
   useEffect(() => {
     setRels(null);
+    setRefs(null);
     if (targets.length === 0) return;
     let live = true;
     setPending((n) => n + 1);
@@ -102,10 +129,21 @@ function useCatalog(
       .then((lists) => {
         if (!live) return;
         const names = new Set<string>();
-        for (const list of lists) for (const t of list) names.add(t.name);
+        const found: CatalogRelation[] = [];
+        lists.forEach((list, i) => {
+          for (const t of list) {
+            names.add(t.name);
+            found.push({ target: targets[i]!, schema: t.schema, name: t.name });
+          }
+        });
         setRels([...names].sort((a, b) => a.localeCompare(b)));
+        setRefs(found);
       })
-      .catch(() => live && setRels([]))
+      .catch(() => {
+        if (!live) return;
+        setRels([]);
+        setRefs([]);
+      })
       .finally(() => setPending((n) => n - 1));
     return () => {
       live = false;
@@ -113,7 +151,109 @@ function useCatalog(
     // `key` stands for `targets`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
-  return { databases: dbs, relations: rels, loading: pending > 0 };
+  return { databases: dbs, relations: rels, relationRefs: refs, loading: pending > 0 };
+}
+
+/** How many tables' columns the editor reads for one rule, at most. */
+const COLUMN_TABLES_MAX = 8;
+
+/**
+ * Whether a rule's relation patterns reach a relation — the same matching as
+ * `policy::resolve::relation_allowed`: a pattern with a dot is matched against
+ * `schema.name`, one without against the name; `deny` wins.
+ */
+function ruleReaches(rule: RuleJson, schema: string, name: string): boolean {
+  const full = `${schema}.${name}`;
+  const hit = (g: string) => (g.includes(".") ? globMatches(g, full) : globMatches(g, name));
+  if ((rule.relations?.deny ?? []).some(hit)) return false;
+  const allow = rule.relations?.allow;
+  return allow === undefined ? true : allow.some(hit);
+}
+
+/**
+ * The columns of the tables a rule names, for its column limits (ADR #113) —
+ * read only once a limit is set, and only for a rule that names its tables:
+ * "every column of every table" is no list to pick from.
+ */
+function useColumnCatalog(
+  rule: RuleJson,
+  relationRefs: CatalogRelation[] | null,
+  catalogLoading: boolean,
+): ColumnCatalog {
+  const wanted = rule.columns !== undefined;
+  const namesTables = rule.relations?.allow !== undefined;
+  const reached = useMemo(
+    () =>
+      wanted && namesTables && relationRefs
+        ? relationRefs
+            .filter((r) => ruleReaches(rule, r.schema, r.name))
+            .slice(0, COLUMN_TABLES_MAX)
+        : [],
+    // `rule.relations` is what `ruleReaches` reads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [wanted, namesTables, relationRefs, rule.relations],
+  );
+  const key = reached.map((r) => `${r.target}|${r.schema}.${r.name}`).join(";");
+  const [columns, setColumns] = useState<CatalogColumn[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    setColumns(null);
+    if (reached.length === 0) return;
+    let live = true;
+    setLoading(true);
+    Promise.all(
+      reached.map((r) =>
+        api
+          .getTableStructure(r.target, r.schema || undefined, r.name)
+          .then((s) => ({ table: `${r.schema}.${r.name}`, columns: s.columns }))
+          .catch(() => ({ table: `${r.schema}.${r.name}`, columns: [] })),
+      ),
+    )
+      .then((tables) => {
+        if (!live) return;
+        const byName = new Map<string, CatalogColumn & { generatedIn: number }>();
+        for (const { table, columns: cols } of tables) {
+          for (const c of cols) {
+            const k = c.name.toLowerCase();
+            const entry = byName.get(k) ?? {
+              name: c.name,
+              tables: [],
+              requiredIn: [],
+              identity: false,
+              generatedIn: 0,
+            };
+            entry.tables.push(table);
+            if (c.autoIncrement) entry.generatedIn += 1;
+            else if (!c.nullable && (c.default ?? null) === null) entry.requiredIn.push(table);
+            byName.set(k, entry);
+          }
+        }
+        setColumns(
+          [...byName.values()].map(({ generatedIn, ...c }) => ({
+            ...c,
+            identity: generatedIn > 0 && generatedIn === c.tables.length,
+          })),
+        );
+      })
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+    // `key` stands for `reached`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return {
+    columns: reached.length > 0 ? columns : null,
+    tables: reached.map((r) => `${r.schema}.${r.name}`),
+    loading: loading || (wanted && namesTables && catalogLoading && relationRefs === null),
+    reason: !namesTables
+      ? "noTables"
+      : relationRefs === null
+        ? "closed"
+        : reached.length === 0
+          ? "noMatch"
+          : null,
+  };
 }
 
 /**
@@ -207,6 +347,7 @@ function RuleEditor({
   const match = profileFor(rule.endpoint, profiles);
   const open = match && active.has(match.id) ? match : undefined;
   const catalog = useCatalog(open, rule.databases);
+  const columnCatalog = useColumnCatalog(rule, catalog.relationRefs, catalog.loading);
   const source = open?.name;
   const noCatalogHint =
     rule.endpoint === "*"
@@ -295,7 +436,27 @@ function RuleEditor({
           human={rule.human ?? []}
           ai={rule.ai ?? []}
           readOnly={readOnly}
+          below={(p) =>
+            (p === "insert" || p === "update") && (rule.human ?? []).includes(p) ? (
+              <ColumnScopeField
+                verb={p}
+                rule={rule}
+                catalog={columnCatalog}
+                catalogSource={source}
+                closedHint={noCatalogHint}
+                mssql={open?.driver === "sqlserver" || endpointDriver(rule.endpoint) === "sqlserver"}
+                readOnly={readOnly}
+                onChange={onChange}
+              />
+            ) : null
+          }
           onChange={({ human, ai }) => patch({ human, ai })}
+        />
+        <ColumnWarnings
+          rule={rule}
+          catalog={columnCatalog}
+          readOnly={readOnly}
+          onChange={onChange}
         />
       </FieldGroup>
 
@@ -373,7 +534,13 @@ export function RolesPane({
       r.databases === undefined
         ? t("policyEditor.rules.allDbs")
         : t("policyEditor.rules.dbCount", { count: r.databases.length });
-    const human = r.human ?? [];
+    // A verb limited to some columns says how many: "update (2 col.)".
+    const human = (r.human ?? []).map((p) => {
+      const limit = r.columns?.[p as "insert" | "update"];
+      return limit === undefined
+        ? p
+        : t("policyEditor.rules.columnCount", { verb: p, count: limit.length });
+    });
     return `${dbs} · ${human.length > 0 ? human.join(", ") : t("policyEditor.rules.nothing")}`;
   };
 

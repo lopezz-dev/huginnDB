@@ -88,7 +88,18 @@ describe("policy draft", () => {
     expect(c.rulesChanged).toEqual(["sales"]);
     expect(c.usersMoved).toEqual([{ user: "bob", from: "sales", to: "none" }]);
     expect(c.dbUserIntroduced).toBe(true);
+    expect(c.columnsIntroduced).toBe(false);
     expect(c.rolesAdded).toEqual([]);
+    // Column limits break older versions the same way.
+    const limited: PolicyJson = {
+      ...after,
+      roles: {
+        ...after.roles,
+        sales: { rules: [{ endpoint: "*", human: ["update"], columns: { update: ["estado"] } }] },
+      },
+    };
+    expect(summarizeChanges(after, limited).columnsIntroduced).toBe(true);
+    expect(summarizeChanges(limited, limited).columnsIntroduced).toBe(false);
   });
 
   it("starts a new policy with its author able to do everything", () => {

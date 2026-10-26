@@ -1460,6 +1460,19 @@ export interface RulePolicy {
   /** What the AI effectively gets: `ai ∩ human`. */
   ai: string[];
   freeSql: boolean;
+  /** The rule's own column limits, as written. */
+  columns: ColumnScope;
+}
+
+/**
+ * Which columns `insert` may give a value to and `update` may change (ADR
+ * #113). `null` means every column; an empty list, none. Entries are the
+ * policy's patterns (`*` is the wildcard), matched ignoring case — on
+ * MongoDB, against a field's top-level name.
+ */
+export interface ColumnScope {
+  insert: string[] | null;
+  update: string[] | null;
 }
 
 /** A verb a managed policy grants, as `policy::model::verb_names` spells it. */
@@ -1488,6 +1501,8 @@ export interface ConnectionAccess {
   verbs: PolicyVerb[];
   export: boolean;
   monitor: boolean;
+  /** An upper bound across the connection, as `verbs` is. */
+  columns: ColumnScope;
   /** The refusal, when `visible` is false. */
   reason: string | null;
 }
@@ -1502,6 +1517,8 @@ export interface RelationAccess {
   visible: boolean;
   verbs: PolicyVerb[];
   export: boolean;
+  /** Which columns `insert` and `update` may write here. */
+  columns: ColumnScope;
 }
 
 /** Live pool footprint, from the `connection_pool_stats` command. */

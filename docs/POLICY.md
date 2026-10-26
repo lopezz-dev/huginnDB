@@ -36,6 +36,12 @@ free-form queries, Security or Pulse without `monitor`) shows a locked page
 instead. While the policy is loading or cannot be applied, a bar across the
 window says so and links to Settings → Policy.
 
+Where a role may write only some columns, the table's header shows a lock on
+the columns it can neither change nor fill, a "new rows only" mark on the ones
+a new row may still fill, and a line above the rows names the columns that can
+be changed. A locked cell still opens, read-only, so its value can be read in
+full; a new row leaves the locked columns to their default.
+
 The policy only ever **narrows**. The per-connection settings users already
 have — which connections are exposed to MCP, their MCP write level, whether the
 AI panel is enabled — still apply. What the AI may do is the policy *and* those.
@@ -182,6 +188,19 @@ allows there.
 
   The AI never gets more than the person: whatever `ai` lists beyond `human` is
   ignored, and Settings → Policy shows a warning.
+- **`columns`** — which columns `insert` may give a value to and `update` may
+  change, on every relation the rule reaches: `"columns": { "insert": ["customer",
+  "amount", "status"], "update": ["status", "notes"] }`. A verb left out of
+  `columns` reaches every column; an empty list reaches none. Patterns work as
+  for relations (`notes_*`, ignoring case). Reading is not limited: everyone who
+  may read the table still sees every column. On MongoDB a column is a field
+  and is judged by its top-level name — changing `address.zip` changes
+  `address` — and a document's `_id` may always be given on insert. To give one
+  table other columns than the rest, write a separate rule for it.
+
+  Two rules on the same table add up: a column either of them allows is
+  allowed, and a rule that does not limit a verb allows it on every column.
+  The limit applies to the person and to their AI alike.
 - **`dbUser`** — the database user a person signs in to this server as; see
   [Each person with their own database user](#each-person-with-their-own-database-user).
 
@@ -197,6 +216,13 @@ row-level writes the rule allows). No tool can reliably tell from a query's text
 every table it touches: views, functions, dynamic SQL and system catalogs such
 as `INFORMATION_SCHEMA` or `master` would all be ways around the restriction.
 A rule over a whole server keeps free-form queries, bounded by its permissions.
+
+**Column limits close free-form writes, not reads.** Under a rule that limits
+`columns.update`, a free-form `UPDATE` is refused for the same reason — a
+statement's text does not reliably say which columns it writes (triggers,
+views, dynamic SQL) — and likewise `INSERT` under `columns.insert`. Free-form
+reads stay available unless the rule also limits databases or relations; then
+the paragraph above applies.
 
 Discovery is filtered too: the AI's list of databases and tables only contains
 what the role can reach, so it does not learn the names of the rest.
@@ -260,9 +286,9 @@ computer.
   for that connection is **not** stored on their computer. To keep it off every
   computer, publish the connection without a password.
 
-> **Update HuginnDB everywhere before you add `dbUser`.** Versions that predate
-> it do not know the field, treat the policy as invalid and block every
-> connection until they are updated.
+> **Update HuginnDB everywhere before you add `dbUser` or `columns`.** Versions
+> that predate a field do not know it, treat the policy as invalid and block
+> every connection until they are updated.
 
 ### Generating the grants
 
@@ -277,6 +303,15 @@ the script from the server's catalog —
   level, which also covers tables created later. A rule that names relations
   (or has a `deny`) is expanded into the tables that exist now — a `GRANT`
   takes no wildcards — so generate the script again after creating tables.
+- A rule with `columns` grants per column, `GRANT UPDATE (status, notes) ON
+  orders`, against the columns each table has now — so generate the script
+  again after adding columns too. **SQL Server cannot limit `INSERT` by
+  column** (its column permissions are `SELECT`, `UPDATE` and `REFERENCES`):
+  the script grants `INSERT` on the whole table and says so, and
+  `columns.insert` then holds only inside HuginnDB. To have SQL Server enforce
+  it, grant `INSERT` on a view with just those columns instead. MongoDB has no
+  field privileges at all, so there both limits hold only inside HuginnDB.
+  PostgreSQL and MySQL enforce both.
 - The people the policy gives the role are listed at the end, commented out,
   as they sign in (`dbUser`, or their account): check the names and uncomment.
 - The script's notes say what the engine cannot hide: PostgreSQL shows every
@@ -301,7 +336,15 @@ the JSON one pane away; both edit the same draft.
   checked by the same parser that applies the policy, and the error names the
   role and rule. A typo can no longer lock every computer out.
 - **View as** shows what any account — and its AI — would get on each saved
-  connection under the draft, before anything is saved.
+  connection under the draft, before anything is saved, with the columns each
+  limited verb may write.
+- Under `insert` and `update`, **All columns / Only these** limits the verb to
+  the columns picked from the rule's own tables. Each one is marked when it is
+  required (no default, no NULL), set by the server, or missing from some of
+  the tables. The editor warns, with a button that fixes it, when a required
+  column is left out of `insert` — no row could be added — and when `delete`
+  sits beside a limited `update`, since deleting a row and adding it back
+  writes any column.
 - A rule's server is picked from this computer's saved connections, and its
   databases and tables from that server's own list (the rule offers to connect
   to it). A pattern such as `v_factura_*` can also be added: the field shows

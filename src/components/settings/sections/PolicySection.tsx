@@ -13,7 +13,7 @@
  * people may do is shown for reference and labelled as such.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
@@ -440,6 +440,21 @@ function RuleBlock({ rule }: { rule: RulePolicy }) {
           <dt className="text-muted-foreground">{t("settings.policy.never")}</dt>
           <dd className="font-mono">{rule.deny.join(", ")}</dd>
         </>
+      )}
+      {(["insert", "update"] as const).map(
+        (verb) =>
+          rule.columns?.[verb] && (
+            <Fragment key={verb}>
+              <dt className="text-muted-foreground">
+                {t(`settings.policy.columns.${verb}`)}
+              </dt>
+              <dd className="font-mono">
+                {rule.columns[verb]!.length > 0
+                  ? rule.columns[verb]!.join(", ")
+                  : t("settings.policy.nothing")}
+              </dd>
+            </Fragment>
+          ),
       )}
       <dt className="text-muted-foreground">{t("settings.policy.ai")}</dt>
       <dd className="font-medium">{perms(rule.ai)}</dd>

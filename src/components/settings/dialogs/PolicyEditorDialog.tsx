@@ -393,6 +393,9 @@ export function PolicyEditorDialog({
                 {changes?.dbUserIntroduced && (
                   <li className="text-warning">{t("policyEditor.warn.dbUser")}</li>
                 )}
+                {changes?.columnsIntroduced && (
+                  <li className="text-warning">{t("policyEditor.warn.columns")}</li>
+                )}
                 {!creating && myRoleBefore !== myRoleAfter && (
                   <li className="text-warning">
                     {t("policyEditor.warn.ownRole", {

@@ -1,7 +1,15 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { ColumnDef } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown, KeyRound, Maximize2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  KeyRound,
+  Lock,
+  Maximize2,
+  SquarePlus,
+} from "lucide-react";
 import { BitInput } from "@/components/grid/BitInput";
 import { CellInput } from "@/components/grid/CellInput";
 import { FkCombobox } from "@/components/grid/FkCombobox";
@@ -60,6 +68,10 @@ export interface ColumnMetaMaps {
   columnIndexByName: ReadonlyMap<string, number>;
   pkNameSet: ReadonlySet<string>;
   fkNameSet: ReadonlySet<string>;
+  /** Columns the managed policy will not let this person change (ADR #113). */
+  lockedNameSet?: ReadonlySet<string>;
+  /** Columns they may not change but may fill when adding a row. */
+  insertOnlyNameSet?: ReadonlySet<string>;
   /** Name of the JSON Schema bound to a column, when there is one. */
   boundSchemaNames: ReadonlyMap<string, string>;
 }
@@ -141,6 +153,8 @@ export function useGridColumns(
     columnIndexByName,
     pkNameSet,
     fkNameSet,
+    lockedNameSet,
+    insertOnlyNameSet,
     boundSchemaNames,
   } = meta;
   const { interactiveRef, setFkEditCell, setInlineEdit, openHeavyEditor } =
@@ -168,6 +182,10 @@ export function useGridColumns(
           // window that can also run DDL. Sorting stays discoverable through
           // the arrow glyph and the sort state reported on the last line.
           const facts: string[] = [col.data_type];
+          const locked = lockedNameSet?.has(col.name) ?? false;
+          const insertOnly = insertOnlyNameSet?.has(col.name) ?? false;
+          if (locked) facts.push(t("dataGrid.headerPolicyLocked"));
+          if (insertOnly) facts.push(t("dataGrid.headerInsertOnly"));
           if (pkNameSet.has(col.name)) facts.push(t("dataGrid.headerPk"));
           if (fkNameSet.has(col.name)) {
             facts.push(
@@ -209,6 +227,18 @@ export function useGridColumns(
               }
               title={`${col.name}\n${facts.join(" · ")}`}
             >
+              {locked && (
+                <Lock
+                  className="h-3 w-3 shrink-0 text-muted-foreground"
+                  aria-label={t("dataGrid.headerPolicyLocked")}
+                />
+              )}
+              {insertOnly && (
+                <SquarePlus
+                  className="h-3 w-3 shrink-0 text-muted-foreground"
+                  aria-label={t("dataGrid.headerInsertOnly")}
+                />
+              )}
               {pkNameSet.has(col.name) && (
                 <KeyRound
                   className="h-3 w-3 shrink-0 text-pk"
@@ -440,6 +470,8 @@ export function useGridColumns(
       sort,
       pkNameSet,
       fkNameSet,
+      lockedNameSet,
+      insertOnlyNameSet,
       onSortChange,
       expandCellCombo,
       columnInfoByName,
