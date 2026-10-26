@@ -104,6 +104,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   client does, and signs with `rsa-sha2-512` or `rsa-sha2-256`. `ssh-rsa` is
   used only with a server that takes nothing else. Ed25519 and ECDSA keys were
   never affected.
+- **An imported connection is no longer owned by a shared origin from another
+  machine.** A profile or environment export carries the id of the shared
+  origin each connection came from on the exporting machine, and the import
+  kept it. That id names nothing here, so the connection arrived read-only in
+  the connection dialog and was reported as belonging to a vanished origin.
+  An imported connection is now an ordinary local one, like a connection you
+  created yourself; only a shared origin's own sync marks a connection as
+  owned by it.
 
 ### Security
 
