@@ -8,6 +8,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Recuento exacto en el pie de la tabla.** Cuando el total del pie es una
+  estimación del motor (`~N`: `estimatedDocumentCount` de MongoDB,
+  `reltuples` de Postgres, `TABLE_ROWS` de MySQL, las estadísticas de
+  partición de SQL Server), un botón **Σ** a su lado cuenta de verdad todas
+  las filas, respetando los filtros, la búsqueda y la expresión del panel de
+  consulta activos. También aparece cuando el recuento de fondo se rinde —en
+  MongoDB un recuento filtrado se corta a los diez segundos— y este no tiene
+  ese límite: lo has pedido tú, así que dura lo que duraría una consulta que
+  escribieras. La cifra exacta se mantiene hasta que un cambio de filtro o
+  una actualización la sustituyen, y una respuesta que llegue después de
+  cualquiera de los dos se descarta.
+
 ### Corregido
 
 - **Los números de fila siguen contando entre páginas.** Al recorrer una tabla

@@ -8,8 +8,8 @@
 //! affected-document count in `rows_affected` and carry no rows.
 
 use crate::commands::query::{
-    nonblank, shed_to_batch_budget, BatchResult, ColumnFilter, ColumnMeta, CountResult, FilterOp,
-    Projection, QueryResult, RowValue, SortSpec, StmtOutcome, TableFilter, TableQuery,
+    nonblank, shed_to_batch_budget, BatchResult, ColumnFilter, ColumnMeta, CountMode, CountResult,
+    FilterOp, Projection, QueryResult, RowValue, SortSpec, StmtOutcome, TableFilter, TableQuery,
     MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::{AppError, AppResult};
@@ -934,7 +934,8 @@ fn seed_id_column(result: &mut QueryResult) {
 /// Count documents for the browse footer, served independently of the data
 /// page (the MongoDB analogue of the SQL `count_table_rows`).
 ///
-/// When `unfiltered` (whole collection) this uses `estimatedDocumentCount`,
+/// When `mode` allows an estimate (the background count of the whole
+/// collection — see [`CountMode::may_estimate`]) this uses `estimatedDocumentCount`,
 /// which reads collection metadata in O(1) — the key difference from
 /// [`fetch_collection_data`]'s inline `count_documents`, which scans the whole
 /// collection and is exactly what made opening a multi-million-document
@@ -945,11 +946,11 @@ pub async fn count_collection(
     collection: &str,
     predicate: &TableFilter,
     collation: Option<&str>,
-    unfiltered: bool,
+    mode: CountMode,
 ) -> AppResult<CountResult> {
     let db = resolve_db(conn)?;
     let coll = db.collection::<Document>(collection);
-    if unfiltered {
+    if mode.may_estimate(predicate) {
         let total = coll.estimated_document_count().await?;
         Ok(CountResult {
             total,
@@ -972,9 +973,10 @@ pub async fn count_collection(
         // A collation changes which documents match (`strength: 1` makes "a"
         // and "A" equal), so the count has to carry it or it would count a
         // different set than the page shows.
-        let mut count = coll
-            .count_documents(filter)
-            .max_time(Duration::from_millis(COUNT_TIMEOUT_MS));
+        let mut count = coll.count_documents(filter);
+        if let Some(limit) = count_ceiling(mode) {
+            count = count.max_time(limit);
+        }
         if let Some(c) = collation.map(parse_collation).transpose()? {
             count = count.collation(c);
         }
@@ -994,6 +996,17 @@ pub async fn count_collection(
 /// count nobody can wait for is not a slower count, it is a missing one, and
 /// the footer already knows how to show a page range without a total.
 const COUNT_TIMEOUT_MS: u64 = 10_000;
+
+/// The server-side `maxTimeMS` for a `count_documents` in `mode`: the
+/// background ceiling above, or none at all when the user asked for the exact
+/// figure. Lifting it is the point of that action — the collections whose
+/// estimate is worth doubting are the ones a ten-second cap would fail on.
+fn count_ceiling(mode: CountMode) -> Option<Duration> {
+    match mode {
+        CountMode::Automatic => Some(Duration::from_millis(COUNT_TIMEOUT_MS)),
+        CountMode::Exact => None,
+    }
+}
 
 /// Update one field of one document addressed by `_id` (`$set`).
 pub async fn update_cell(
@@ -1347,6 +1360,15 @@ pub async fn insert_documents(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn only_the_background_count_is_capped() {
+        assert_eq!(
+            super::count_ceiling(CountMode::Automatic),
+            Some(Duration::from_millis(super::COUNT_TIMEOUT_MS))
+        );
+        assert_eq!(super::count_ceiling(CountMode::Exact), None);
+    }
+
     /// A browse of `table` for the describe functions, which take a whole
     /// `TableQuery` now that collation and hint joined its shape.
     fn browse(
