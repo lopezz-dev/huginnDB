@@ -785,7 +785,10 @@
   "tableData": {
     "refresh": "Actualizar",
     "perPage": "{{count}}/página",
-    "approxTotal": "Total aproximado (estimación del motor). Filtra o busca para obtener el recuento exacto.",
+    "approxTotal": "Total aproximado (estimación del motor). Usa Recuento exacto para contar todas las filas.",
+    "exactCount": "Recuento exacto: contar todas las filas que cumplen los filtros actuales",
+    "exactCountRunning": "Contando todas las filas…",
+    "exactCountFailed": "No se pudo hacer el recuento exacto",
     "goToRow": "Ir a fila",
     "prevPage": "Página anterior",
     "nextPage": "Página siguiente",

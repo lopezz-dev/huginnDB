@@ -34,6 +34,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     las instalaciones antes de añadirlo: un HuginnDB anterior da un campo
     desconocido por política no válida.
 
+- **Recuento exacto en el pie de la tabla.** Cuando el total del pie es una
+  estimación del motor (`~N`: `estimatedDocumentCount` de MongoDB,
+  `reltuples` de Postgres, `TABLE_ROWS` de MySQL, las estadísticas de
+  partición de SQL Server), un botón **Σ** a su lado cuenta de verdad todas
+  las filas, respetando los filtros, la búsqueda y la expresión del panel de
+  consulta activos. También aparece cuando el recuento de fondo se rinde —en
+  MongoDB un recuento filtrado se corta a los diez segundos— y este no tiene
+  ese límite: lo has pedido tú, así que dura lo que duraría una consulta que
+  escribieras. La cifra exacta se mantiene hasta que un cambio de filtro o
+  una actualización la sustituyen, y una respuesta que llegue después de
+  cualquiera de los dos se descarta.
+
 ### Cambiado
 
 - **Conector MCP: el límite de filas por defecto es 200, antes 1000.** Mil
@@ -42,6 +54,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   producía un resultado que el cliente descartaba en vez de uno más corto que
   el modelo pudiera usar. `--max-rows` sigue funcionando, ahora como valor por
   defecto de ese cliente; una conexión con límite propio lo conserva.
+
+### Corregido
+
+- **Los números de fila siguen contando entre páginas.** Al recorrer una tabla
+  o colección página a página, la columna de número de fila de la rejilla (y
+  el número de cada tarjeta en la vista de lista) volvía a empezar en 1 en
+  cada página, así que la página 2 con 100 filas por página mostraba 1–100 en
+  vez de 101–200 y no coincidía con el rango del pie ni con **Ir a la fila**.
+  Ahora son absolutos. El número es solo de visualización: seleccionar,
+  editar, copiar y borrar filas sigue identificando cada fila por sus valores,
+  nunca por su posición (ADR #7).
 
 ## [1.36.0] — 2026-10-27
 

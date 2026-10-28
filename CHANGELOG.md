@@ -30,6 +30,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     before adding it — an older HuginnDB reads an unknown field as an invalid
     policy.
 
+- **Exact count in the table footer.** When the footer's total is an engine
+  estimate (`~N` — MongoDB's `estimatedDocumentCount`, Postgres `reltuples`,
+  MySQL `TABLE_ROWS`, SQL Server's partition stats) a **Σ** button beside it
+  counts every row for real, honouring the active filters, search and query
+  panel expression. It is also offered when the background count gave up —
+  on MongoDB a filtered count stops after ten seconds — and this one has no
+  such ceiling: you asked for it, so it runs as long as a query you typed
+  would. The exact figure stays until a filter change or a refresh replaces
+  it, and an answer that arrives after either is discarded.
+
 ### Changed
 
 - **MCP connector: the default row limit is 200, down from 1000.** A thousand
@@ -38,6 +48,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   client discarded instead of a shorter one the model could use. `--max-rows`
   still works, now as the default for that one client; a connection with its
   own limit keeps it.
+
+### Fixed
+
+- **Row numbers keep counting across pages.** Browsing a table or collection
+  page by page, the grid's row-number column (and the card number in list
+  view) started again at 1 on every page, so page 2 of a 100-row page read
+  1–100 instead of 101–200 and disagreed with the footer's range and with
+  **Go to row**. They are now absolute. The number is display only: selecting,
+  editing, copying and deleting rows still address a row by its values, never
+  by its position (ADR #7).
 
 ## [1.36.0] — 2026-10-27
 

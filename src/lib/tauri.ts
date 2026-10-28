@@ -838,9 +838,13 @@ export const api = {
    * page so an exact `COUNT(*)` on a huge table never blocks the first rows
    * from painting. With no filters/search the backend returns a fast engine
    * estimate (`estimated: true`); any predicate forces an exact count.
+   *
+   * `exact` is the footer's *exact count* action: never an estimate, and on
+   * MongoDB no ten-second ceiling — the user asked for this one, so it runs
+   * as long as a query they typed would.
    */
-  countTableRows: (query: TableScan) =>
-    invoke<CountResult>("count_table_rows", { query }),
+  countTableRows: (query: TableScan, exact = false) =>
+    invoke<CountResult>("count_table_rows", { query, exact }),
 
   /**
    * The statement a browse would run, without running it — the query panel's
