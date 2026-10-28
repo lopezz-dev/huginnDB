@@ -43,9 +43,11 @@ const manyRows: CellValue[][] = Array.from({ length: 500 }, (_, i) => [
 function Harness({
   onExpandField,
   rows: rowsProp = rows,
+  rowNumberOffset,
 }: {
   onExpandField: () => void;
   rows?: CellValue[][];
+  rowNumberOffset?: number;
 }) {
   // The list windows its cards against this element. jsdom reports a zero-size
   // rect for it, which is enough: the virtualizer still renders the first index
@@ -57,6 +59,7 @@ function Harness({
         scrollRef={scrollRef}
         columns={columns}
         rows={rowsProp}
+        rowNumberOffset={rowNumberOffset}
         nullDisplay="NULL"
         zebraStripes={false}
         expandNested={false}
@@ -149,6 +152,35 @@ describe("DocumentCard memoization", () => {
     // A fresh arrow every time, exactly like DataGrid's inline onExpandField.
     rerender(<Harness onExpandField={() => {}} />);
     expect(fieldsCountCalls()).toBe(afterMount);
+  });
+});
+
+describe("card numbers", () => {
+  // The number in each card's header is the row's place in the whole browse,
+  // not on this page: page 2 of a 100-row page starts at 101, matching the
+  // footer's range and "go to row". It used to restart at 1 on every page.
+  function headerNumbers(container: HTMLElement) {
+    return Array.from(container.querySelectorAll("[data-index]")).map(
+      (card) => card.querySelector("span.tabular-nums")?.textContent,
+    );
+  }
+
+  it("counts from 1 on the first page", () => {
+    const { container } = render(
+      <Harness onExpandField={() => {}} rows={manyRows} />,
+    );
+    expect(headerNumbers(container).slice(0, 2)).toEqual(["1", "2"]);
+  });
+
+  it("continues from the page's offset on a later page", () => {
+    const { container } = render(
+      <Harness
+        onExpandField={() => {}}
+        rows={manyRows}
+        rowNumberOffset={100}
+      />,
+    );
+    expect(headerNumbers(container).slice(0, 2)).toEqual(["101", "102"]);
   });
 });
 

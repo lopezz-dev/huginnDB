@@ -270,6 +270,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  // The offset `result` was actually fetched with. `offset` moves the moment
+  // an arrow is clicked, while the previous page stays on screen until the new
+  // one lands — numbering those stale rows from the new offset would flash
+  // page 2's numbers over page 1's rows.
+  const [resultOffset, setResultOffset] = useState(0);
   // Row total for the pagination footer, fetched out-of-band from the data
   // page (see `refreshCount`) so an exact `COUNT(*)` never gates the first
   // rows. `null` while the count is in flight (footer shows the range without
@@ -650,6 +655,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         withCount: false,
       });
       setResult(r);
+      setResultOffset(offset);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -1941,6 +1947,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             footer={footerContent}
             // The page is the server's answer to the search; see the prop.
             rowsFromServer
+            rowNumberOffset={resultOffset}
             queryChips={queryChips}
             belowToolbar={
               queryOpen && (

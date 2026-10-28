@@ -103,6 +103,9 @@ export interface InlineEditState {
 interface GridRowProps {
   row: Row<CellValue[]>;
   rowIndex: number;
+  /** What the gutter shows: absolute across pages, display only — see
+   *  `rowNumber` in `lib/grid/pagination.ts`. Never identity (ADR #7). */
+  rowNumber: number;
   isSelected: boolean;
   isMultiSelected: boolean;
   rowKey: string | null;
@@ -208,6 +211,7 @@ interface GridRowProps {
 export const GridRow = memo(function GridRow({
   row,
   rowIndex: i,
+  rowNumber: displayNumber,
   isSelected,
   isMultiSelected,
   rowKey,
@@ -342,11 +346,11 @@ export const GridRow = memo(function GridRow({
                   : "group-hover/row:hidden"
               }
             >
-              {i + 1}
+              {displayNumber}
             </span>
           </>
         ) : (
-          i + 1
+          displayNumber
         )}
       </td>
       {row.getVisibleCells().map((cell, cIdx) => {
