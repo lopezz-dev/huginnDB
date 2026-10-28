@@ -82,3 +82,18 @@ export function offsetForRow(
   if (total !== null && !totalEstimated && total > 0) row = Math.min(row, total);
   return row - 1;
 }
+
+/**
+ * The number the grid's gutter (and the list view's card header) shows for
+ * the row at position `index` of the page that starts at `offset` — absolute,
+ * so page 2 of a 100-row page begins at 101, the same count the footer's range
+ * and "go to row" use.
+ *
+ * A *display* number only. `index` is the row's position on screen, after any
+ * client-side filter or sort, so it never identifies a row — identity stays
+ * with the row's values (ADR #7). Surfaces that do not paginate (query and view
+ * results) pass `offset` 0.
+ */
+export function rowNumber(offset: number, index: number): number {
+  return offset + index + 1;
+}

@@ -8,6 +8,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Los números de fila siguen contando entre páginas.** Al recorrer una tabla
+  o colección página a página, la columna de número de fila de la rejilla (y
+  el número de cada tarjeta en la vista de lista) volvía a empezar en 1 en
+  cada página, así que la página 2 con 100 filas por página mostraba 1–100 en
+  vez de 101–200 y no coincidía con el rango del pie ni con **Ir a la fila**.
+  Ahora son absolutos. El número es solo de visualización: seleccionar,
+  editar, copiar y borrar filas sigue identificando cada fila por sus valores,
+  nunca por su posición (ADR #7).
+
 ## [1.36.0] — 2026-10-27
 
 ### Añadido
