@@ -82,3 +82,35 @@ export function offsetForRow(
   if (total !== null && !totalEstimated && total > 0) row = Math.min(row, total);
   return row - 1;
 }
+
+/**
+ * Where the footer's background count stands. `failed` is distinct from
+ * `loading` because both leave `total` at `null`, and only one of them is worth
+ * offering a retry for.
+ */
+export type CountStatus = "loading" | "ready" | "failed";
+
+/**
+ * Whether the footer offers the *exact count* action.
+ *
+ * Offered when the total on screen cannot be trusted as a size: an engine
+ * estimate (`~N`), or no total at all because the background count gave up —
+ * on MongoDB a filtered count is capped at ten seconds, and the collections
+ * that hit that cap are exactly the ones whose size someone wants to confirm.
+ * Not while the background count is still running (it may yet answer), not
+ * while an exact count is already on the wire, and not once the total is
+ * exact: refresh, or a new filter, is what makes it stale again.
+ */
+export function offerExactCount({
+  status,
+  totalEstimated,
+  exactRunning,
+}: {
+  status: CountStatus;
+  totalEstimated: boolean;
+  exactRunning: boolean;
+}): boolean {
+  if (exactRunning) return false;
+  if (status === "failed") return true;
+  return status === "ready" && totalEstimated;
+}

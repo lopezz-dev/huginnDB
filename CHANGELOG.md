@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Exact count in the table footer.** When the footer's total is an engine
+  estimate (`~N` — MongoDB's `estimatedDocumentCount`, Postgres `reltuples`,
+  MySQL `TABLE_ROWS`, SQL Server's partition stats) a **Σ** button beside it
+  counts every row for real, honouring the active filters, search and query
+  panel expression. It is also offered when the background count gave up —
+  on MongoDB a filtered count stops after ten seconds — and this one has no
+  such ceiling: you asked for it, so it runs as long as a query you typed
+  would. The exact figure stays until a filter change or a refresh replaces
+  it, and an answer that arrives after either is discarded.
+
 ## [1.36.0] — 2026-10-27
 
 ### Added

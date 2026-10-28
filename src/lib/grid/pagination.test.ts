@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   nextOffset,
+  offerExactCount,
   offsetForRow,
   pageWindow,
   prevOffset,
@@ -68,5 +69,28 @@ describe("offsetForRow", () => {
     for (const bad of ["", "0", "-3", "2.5", "abc", "1e3"]) {
       expect(offsetForRow(bad, 100, false)).toBeNull();
     }
+  });
+});
+
+describe("offerExactCount", () => {
+  const offer = (
+    status: "loading" | "ready" | "failed",
+    totalEstimated: boolean,
+    exactRunning = false,
+  ) => offerExactCount({ status, totalEstimated, exactRunning });
+
+  it("is offered beside an estimate, and after the background count gave up", () => {
+    expect(offer("ready", true)).toBe(true);
+    expect(offer("failed", false)).toBe(true);
+  });
+
+  it("is not offered over an exact total, or while a count may still answer", () => {
+    expect(offer("ready", false)).toBe(false);
+    expect(offer("loading", false)).toBe(false);
+  });
+
+  it("is not offered twice while one is on the wire", () => {
+    expect(offer("ready", true, true)).toBe(false);
+    expect(offer("failed", false, true)).toBe(false);
   });
 });

@@ -785,7 +785,10 @@
   "tableData": {
     "refresh": "Refresh",
     "perPage": "{{count}}/page",
-    "approxTotal": "Approximate total (engine estimate). Filter or search for the exact count.",
+    "approxTotal": "Approximate total (engine estimate). Use Exact count to count every row.",
+    "exactCount": "Exact count — count every row matching the current filters",
+    "exactCountRunning": "Counting every row…",
+    "exactCountFailed": "Exact count failed",
     "goToRow": "Go to row",
     "prevPage": "Previous page",
     "nextPage": "Next page",

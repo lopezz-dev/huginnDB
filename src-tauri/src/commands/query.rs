@@ -923,6 +923,43 @@ pub struct CountResult {
     pub estimated: bool,
 }
 
+/// How hard a [`count_table_rows`] should try to be exact.
+///
+/// The footer's own count is something nobody asked for: it fills in a number
+/// beside the page range, so it may answer from the engine's statistics when
+/// the whole relation is browsed, and on MongoDB a filtered count is capped
+/// (`COUNT_TIMEOUT_MS`) rather than holding a connection for minutes. Both are
+/// the right trade for a number the user did not request — and both are wrong
+/// once the user clicks *exact count*, because the collections where the
+/// estimate is worth doubting are precisely the big ones that a cap would turn
+/// into a failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CountMode {
+    /// The footer's background count: an estimate when unfiltered, a bounded
+    /// scan on MongoDB otherwise.
+    Automatic,
+    /// The user's explicit request: never an estimate, and no ceiling — the
+    /// same rule as a query the user runs, which stays unbounded (only the
+    /// reads the app issues on its own behalf get `operation_timeout`).
+    Exact,
+}
+
+impl CountMode {
+    pub fn of(exact: bool) -> Self {
+        if exact {
+            Self::Exact
+        } else {
+            Self::Automatic
+        }
+    }
+
+    /// True when this count may be served from engine statistics rather than
+    /// by counting: only for the background count of a whole relation.
+    pub fn may_estimate(self, filter: &TableFilter) -> bool {
+        self == Self::Automatic && filter.is_unfiltered()
+    }
+}
+
 /// Per-statement outcome inside a [`BatchResult`].
 ///
 /// `preview` is a single-line, length-capped echo of the statement (so the
@@ -2211,12 +2248,16 @@ pub(crate) async fn fetch_table_data_inner(
 /// (no filters, no search) it returns the engine's O(1) statistics estimate;
 /// with any predicate it runs an exact `COUNT(*)` — still off the render's
 /// critical path because the frontend fires it as a separate request.
+///
+/// `exact` is the grid's *exact count* action: it skips the estimate even on a
+/// whole-relation browse and lifts MongoDB's ceiling — see [`CountMode`].
 #[tauri::command]
 pub async fn count_table_rows(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
     query: TableScan,
+    exact: Option<bool>,
 ) -> AppResult<CountResult> {
     let sink =
         crate::commands::entry_sink(&app, &window, state.inner(), &query.connection_id).await;
@@ -2229,7 +2270,13 @@ pub async fn count_table_rows(
         &query.table,
     )?;
     crate::commands::guard::raw_filter(state.inner(), &query.connection_id, &query.filter)?;
-    count_table_rows_inner(&sink, state.inner(), query).await
+    count_table_rows_inner(
+        &sink,
+        state.inner(),
+        query,
+        CountMode::of(exact.unwrap_or(false)),
+    )
+    .await
 }
 
 /// Tauri-independent core of [`count_table_rows`].
@@ -2237,6 +2284,7 @@ pub(crate) async fn count_table_rows_inner(
     sink: &dyn LogSink,
     state: &AppState,
     query: TableScan,
+    mode: CountMode,
 ) -> AppResult<CountResult> {
     // `order`, `projection` and `hint` do not change how many rows match. A
     // collation does on MongoDB (it is part of the match there); on SQL it
@@ -2253,11 +2301,12 @@ pub(crate) async fn count_table_rows_inner(
     let driver = pool.driver_name();
 
     // "Unfiltered" == the whole relation: no column filters AND no committed
-    // search. Only then may we serve the fast catalog estimate; any predicate
+    // search. Only then may the background count serve the fast catalog
+    // estimate; any predicate — or the user asking for the exact figure —
     // forces an exact count of the matching subset.
-    let unfiltered = filter.is_unfiltered();
+    let estimate = mode.may_estimate(&filter);
 
-    // MongoDB: estimatedDocumentCount (O(1) metadata read) when unfiltered,
+    // MongoDB: estimatedDocumentCount (O(1) metadata read) when estimating,
     // exact countDocuments over the filter otherwise.
     if let DbPool::Mongo(conn) = &pool {
         let start = Instant::now();
@@ -2266,10 +2315,10 @@ pub(crate) async fn count_table_rows_inner(
             &table,
             &filter,
             nonblank(&collation),
-            unfiltered,
+            mode,
         )
         .await;
-        let label = if unfiltered {
+        let label = if estimate {
             "(mongo estimatedDocumentCount)"
         } else {
             "(mongo countDocuments)"
@@ -2303,7 +2352,7 @@ pub(crate) async fn count_table_rows_inner(
     // returns `None` when no usable estimate exists (SQLite always; a
     // never-analyzed Postgres/MySQL table) so we fall through to an exact
     // count rather than reporting a bogus `~0`.
-    if unfiltered {
+    if estimate {
         if let Some(total) = try_estimate(
             sink,
             &pool,
@@ -2321,7 +2370,7 @@ pub(crate) async fn count_table_rows_inner(
         }
     }
 
-    // Exact count: predicate present, or no estimate available.
+    // Exact count: predicate present, asked for, or no estimate available.
     let (where_clause, where_binds) = filter.clause(dialect)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
@@ -4027,6 +4076,19 @@ mod filter_tests {
     fn a_blank_expression_is_not_a_predicate() {
         assert!(with_raw("   ").is_unfiltered());
         assert!(!with_raw("qty > 3").is_unfiltered());
+    }
+
+    #[test]
+    fn only_the_background_count_of_a_whole_relation_may_estimate() {
+        let whole = TableFilter::default();
+        assert!(CountMode::Automatic.may_estimate(&whole));
+        // The user's exact count never answers from statistics…
+        assert!(!CountMode::Exact.may_estimate(&whole));
+        // …and no predicate ever does, whoever asked.
+        assert!(!CountMode::Automatic.may_estimate(&with_raw("qty > 3")));
+        assert!(!CountMode::Exact.may_estimate(&with_raw("qty > 3")));
+        assert_eq!(CountMode::of(true), CountMode::Exact);
+        assert_eq!(CountMode::of(false), CountMode::Automatic);
     }
 
     #[test]
