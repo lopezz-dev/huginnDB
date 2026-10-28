@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   nextOffset,
+  offerExactCount,
   offsetForRow,
   pageWindow,
   prevOffset,
+  rowNumber,
 } from "./pagination";
 
 const base = { offset: 0, pageSize: 100, total: 250, totalEstimated: false, rowsOnPage: 100 };
@@ -68,5 +70,49 @@ describe("offsetForRow", () => {
     for (const bad of ["", "0", "-3", "2.5", "abc", "1e3"]) {
       expect(offsetForRow(bad, 100, false)).toBeNull();
     }
+  });
+});
+
+describe("offerExactCount", () => {
+  const offer = (
+    status: "loading" | "ready" | "failed",
+    totalEstimated: boolean,
+    exactRunning = false,
+  ) => offerExactCount({ status, totalEstimated, exactRunning });
+
+  it("is offered beside an estimate, and after the background count gave up", () => {
+    expect(offer("ready", true)).toBe(true);
+    expect(offer("failed", false)).toBe(true);
+  });
+
+  it("is not offered over an exact total, or while a count may still answer", () => {
+    expect(offer("ready", false)).toBe(false);
+    expect(offer("loading", false)).toBe(false);
+  });
+
+  it("is not offered twice while one is on the wire", () => {
+    expect(offer("ready", true, true)).toBe(false);
+    expect(offer("failed", false, true)).toBe(false);
+  });
+});
+
+describe("rowNumber", () => {
+  it("counts from 1 on the first page", () => {
+    expect(rowNumber(0, 0)).toBe(1);
+    expect(rowNumber(0, 99)).toBe(100);
+  });
+
+  it("is absolute on later pages, not restarting at 1", () => {
+    // Page 2 of 100 rows/page: its first row is row 101.
+    expect(rowNumber(100, 0)).toBe(101);
+    expect(rowNumber(100, 99)).toBe(200);
+  });
+
+  it("agrees with the footer's range and with go-to-row", () => {
+    const offset = offsetForRow("250", 1000, false)!;
+    const page = pageWindow({ ...base, offset, total: 1000 });
+    expect(rowNumber(offset, 0)).toBe(250);
+    expect(rowNumber(offset, 0)).toBe(page.from);
+    expect(rowNumber(offset, 99)).toBe(page.to);
   });
 });

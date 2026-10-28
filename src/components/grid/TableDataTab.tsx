@@ -32,6 +32,7 @@ import {
   RefreshCw,
   ReplaceAll,
   Rows3,
+  Sigma,
   Table2,
   Braces,
   FilePlus2,
@@ -100,7 +101,13 @@ import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
 import { formatNumber } from "@/lib/utils";
 import { runExport } from "@/lib/grid/exportTable";
 import { clampRowHeight } from "@/lib/grid/rowHeight";
-import { nextOffset, pageWindow, prevOffset } from "@/lib/grid/pagination";
+import {
+  nextOffset,
+  offerExactCount,
+  pageWindow,
+  prevOffset,
+  type CountStatus,
+} from "@/lib/grid/pagination";
 import { collectNestedFieldPaths } from "@/lib/grid/fieldPaths";
 import { nextSort } from "@/lib/grid/sortSpec";
 import { isNarrowing, wireProjection } from "@/lib/grid/projection";
@@ -270,12 +277,22 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
+  // The offset `result` was actually fetched with. `offset` moves the moment
+  // an arrow is clicked, while the previous page stays on screen until the new
+  // one lands — numbering those stale rows from the new offset would flash
+  // page 2's numbers over page 1's rows.
+  const [resultOffset, setResultOffset] = useState(0);
   // Row total for the pagination footer, fetched out-of-band from the data
   // page (see `refreshCount`) so an exact `COUNT(*)` never gates the first
   // rows. `null` while the count is in flight (footer shows the range without
   // "/ N"); `totalEstimated` flags a fast engine estimate, rendered as `~N`.
   const [total, setTotal] = useState<number | null>(null);
   const [totalEstimated, setTotalEstimated] = useState(false);
+  // Where the background count stands — `total` is `null` both while it runs
+  // and after it gave up, and only the second is worth offering a retry for.
+  const [countStatus, setCountStatus] = useState<CountStatus>("loading");
+  // The user's *exact count* action is on the wire.
+  const [exactCounting, setExactCounting] = useState(false);
   // Seed the page size from the user's `defaultPageSize` preference. Lazy
   // initialiser: prefs are hydrated before the UI mounts, and the value is a
   // per-tab starting point the dropdown can override — so we deliberately do
@@ -574,6 +591,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // sort/offset/page changes reuse it and never re-count; the count request is
   // deduped on this key (StrictMode remount + transient dep-identity changes).
   const countInflightRef = useRef<string | null>(null);
+  // Bumped every time the total is recomputed for a new predicate or a
+  // refresh. An exact count remembers the generation it started in and drops
+  // its answer if that has moved on: the figure belongs to a predicate (or a
+  // moment) that is no longer the one on screen. That is also its whole cache
+  // policy — an exact total stays until a filter change or refresh replaces it.
+  const countGenerationRef = useRef(0);
 
   // `searchColumns` is derived from `cols`, which loads asynchronously after
   // mount. Listing it in `fetchData`'s deps recreated the callback the instant
@@ -650,6 +673,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         withCount: false,
       });
       setResult(r);
+      setResultOffset(offset);
     } catch (e) {
       setError(String(e));
     } finally {
@@ -690,7 +714,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     });
     if (countInflightRef.current === countKey) return;
     countInflightRef.current = countKey;
+    countGenerationRef.current += 1;
     setTotal(null);
+    setCountStatus("loading");
+    setExactCounting(false);
     // Let the sibling data fetch (if any) release its pooled connection
     // first — see `fetchPromiseRef`'s comment above `fetchData`. A failed
     // data fetch shouldn't block the count from trying anyway.
@@ -708,14 +735,67 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       });
       setTotal(c.total);
       setTotalEstimated(c.estimated);
+      setCountStatus("ready");
     } catch {
       // Non-fatal: the grid pages fine without a total. Leave it null; the
-      // footer shows the current range without "/ N".
+      // footer shows the current range without "/ N" — and offers the exact
+      // count, which is not capped the way this one is on MongoDB.
+      setCountStatus("failed");
     } finally {
       if (countInflightRef.current === countKey)
         countInflightRef.current = null;
     }
   }, [connectionId, schema, table, serverFilters, appliedFilter, raw, collation]);
+
+  /**
+   * The footer's *exact count* action: count the current predicate for real,
+   * skipping the engine estimate and — on MongoDB — the background count's
+   * ten-second ceiling (`CountMode::Exact` in `commands/query.rs`).
+   *
+   * Unbounded on purpose. The user asked for this figure, the same as a query
+   * they typed, and the collections whose estimate is worth doubting are the
+   * big ones a ceiling would fail on. There is no server-side cancel to offer
+   * for it, so rather than a Cancel button that only hides the spinner, the
+   * answer is simply dropped if the predicate changes or the tab is refreshed
+   * while it runs (`countGenerationRef`).
+   */
+  const countExactly = useCallback(async () => {
+    const generation = countGenerationRef.current;
+    setExactCounting(true);
+    try {
+      const c = await api.countTableRows(
+        {
+          connectionId,
+          schema,
+          table,
+          filters: serverFilters.length ? serverFilters : undefined,
+          search: appliedFilter || undefined,
+          searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
+          raw,
+          collation,
+        },
+        true,
+      );
+      if (countGenerationRef.current !== generation) return;
+      setTotal(c.total);
+      setTotalEstimated(c.estimated);
+      setCountStatus("ready");
+    } catch (e) {
+      if (countGenerationRef.current !== generation) return;
+      notify.error(t("tableData.exactCountFailed"), { description: String(e) });
+    } finally {
+      if (countGenerationRef.current === generation) setExactCounting(false);
+    }
+  }, [
+    connectionId,
+    schema,
+    table,
+    serverFilters,
+    appliedFilter,
+    raw,
+    collation,
+    t,
+  ]);
 
   /**
    * Reload the page **and** the row total — what "refresh" means to a user.
@@ -1804,6 +1884,24 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               </>
             )}
           </span>
+          {(exactCounting ||
+            offerExactCount({
+              status: countStatus,
+              totalEstimated,
+              exactRunning: exactCounting,
+            })) && (
+            <IconButton
+              icon={Sigma}
+              label={
+                exactCounting
+                  ? t("tableData.exactCountRunning")
+                  : t("tableData.exactCount")
+              }
+              onClick={() => void countExactly()}
+              loading={exactCounting}
+              disabled={exactCounting}
+            />
+          )}
           <GoToRowInput
             total={total}
             totalEstimated={totalEstimated}
@@ -1851,6 +1949,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       page.canNext,
       totalEstimated,
       total,
+      countStatus,
+      exactCounting,
+      countExactly,
       offset,
       pageSize,
       loading,
@@ -1941,6 +2042,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             footer={footerContent}
             // The page is the server's answer to the search; see the prop.
             rowsFromServer
+            rowNumberOffset={resultOffset}
             queryChips={queryChips}
             belowToolbar={
               queryOpen && (

@@ -8,7 +8,8 @@
  * everything the rail needs and this doesn't: no live-pool dot (nothing is
  * connected from here), no driver badge or host subline (the snippet is built
  * from ids, not endpoints), no keyboard range selection. A row is a checkbox, a
- * name, and the one control that matters here — its write policy.
+ * name, and the two controls that matter here — its write policy and how many
+ * rows one MCP call may return from it.
  *
  * Group folds reuse `useConnectionGroupCollapse`, so a folder the user collapsed
  * in the manager opens collapsed here too; section folds are local state, for the
@@ -28,6 +29,7 @@ import type { RailSection } from "@/lib/connection/railSections";
 import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
 import type { ConnectionProfile, McpWritePolicy } from "@/types";
 
+import { McpMaxRowsInput } from "./McpMaxRowsInput";
 import { McpWritePolicySelect } from "./McpWritePolicySelect";
 
 export function McpConnectionTree({
@@ -36,6 +38,8 @@ export function McpConnectionTree({
   onToggle,
   onToggleAll,
   onSetPolicy,
+  onSetMaxRows,
+  defaultMaxRows,
   sharedTooltip,
   searching,
 }: {
@@ -44,6 +48,10 @@ export function McpConnectionTree({
   onToggle: (id: string) => void;
   onToggleAll: (ids: string[]) => void;
   onSetPolicy: (id: string, level: McpWritePolicy) => void;
+  /** `null` clears the connection's own limit, back to `defaultMaxRows`. */
+  onSetMaxRows: (id: string, rows: number | null) => void;
+  /** The global `connections.mcpMaxRows`, each row's placeholder. */
+  defaultMaxRows: number;
   sharedTooltip: (profile: ConnectionProfile) => string;
   /** An active search force-expands groups so a match is never hidden. */
   searching: boolean;
@@ -74,6 +82,12 @@ export function McpConnectionTree({
             </SimpleTooltip>
           )}
         </label>
+        <McpMaxRowsInput
+          name={p.name}
+          value={p.mcp_max_rows}
+          fallback={defaultMaxRows}
+          onChange={(rows) => onSetMaxRows(p.id, rows)}
+        />
         <McpWritePolicySelect
           value={p.mcp_write}
           onChange={(level) => onSetPolicy(p.id, level)}

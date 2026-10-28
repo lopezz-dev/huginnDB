@@ -556,7 +556,7 @@ pub fn set_mcp_write_policy(
 ///
 /// Deliberately scoped to fields that touch neither the keychain nor anything a
 /// shared origin publishes: every current caller sets a *local* trust or
-/// resource decision (`mcp_write`, `mcp_exposed`, `pulse_enabled`,
+/// resource decision (`mcp_write`, `mcp_exposed`, `mcp_max_rows`, `pulse_enabled`,
 /// `ai_enabled`, `ai_rows_allowed`), which is what makes running one over an
 /// origin-owned profile safe. Reach for `save_profile` for anything else.
 fn set_local_flag(
@@ -632,6 +632,31 @@ pub fn set_mcp_exposed(
             return false;
         }
         p.mcp_exposed = exposed;
+        true
+    })
+}
+
+/// Set (or clear, with `None`) the MCP row cap of several connections.
+///
+/// The write half of `ConnectionProfile::mcp_max_rows`, edited next to the
+/// write policy in Settings → MCP and local for the same reason: it bounds
+/// what this machine's AI clients take from a server, which an origin's
+/// publisher does not decide — and, through `set_local_flag`, it works on an
+/// origin-owned profile, which the connection dialog cannot edit. Stored
+/// clamped, so the number shown back is the number the sidecar applies.
+#[tauri::command]
+pub fn set_mcp_max_rows(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    rows: Option<u32>,
+) -> AppResult<usize> {
+    let rows = rows.map(|n| n.clamp(1, crate::state::MAX_MCP_MAX_ROWS));
+    set_local_flag(app, state, ids, |p| {
+        if p.mcp_max_rows == rows {
+            return false;
+        }
+        p.mcp_max_rows = rows;
         true
     })
 }

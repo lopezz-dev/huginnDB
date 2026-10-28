@@ -785,7 +785,10 @@
   "tableData": {
     "refresh": "Actualizar",
     "perPage": "{{count}}/página",
-    "approxTotal": "Total aproximado (estimación del motor). Filtra o busca para obtener el recuento exacto.",
+    "approxTotal": "Total aproximado (estimación del motor). Usa Recuento exacto para contar todas las filas.",
+    "exactCount": "Recuento exacto: contar todas las filas que cumplen los filtros actuales",
+    "exactCountRunning": "Contando todas las filas…",
+    "exactCountFailed": "No se pudo hacer el recuento exacto",
     "goToRow": "Ir a fila",
     "prevPage": "Página anterior",
     "nextPage": "Página siguiente",
@@ -1753,6 +1756,17 @@
         "full": "Completo (+ cambios de esquema)"
       },
       "writePolicyHint": "El acceso de escritura es por conexión. «Solo lectura» permite solo lecturas; «Datos» permite cambios de filas (INSERT/UPDATE/DELETE); «Completo» permite además cambios de esquema (CREATE/DROP/ALTER). Los cambios surten efecto sin reiniciar el cliente de IA. El cliente sigue pidiéndote aprobación de cada acción, y toda escritura queda registrada en mcp-audit.log junto a tus perfiles.",
+      "limitsLabel": "Límites",
+      "maxRows": {
+        "label": "Filas por llamada",
+        "desc": "Máximo de filas que una llamada (run_query, run_queries, browse_table) entrega a un cliente de IA, salvo que la conexión fije el suyo más abajo. Si se supera, el resultado se corta y lo dice, con el límite, para que el modelo agregue o pagine en vez de dar por completa una respuesta parcial. Un resultado mayor tampoco cabe en lo que aceptan los clientes en una respuesta: Claude Code rechaza todo lo que pase de unos 25 000 tokens.",
+        "hint": "Las filas por llamada también se fijan por conexión: deja el campo vacío para seguir el valor por defecto, o pon un número para una conexión con filas especialmente anchas o especialmente ligeras. Los cambios surten efecto sin reiniciar el cliente de IA; la política de tu organización puede rebajarlo.",
+        "rowLabel": "Máximo de filas por llamada MCP desde {{name}}",
+        "rowTitle": "Máximo de filas que devuelve una llamada MCP desde esta conexión. Vacío: el valor por defecto ({{rows}}).",
+        "saved": "{{name}}: hasta {{rows}} filas por llamada",
+        "clearedSaved": "{{name}}: sigue el valor por defecto ({{rows}} filas por llamada)",
+        "saveError": "No se pudo guardar el límite de filas."
+      },
       "writePolicySaveError": "No se pudo guardar el nivel de escritura.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / otros clientes (JSON)",

@@ -264,6 +264,23 @@ cannot be applied, blocks downloads too. Without any policy, downloading is on.
 "roles": { "analyst": { "allowToolDownloads": true, "rules": [ … ] } }
 ```
 
+### Capping the rows an AI client reads
+
+`"mcpMaxRows"` on a **role** is the most rows one MCP tool call may return to
+an AI client, on any connection, for the people in it. It is a ceiling over
+what each person sets in **Settings → MCP**: a larger limit is lowered to it, a
+smaller one is left alone, and a result it cut tells the assistant that only an
+administrator can raise it. It must be at least 1. Without it, the person's
+limit stands (200 by default; see `MCP.md`).
+
+```json
+"roles": { "analyst": { "mcpMaxRows": 100, "rules": [ … ] } }
+```
+
+> **Update every installation before you add `mcpMaxRows`.** A HuginnDB older
+> than this one does not know the field, reads the whole policy as invalid, and
+> blocks every connection.
+
 ### Requiring the app lock
 
 `"appLock"` on a **role** sets what the people in it may choose about the app

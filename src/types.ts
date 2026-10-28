@@ -179,6 +179,12 @@ export interface ConnectionProfile {
    *  sync and cleared on import, since what your AI clients may reach is a
    *  decision about this machine. */
   mcp_exposed?: boolean;
+  /** Most rows one MCP tool call returns from this connection, overriding the
+   *  global `connections.mcpMaxRows` preference; `null`/absent = use the
+   *  preference. Local like `mcp_write` (preserved across a shared-origin
+   *  sync), edited in Settings → MCP, and clamped to 1..10000 backend-side. A
+   *  managed policy's `mcpMaxRows` can only lower it. */
+  mcp_max_rows?: number | null;
   /** Whether the in-app AI panel may reach this connection at all. Opt-in,
    *  `false`/absent by default, and strictly local for the same reasons as
    *  `mcp_exposed`: preserved across a shared-origin sync, cleared on import.
@@ -1106,6 +1112,13 @@ export interface ConnectionPrefs {
    * travels with it. Clamped to 5..600 backend-side.
    */
   operationTimeoutSecs: number;
+  /**
+   * Most rows one MCP tool call hands an AI client — the global default under
+   * each connection's own `ConnectionProfile.mcp_max_rows`. 200 by default:
+   * a thousand rows outgrow what clients such as Claude Code accept in one
+   * tool result. Clamped to 1..10000 backend-side.
+   */
+  mcpMaxRows: number;
 }
 
 /**

@@ -130,6 +130,7 @@ export const DEFAULT_PREFS: Preferences = {
     bridgeIdleTtlSecs: 300,
     keepaliveSecs: 180,
     operationTimeoutSecs: 20,
+    mcpMaxRows: 200,
   },
   // Mirrors `PulsePrefs::default()` in `src-tauri/src/prefs.rs`.
   pulse: {

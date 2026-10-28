@@ -333,7 +333,7 @@ The tools then show up under the `huginndb` server inside Codex.
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(none)* | Pin this client to exactly these profile ids, ignoring the Settings → MCP checkboxes. Without the flag the server defers to those checkboxes and re-reads them per call, which is the normal setup. `--connections ""` pins an empty set — an explicit "expose nothing". |
-| `--max-rows <n>` | `1000` | Upper bound on rows returned by a single `run_query` / `run_write` / `browse_table` call — and by a whole `run_queries` list or `verify` list together — so a tool call can't dump a whole table into the model's context. A result cut short says `"truncated": true`. |
+| `--max-rows <n>` | *(none)* | Replace the **default** row limit (Settings → MCP → *Rows per call*, 200) for this client only. A connection with its own limit keeps it. See [Row limit](#row-limit). |
 | `--max-connections <n>` | `2` | Budget per **server**, within this process. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A connection that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
 | `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy, and take the eight write tools off `tools/list` entirely — they could only refuse, and a tool the model never sees is a turn it never wastes. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
@@ -436,7 +436,7 @@ connector — leaving only the connections you opened yourself.
 | `list_indexes` | Indexes on a table and the columns each covers. On MongoDB each entry also carries a `mongo` object with the full definition — per-key direction and type, `sparse`, TTL, partial filter, collation, weights, size and usage. Read it before recreating an index: the column list alone cannot tell `{createdAt: -1}` from `{createdAt: 1}`. |
 | `run_query` | Run a single **read-only** statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Anything that writes is refused here whatever the policy says. |
 | `run_write` *(write)* | Run a single statement that **changes** the database. DML needs `data`, DDL needs `full`. A read is refused here too — it belongs in `run_query`, which needs no write permission. |
-| `run_queries` | Run several **read-only** statements in one call, each as `run_query` would. One that fails is reported in its own slot and the rest still run. Rows share one `--max-rows` budget. |
+| `run_queries` | Run several **read-only** statements in one call, each as `run_query` would. One that fails is reported in its own slot and the rest still run. Rows share one budget: the connection's [row limit](#row-limit). |
 | `run_writes` *(write)* | Apply several row writes (`INSERT`/`UPDATE`/`DELETE`) in **one transaction** — all land or none do. Each write can carry `expect_rows`; `verify` reads run after the commit and come back in the same reply. Requires `data` or `full`. See [Batching](#batching-fewer-calls-fewer-tokens). |
 | `run_script` *(write)* | Run a whole SQL script — a migration, a `.sql` file — on **one pinned session**, in order, so temporary tables, `SET`s and variables carry from one statement to the next. One transaction by default. Pass it inline as `sql` or as a local file `path`. Requires `data`; any DDL, temporary tables included, requires `full`. Not MongoDB. See [Scripts](#scripts-temporary-tables-and-migrations). |
 | `browse_table` | Browse one page of rows without writing SQL. |
@@ -473,6 +473,42 @@ impossible to express, and forced the annotation to describe the more dangerous
 of the two tiers. Split, both are honest constants that no policy change can
 make stale: `run_query` is `readOnlyHint`, `run_write` is `destructiveHint`.
 Each refuses the other's traffic and names the tool to use instead.
+
+### Row limit
+
+Every result an assistant gets is bounded, so one call cannot pour a whole
+table into the model's context: `run_query`, `run_write`, `browse_table`, and a
+whole `run_queries` or `verify` list together. The limit is resolved per call,
+so a change applies to the next call without restarting the client:
+
+1. the connection's own limit — the number next to it in **Settings → MCP**
+   (blank follows the default);
+2. otherwise `--max-rows`, if the client's command line has it;
+3. otherwise the default in **Settings → MCP → Limits → Rows per call**: **200**.
+
+It is clamped to 1–10,000, and a managed policy's `mcpMaxRows` (see
+`POLICY.md`) can lower it but never raise it. `list_connections` reports each
+connection's limit as `max_rows`, so an assistant can size a query before it
+runs one.
+
+**Why 200, and not the 1000 of earlier versions.** The limit exists to keep a
+result inside the model's context, and 1000 did not: Claude Code turns down an
+MCP tool result over 25,000 tokens by default, and a thousand rows of an
+ordinary ten-column table are several times that — so the old default produced
+a result the client discarded rather than a shorter one the model could use.
+Two hundred such rows are roughly 10–15,000 tokens. Raise it for a connection
+whose rows are narrow, lower it for one with wide JSON or text columns.
+
+**What a cut result says.** Besides `"truncated": true`, it carries the limit
+and a sentence naming the setting that chose it and what to do instead:
+
+```json
+{"columns":[…],"rows":[…],"truncated":true,"row_limit":200,
+ "notice":"Only the first 200 rows are shown: the MCP row limit is 200, set by the default limit in HuginnDB → Settings → MCP. Do not treat this as the complete result — aggregate (COUNT/GROUP BY), filter, or page with LIMIT/OFFSET (.skip()/.limit() on MongoDB)."}
+```
+
+`browse_table` pages instead of cutting: a page the limit bounded says so and
+gives the `offset` of the next one. A result that was not cut has neither field.
 
 ### Batching: fewer calls, fewer tokens
 
@@ -542,7 +578,8 @@ in one reply:
   refused with a pointer to `"transaction": false`. `CREATE/DROP TEMPORARY
   TABLE` does not commit on MySQL and is fine either way.
 - **Results**: every `SELECT` in the script returns its rows (all of them share
-  one `--max-rows` budget), tagged with the statement index and line; writes are
+  one budget: the connection's [row limit](#row-limit); a cut result carries
+  `row_limit` and a `notice`), tagged with the statement index and line; writes are
   summed into `total_affected`. Per-statement counts are left out — on a
   migration they are thousands of numbers nobody reads.
 - **The session is closed afterwards**, never returned to the pool, so
@@ -725,7 +762,7 @@ Leave out everything else. In particular:
   it connects.
 - **No `origin_id`.** It ties a connection to a shared origin, and a
   hand-written file has no origin to tie it to.
-- `mcp_exposed`, `mcp_write`, `ai_enabled` and `ai_rows_allowed` are pointless:
+- `mcp_exposed`, `mcp_write`, `mcp_max_rows`, `ai_enabled` and `ai_rows_allowed` are pointless:
   the importer clears the exposure flags, and what the assistant may do with a
   connection is set in **Settings → MCP** and **Settings → AI**, not by the file
   that created it.
@@ -897,7 +934,8 @@ fails the build instead of leaving this guide out of date.
 - **No new plaintext.** Passwords are read from the OS keychain at connect time,
   exactly like the desktop app. The connector never logs or persists them (the
   audit log records statements and row counts, never credentials).
-- **Row cap.** `--max-rows` bounds every result set.
+- **Row limit.** Every result set is bounded — per connection, with a default
+  and an optional policy ceiling; see [Row limit](#row-limit).
 
 ### When the client blocks the call, not the connector
 

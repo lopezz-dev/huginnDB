@@ -353,7 +353,7 @@ Codex.
 | Flag | Por defecto | Significado |
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(ninguna)* | Fija este cliente exactamente a estos IDs de perfil, ignorando las casillas de Ajustes → MCP. Sin el flag, el servidor se remite a esas casillas y las relee en cada llamada, que es el montaje normal. `--connections ""` fija un conjunto vacío — un "no expongas nada" explícito. |
-| `--max-rows <n>` | `1000` | Límite superior de filas devueltas por una llamada a `run_query` / `run_write` / `browse_table` — y por toda una lista de `run_queries` o de `verify` en conjunto —, para que una llamada no vuelque una tabla entera en el contexto del modelo. Un resultado recortado lo indica con `"truncated": true`. |
+| `--max-rows <n>` | *(ninguno)* | Sustituye el límite de filas **por defecto** (Ajustes → MCP → *Filas por llamada*, 200) solo para este cliente. Una conexión con límite propio lo conserva. Véase [Límite de filas](#límite-de-filas). |
 | `--read-only[=true\|false]` | `false` | Kill-switch global: fuerza **todas** las conexiones a solo lectura sin importar su nivel de escritura guardado. Una forma rápida de exponer el conector en modo garantizado-seguro sin tocar ningún perfil. |
 | `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
@@ -445,7 +445,7 @@ datos a demanda.
 | `list_indexes` | Índices de una tabla y las columnas que cubre cada uno. En MongoDB cada entrada lleva además un objeto `mongo` con la definición completa — dirección y tipo de cada clave, `sparse`, TTL, filtro parcial, colación, pesos, tamaño y uso. Léelo antes de recrear un índice: la lista de columnas por sí sola no distingue `{createdAt: -1}` de `{createdAt: 1}`. |
 | `run_query` | Ejecuta una única sentencia de **solo lectura** (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Cualquier cosa que escriba se rechaza aquí diga lo que diga el nivel. |
 | `run_write` *(escritura)* | Ejecuta una única sentencia que **cambia** la base de datos. El DML necesita `data`, el DDL `full`. Una lectura también se rechaza aquí — va en `run_query`, que no necesita permiso de escritura. |
-| `run_queries` | Ejecuta varias sentencias **de solo lectura** en una llamada, cada una como lo haría `run_query`. La que falla se informa en su propio hueco y las demás se ejecutan igual. Las filas comparten un único presupuesto de `--max-rows`. |
+| `run_queries` | Ejecuta varias sentencias **de solo lectura** en una llamada, cada una como lo haría `run_query`. La que falla se informa en su propio hueco y las demás se ejecutan igual. Las filas comparten un único presupuesto: el [límite de filas](#límite-de-filas) de la conexión. |
 | `run_writes` *(escritura)* | Aplica varias escrituras de fila (`INSERT`/`UPDATE`/`DELETE`) en **una transacción**: o entran todas o ninguna. Cada escritura puede llevar `expect_rows`; las lecturas de `verify` se ejecutan tras el commit y vuelven en la misma respuesta. Necesita `data` o `full`. Ver [Lotes](#lotes-menos-llamadas-menos-tokens). |
 | `run_script` *(escritura)* | Ejecuta un script SQL entero — una migración, un fichero `.sql` — en **una única sesión fijada**, en orden, así que las tablas temporales, los `SET` y las variables pasan de una sentencia a la siguiente. Una transacción por defecto. Va en línea como `sql` o como `path` a un fichero local. Necesita `data`; cualquier DDL, tablas temporales incluidas, necesita `full`. No MongoDB. Ver [Scripts](#scripts-tablas-temporales-y-migraciones). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
@@ -484,6 +484,45 @@ describiera el más peligroso de los dos tiers. Separadas, ambas son constantes
 honestas que ningún cambio de nivel puede dejar obsoletas: `run_query` es
 `readOnlyHint`, `run_write` es `destructiveHint`. Cada una rechaza el tráfico
 de la otra y dice qué herramienta usar en su lugar.
+
+### Límite de filas
+
+Todo resultado que recibe un asistente está acotado, para que una llamada no
+vuelque una tabla entera en el contexto del modelo: `run_query`, `run_write`,
+`browse_table`, y toda una lista de `run_queries` o de `verify` en conjunto. El
+límite se resuelve en cada llamada, así que un cambio vale para la siguiente sin
+reiniciar el cliente:
+
+1. el límite propio de la conexión — el número junto a ella en **Ajustes → MCP**
+   (vacío sigue el valor por defecto);
+2. si no, `--max-rows`, si la línea de comandos del cliente lo lleva;
+3. si no, el valor de **Ajustes → MCP → Límites → Filas por llamada**: **200**.
+
+Se ajusta a 1–10 000, y el `mcpMaxRows` de una política gestionada (véase
+`POLICY.es.md`) puede bajarlo pero nunca subirlo. `list_connections` informa del
+límite de cada conexión como `max_rows`, para que el asistente dimensione una
+consulta antes de lanzarla.
+
+**Por qué 200 y no los 1000 de versiones anteriores.** El límite existe para que
+un resultado quepa en el contexto del modelo, y 1000 no cabía: Claude Code
+rechaza por defecto un resultado de herramienta MCP de más de 25 000 tokens, y
+mil filas de una tabla corriente de diez columnas son varias veces eso — así que
+el valor anterior producía un resultado que el cliente descartaba en vez de uno
+más corto que el modelo pudiera usar. Doscientas filas así son unos
+10 000–15 000 tokens. Súbelo en una conexión de filas estrechas y bájalo en una
+con columnas JSON o de texto anchas.
+
+**Qué dice un resultado recortado.** Además de `"truncated": true`, lleva el
+límite y una frase que nombra el ajuste que lo fijó y qué hacer en su lugar:
+
+```json
+{"columns":[…],"rows":[…],"truncated":true,"row_limit":200,
+ "notice":"Only the first 200 rows are shown: the MCP row limit is 200, set by the default limit in HuginnDB → Settings → MCP. Do not treat this as the complete result — aggregate (COUNT/GROUP BY), filter, or page with LIMIT/OFFSET (.skip()/.limit() on MongoDB)."}
+```
+
+`browse_table` pagina en vez de recortar: una página que acotó el límite lo dice
+y da el `offset` de la siguiente. Un resultado que no se recortó no lleva ninguno
+de los dos campos.
 
 ### Lotes: menos llamadas, menos tokens
 
@@ -557,7 +596,8 @@ contesta en una respuesta:
   rechaza indicando `"transaction": false`. `CREATE/DROP TEMPORARY TABLE` no
   hace commit en MySQL y vale en los dos modos.
 - **Resultados**: cada `SELECT` del script devuelve sus filas (todas comparten
-  un único presupuesto de `--max-rows`), marcadas con el índice de la sentencia
+  un único presupuesto: el límite de filas de la conexión; un resultado
+  recortado lleva `row_limit` y un `notice`), marcadas con el índice de la sentencia
   y su línea; las escrituras se suman en `total_affected`. Los recuentos por
   sentencia se omiten: en una migración son miles de números que nadie lee.
 - **La sesión se cierra al terminar**, nunca vuelve al pool, así que las tablas
@@ -752,7 +792,7 @@ Todo lo demás, fuera. En concreto:
   del llavero del sistema al conectar.
 - **Sin `origin_id`.** Liga una conexión a un origen compartido, y un fichero
   escrito a mano no tiene ningún origen al que ligarla.
-- `mcp_exposed`, `mcp_write`, `ai_enabled` y `ai_rows_allowed` no sirven de
+- `mcp_exposed`, `mcp_write`, `mcp_max_rows`, `ai_enabled` y `ai_rows_allowed` no sirven de
   nada: el importador quita los permisos de exposición, y lo que el asistente
   puede hacer con una conexión se decide en **Ajustes → MCP** y **Ajustes →
   IA**, no en el fichero que la creó.
@@ -928,7 +968,9 @@ lugar de dejar esta guía desactualizada.
   en el momento de conectar, igual que la app de escritorio. El conector
   nunca las registra ni las persiste (el log de auditoría registra sentencias
   y recuentos de filas, nunca credenciales).
-- **Límite de filas.** `--max-rows` acota cada conjunto de resultados.
+- **Límite de filas.** Todo conjunto de resultados está acotado — por conexión,
+  con un valor por defecto y un techo opcional de la política; véase
+  [Límite de filas](#límite-de-filas).
 
 ### Cuando el bloqueo viene del cliente, no del conector
 

@@ -20,8 +20,8 @@
 //! filter or explicitly acknowledged the unfiltered case.
 
 use crate::commands::query::{
-    build_filter_clause_at, count_table_rows_inner, validate_filters, ColumnFilter, RowValue,
-    TableFilter, TableScan,
+    build_filter_clause_at, count_table_rows_inner, validate_filters, ColumnFilter, CountMode,
+    RowValue, TableFilter, TableScan,
 };
 use crate::commands::schema::list_columns_inner;
 use crate::db::mysql;
@@ -233,6 +233,7 @@ pub async fn preview_bulk_update(
             collation: None,
             hint: None,
         },
+        CountMode::Automatic,
     )
     .await?
     .total;

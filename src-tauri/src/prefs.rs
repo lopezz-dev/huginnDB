@@ -420,6 +420,17 @@ pub struct ConnectionPrefs {
     /// `[MIN_OPERATION_TIMEOUT_SECS, MAX_OPERATION_TIMEOUT_SECS]` at use time
     /// by [`crate::db::pool::operation_timeout`].
     pub operation_timeout_secs: u32,
+    /// Most rows one MCP tool call (`run_query`, `run_queries`,
+    /// `browse_table`, a `run_writes` `verify` list) hands an AI client.
+    ///
+    /// The global fallback; a connection whose rows are unusually wide or
+    /// unusually cheap says so itself
+    /// ([`crate::state::ConnectionProfile::mcp_max_rows`]). Read fresh by the
+    /// sidecar on every call and resolved only by
+    /// [`crate::state::mcp_max_rows`], which clamps it into
+    /// `1..=MAX_MCP_MAX_ROWS` — see [`crate::state::DEFAULT_MCP_MAX_ROWS`] for
+    /// why the default is 200.
+    pub mcp_max_rows: u32,
 }
 
 impl Default for ConnectionPrefs {
@@ -433,6 +444,7 @@ impl Default for ConnectionPrefs {
             bridge_idle_ttl_secs: crate::db::pool::MCP_IDLE_TTL.as_secs() as u32,
             keepalive_secs: crate::keepalive::DEFAULT_KEEPALIVE_INTERVAL.as_secs() as u32,
             operation_timeout_secs: crate::db::pool::DEFAULT_OPERATION_TIMEOUT.as_secs() as u32,
+            mcp_max_rows: crate::state::DEFAULT_MCP_MAX_ROWS,
         }
     }
 }

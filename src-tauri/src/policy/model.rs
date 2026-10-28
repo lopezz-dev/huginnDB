@@ -69,6 +69,12 @@ pub struct Role {
     /// decides, as on an unmanaged machine.
     #[serde(default)]
     pub app_lock: Option<AppLockRule>,
+    /// The most rows one MCP tool call may hand an AI client, on any
+    /// connection, for people in this role. A ceiling over what each person
+    /// sets in Settings → MCP: it lowers a larger limit and leaves a smaller
+    /// one alone. Absent: the person's limit stands.
+    #[serde(default)]
+    pub mcp_max_rows: Option<u32>,
 }
 
 /// A role's demands on the app lock. Every field only ever tightens what the
@@ -468,6 +474,13 @@ impl PolicyDoc {
         }
         let mut warnings = Vec::new();
         for (name, role) in &doc.roles {
+            if role.mcp_max_rows == Some(0) {
+                return Err(format!(
+                    "role {name:?}: mcpMaxRows is 0, which would make every query return \
+                     nothing; leave it out to let people choose, or give the most rows one \
+                     call may return"
+                ));
+            }
             if let Some(lock) = &role.app_lock {
                 if lock.max_idle_minutes == Some(0) {
                     return Err(format!(

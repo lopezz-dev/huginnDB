@@ -834,6 +834,10 @@ pub(crate) fn merge_into(
                 // would take an AI client's access away mid-session with no
                 // visible cause.
                 profile.mcp_exposed = existing.mcp_exposed;
+                // And how much of it they may read per call: the row cap is the
+                // size of what leaves this machine for its AI clients, decided
+                // here for the same reason the policy above is.
+                profile.mcp_max_rows = existing.mcp_max_rows;
                 // And the same pair one surface across: whether the in-app AI
                 // panel may reach this connection, and whether its rows may go
                 // to an untrusted endpoint. Both are decisions about what
@@ -1291,6 +1295,38 @@ mod tests {
 
         assert_eq!(after[0].mcp_write, McpWritePolicy::Data, "policy is local");
         assert_eq!(after[0].host, "newhost", "everything else is the file's");
+    }
+
+    /// The MCP row cap is the other half of what an AI client may take from
+    /// this machine, so a refresh keeps it — including keeping it *unset*
+    /// when the publisher happened to have one.
+    #[test]
+    fn a_sync_preserves_the_local_mcp_row_cap() {
+        let set = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            mcp_max_rows: Some(50),
+            ..testkit::profile("shared")
+        };
+        let unset = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            ..testkit::profile("other")
+        };
+        let incoming = [
+            published(ConnectionProfile {
+                mcp_max_rows: Some(5000),
+                ..testkit::profile("shared")
+            }),
+            published(ConnectionProfile {
+                mcp_max_rows: Some(5000),
+                ..testkit::profile("other")
+            }),
+        ];
+
+        let after = merge(vec![set, unset], &incoming);
+
+        let cap = |id: &str| after.iter().find(|p| p.id == id).unwrap().mcp_max_rows;
+        assert_eq!(cap("shared"), Some(50));
+        assert_eq!(cap("other"), None);
     }
 
     /// The counterpart to the three above, and the reason the preserve list is
