@@ -6,6 +6,7 @@ import {
   offsetForRow,
   pageWindow,
   prevOffset,
+  rowNumber,
 } from "./pagination";
 
 const base = { offset: 0, pageSize: 100, total: 250, totalEstimated: false, rowsOnPage: 100 };
@@ -92,5 +93,26 @@ describe("offerExactCount", () => {
   it("is not offered twice while one is on the wire", () => {
     expect(offer("ready", true, true)).toBe(false);
     expect(offer("failed", false, true)).toBe(false);
+  });
+});
+
+describe("rowNumber", () => {
+  it("counts from 1 on the first page", () => {
+    expect(rowNumber(0, 0)).toBe(1);
+    expect(rowNumber(0, 99)).toBe(100);
+  });
+
+  it("is absolute on later pages, not restarting at 1", () => {
+    // Page 2 of 100 rows/page: its first row is row 101.
+    expect(rowNumber(100, 0)).toBe(101);
+    expect(rowNumber(100, 99)).toBe(200);
+  });
+
+  it("agrees with the footer's range and with go-to-row", () => {
+    const offset = offsetForRow("250", 1000, false)!;
+    const page = pageWindow({ ...base, offset, total: 1000 });
+    expect(rowNumber(offset, 0)).toBe(250);
+    expect(rowNumber(offset, 0)).toBe(page.from);
+    expect(rowNumber(offset, 99)).toBe(page.to);
   });
 });

@@ -98,6 +98,7 @@ import { usePinnedColumns } from "@/lib/grid/usePinnedColumns";
 import { useCtrlWheelZoom } from "@/lib/grid/useCtrlWheelZoom";
 import { useGridColumns } from "@/lib/grid/useGridColumns";
 import { useGridKeyboardNav, type GridPaste } from "@/lib/grid/useGridKeyboardNav";
+import { rowNumber } from "@/lib/grid/pagination";
 import { useGridSelection } from "@/lib/grid/useGridSelection";
 import { useSavedCellFlash } from "@/lib/grid/useSavedCellFlash";
 import { removeSortLevel, toggleSortLevel } from "@/lib/grid/sortSpec";
@@ -351,6 +352,14 @@ interface Props {
    */
   rowsFromServer?: boolean;
   /**
+   * How many rows precede this page on the server — the browse's `offset` —
+   * so the gutter's row numbers (and the list view's) are absolute: page 2 of
+   * a 100-row page starts at 101, not 1. Display only (`rowNumber`); selection,
+   * editing and every other index in here stay page-relative. Defaults to 0
+   * for the surfaces that do not paginate.
+   */
+  rowNumberOffset?: number;
+  /**
    * Content rendered between the toolbar and the grid body — TableDataTab's
    * query panel. Outside the scroll container on purpose: it must not scroll
    * away with the rows it shapes, and its keys must not reach the grid's
@@ -458,6 +467,7 @@ export function DataGrid({
   belowToolbar,
   queryChips,
   rowsFromServer = false,
+  rowNumberOffset = 0,
   showRowCount = true,
   loading,
   viewMode = "table",
@@ -1290,6 +1300,7 @@ export function DataGrid({
               scrollRef={scrollRef}
               columns={result.columns}
               rows={visibleRows}
+              rowNumberOffset={rowNumberOffset}
               rowTypes={result.row_types}
               nullDisplay={nullDisplay}
               zebraStripes={zebraStripes}
@@ -1571,6 +1582,7 @@ export function DataGrid({
                               key={row.id}
                               row={row}
                               rowIndex={i}
+                              rowNumber={rowNumber(rowNumberOffset, i)}
                               isSelected={selectedRowIndex === i}
                               isMultiSelected={
                                 rowKey !== null && selectedKeys.has(rowKey)

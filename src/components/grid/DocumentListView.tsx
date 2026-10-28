@@ -94,6 +94,7 @@ import {
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import { toJson as rowToJson } from "@/lib/grid/copyFormats";
 import { formatValue } from "@/lib/grid/formatValue";
+import { rowNumber } from "@/lib/grid/pagination";
 import { removeSortLevel, sortLevelOf, sortOnly } from "@/lib/grid/sortSpec";
 import {
   BSON_TYPES,
@@ -170,6 +171,9 @@ interface DocumentListViewProps {
   expandAll?: ExpandAllSignal | null;
   showTypes: boolean;
   lineNumbers: boolean;
+  /** Rows before this page on the server, so each card's number is absolute
+   *  (`rowNumber`). Display only; defaults to 0 off the paginated browse. */
+  rowNumberOffset?: number;
   /** Absent when the relation isn't writable (no PK, read-only result). */
   onFieldSave?: FieldSave;
   /** MongoDB only: `$unset` a field. Absent → no delete/add/type affordances,
@@ -319,6 +323,7 @@ export function DocumentListView({
   expandAll,
   showTypes,
   lineNumbers,
+  rowNumberOffset = 0,
   onFieldSave,
   onFieldDelete,
   fieldLock,
@@ -487,7 +492,7 @@ export function DocumentListView({
             >
               <DocumentCard
                 key={i}
-                index={i}
+                rowNumber={rowNumber(rowNumberOffset, i)}
                 columns={columns}
                 rowValues={rowValues}
                 types={rowTypes?.[i]}
@@ -710,7 +715,8 @@ function DraftDocumentCard({
 }
 
 interface DocumentCardProps {
-  index: number;
+  /** The number shown in the card's header — display only, never identity. */
+  rowNumber: number;
   /** Dotted path of the field pulsing in *this* document, or `null`. */
   flashedPath: string | null;
   columns: ColumnMeta[];
@@ -803,7 +809,7 @@ interface FieldRowActions {
 }
 
 const DocumentCard = memo(function DocumentCard({
-  index,
+  rowNumber: displayNumber,
   flashedPath,
   columns,
   rowValues,
@@ -1236,7 +1242,7 @@ const DocumentCard = memo(function DocumentCard({
     <div className={cn("group/doc px-3 py-2", striped && "bg-muted/30")}>
       <div className="mb-1 flex items-center gap-2">
         <span className="shrink-0 tabular-nums text-3xs text-muted-foreground">
-          {index + 1}
+          {displayNumber}
         </span>
         {/* Unlike the card's other actions this one is always visible, not
             revealed on hover: it is the answer to "what is actually in this

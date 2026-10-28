@@ -18,6 +18,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   would. The exact figure stays until a filter change or a refresh replaces
   it, and an answer that arrives after either is discarded.
 
+### Fixed
+
+- **Row numbers keep counting across pages.** Browsing a table or collection
+  page by page, the grid's row-number column (and the card number in list
+  view) started again at 1 on every page, so page 2 of a 100-row page read
+  1–100 instead of 101–200 and disagreed with the footer's range and with
+  **Go to row**. They are now absolute. The number is display only: selecting,
+  editing, copying and deleting rows still address a row by its values, never
+  by its position (ADR #7).
+
 ## [1.36.0] — 2026-10-27
 
 ### Added
