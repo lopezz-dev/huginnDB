@@ -178,6 +178,16 @@ roadmaps for two subsystems are tracked separately and still current:
 - Cloud sync of profiles or saved queries.
 - Mobile builds — the Tauri icon CLI generated iOS/Android directories during scaffolding, but desktop is the focus.
 
+## Tasks that come from Muninn
+
+Muninn is Alex's task board, reached through its MCP server (`list_tasks`, `move_task`, `update_task`; project **HuginnDB**, columns Backlog → Pendiente → En curso → Revisión → Hecho). **When a task comes from Muninn, keeping its state current is part of doing it — the default, not something to be asked for.**
+
+- Starting it (or handing it to a child session): move it to **En curso** and note the session/branch in its description.
+- A "Por aclarar" line that Alex answers is rewritten as "Aclarado con Alex: …" — the card is where the next agent will read the context.
+- PR opened: move it to **Revisión** and add the PR link plus what is verified and what is not (CI, tested in the real app).
+- **Hecho** only once Alex has merged it — he merges by hand, so an open PR is not done.
+- A child session gets the task's id in its brief; whichever session receives the outcome updates the card, so it never lags behind the PRs.
+
 ## When the user asks for "the next thing"
 
 - Default to the **top open item in `ROADMAP.md`'s numbered "Open" list** unless
