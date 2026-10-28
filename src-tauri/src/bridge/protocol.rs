@@ -51,7 +51,9 @@ use serde_json::Value;
 /// correctly, so every new request variant bumps this.
 ///
 /// `4`: [`BridgeRequest`] gained `RunWriteBatch` (the `run_writes` tool).
-pub const PROTOCOL_VERSION: u32 = 4;
+///
+/// `5`: [`BridgeRequest`] gained `RunScript` (the `run_script` tool).
+pub const PROTOCOL_VERSION: u32 = 5;
 
 /// Opening frame. Sent once, before any request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,6 +225,23 @@ pub enum BridgeRequest {
         policy_id: String,
         writes: Vec<crate::commands::write_batch::BatchWrite>,
     },
+    /// Run a whole SQL script on one session — the `run_script` tool
+    /// (ADR #121).
+    ///
+    /// Its own variant for the reason [`BridgeRequest::RunWriteBatch`] is: a
+    /// loop of `RunStatement`s lands on whichever pooled sessions are free, so
+    /// a temporary table made by one statement is not there for the next. The
+    /// script travels as text — the sidecar reads a `path` itself, so the app
+    /// never opens a file on a bridge client's say-so.
+    RunScript {
+        connection_id: String,
+        policy_id: String,
+        sql: String,
+        transaction: bool,
+        /// Rows kept across every read in the script: the sidecar's own cap,
+        /// applied where the rows are fetched rather than after they crossed.
+        max_rows: usize,
+    },
     FetchTableData {
         connection_id: String,
         policy_id: String,
@@ -345,6 +364,7 @@ impl BridgeRequest {
             // cleverness that double-writes.
             BridgeRequest::RunStatement { .. }
             | BridgeRequest::RunWriteBatch { .. }
+            | BridgeRequest::RunScript { .. }
             | BridgeRequest::InsertRow { .. }
             | BridgeRequest::UpdateCell { .. }
             | BridgeRequest::DeleteRows { .. }
@@ -399,6 +419,7 @@ impl BridgeRequest {
             BridgeRequest::PulseIndexUsage { .. } => "pulse_index_usage",
             BridgeRequest::RunStatement { .. } => "run_query",
             BridgeRequest::RunWriteBatch { .. } => "run_writes",
+            BridgeRequest::RunScript { .. } => "run_script",
             BridgeRequest::FetchTableData { .. } => "browse_table",
             BridgeRequest::InsertRow { .. } => "insert_row",
             BridgeRequest::UpdateCell { .. } => "update_cell",
@@ -586,6 +607,13 @@ mod tests {
                 connection_id: "c".into(),
                 policy_id: "c".into(),
                 writes: vec![],
+            },
+            BridgeRequest::RunScript {
+                connection_id: "c".into(),
+                policy_id: "c".into(),
+                sql: "SELECT 1".into(),
+                transaction: true,
+                max_rows: 1,
             },
         ] {
             assert!(req.is_mutating(), "{} must be mutating", req.label());

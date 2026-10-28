@@ -27,6 +27,7 @@ pub mod prefs;
 pub mod pulse;
 pub mod query;
 pub mod schema;
+pub mod script;
 pub mod structure;
 pub mod terminal;
 pub mod themes;

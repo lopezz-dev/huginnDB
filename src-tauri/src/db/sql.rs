@@ -216,7 +216,7 @@ impl Dialect {
 /// `--` or `/*` inside a string literal before the statement proper would
 /// misfire. Statements never legitimately start with a quoted literal, so
 /// this is good enough for "what kind of statement is this".
-fn skip_leading_noise(sql: &str) -> &str {
+pub(crate) fn skip_leading_noise(sql: &str) -> &str {
     let mut s = sql;
     loop {
         let trimmed = s.trim_start();

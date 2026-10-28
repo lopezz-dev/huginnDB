@@ -51,6 +51,7 @@
     { "name": "run_write", "description": "Run a single statement that changes the database, where the connection's write policy allows it." },
     { "name": "run_queries", "description": "Run several read-only statements in one call." },
     { "name": "run_writes", "description": "Apply several row writes in one transaction, with optional reads to verify them after the commit." },
+    { "name": "run_script", "description": "Run a whole SQL script (inline or a local .sql file) on one session, so temporary tables and SETs carry across statements; one transaction by default." },
     { "name": "browse_table", "description": "Browse one page of rows without writing SQL." },
     { "name": "server_version", "description": "The connected engine and version." },
     { "name": "list_users", "description": "Server-side users and roles." },

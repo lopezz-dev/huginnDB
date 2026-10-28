@@ -379,6 +379,26 @@ mod args {
         pub database: Option<String>,
     }
 
+    /// Arguments for `run_script`.
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct Script {
+        /// Connection name (or id) from `list_connections`. SQL only.
+        pub connection_id: String,
+        /// The script: statements separated by `;` (T-SQL `GO` lines work
+        /// too). Give this or `path`, not both.
+        #[serde(default)]
+        pub sql: Option<String>,
+        /// Absolute path of a local `.sql` file to run instead of `sql` —
+        /// the script never has to pass through the conversation.
+        #[serde(default)]
+        pub path: Option<String>,
+        /// Wrap the script in one transaction (default true): all of it
+        /// lands or none does. false runs it as written, its own
+        /// BEGIN/COMMIT included.
+        #[serde(default)]
+        pub transaction: Option<bool>,
+    }
+
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Browse {
         /// The connection to work on: its **name** as shown in HuginnDB
@@ -752,6 +772,7 @@ fn bridged_connection_id(request: &BridgeRequest) -> Option<String> {
     match request {
         BridgeRequest::RunStatement { policy_id, .. }
         | BridgeRequest::RunWriteBatch { policy_id, .. }
+        | BridgeRequest::RunScript { policy_id, .. }
         | BridgeRequest::InsertRow { policy_id, .. }
         | BridgeRequest::UpdateCell { policy_id, .. }
         | BridgeRequest::DeleteRows { policy_id, .. }
@@ -776,6 +797,69 @@ fn bridged_connection_id(request: &BridgeRequest) -> Option<String> {
 /// page came out ~43% larger than the same JSON compact, with nothing gained
 /// for a reader that does not need the whitespace to parse it. The AI panel's
 /// tool results (`ai::exec`) were already compact for the same reason.
+/// Read the `.sql` file `run_script` was pointed at, for the sidecar to send
+/// as text (ADR #121).
+///
+/// Read here, never by the app: the bridge carries the script, so the desktop
+/// app does not open files because a bridge client named one. Only an absolute
+/// path to a `.sql` file, so the argument cannot be turned into "read me any
+/// file" — the contents are executed, not returned, but a failure message
+/// quotes the start of the statement it names. UTF-8, with or without a BOM,
+/// and UTF-16 with a BOM, which is what SQL Server Management Studio saves.
+async fn read_script_file(path: &str) -> Result<String, ErrorData> {
+    let invalid = |msg: String| ErrorData::invalid_params(msg, None);
+    let p = std::path::Path::new(path);
+    if !p.is_absolute() {
+        return Err(invalid(format!(
+            "`path` must be absolute ({path:?} is not)"
+        )));
+    }
+    if !p.extension().is_some_and(|e| e.eq_ignore_ascii_case("sql")) {
+        return Err(invalid(format!(
+            "`path` must name a .sql file ({path:?} does not)"
+        )));
+    }
+    let meta = tokio::fs::metadata(p)
+        .await
+        .map_err(|e| invalid(format!("cannot read {path:?}: {e}")))?;
+    if !meta.is_file() {
+        return Err(invalid(format!("{path:?} is not a file")));
+    }
+    if meta.len() > crate::commands::script::MAX_SCRIPT_BYTES as u64 {
+        return Err(invalid(format!(
+            "{path:?} is {} bytes; run_script takes at most {}. Split it.",
+            meta.len(),
+            crate::commands::script::MAX_SCRIPT_BYTES
+        )));
+    }
+    let bytes = tokio::fs::read(p)
+        .await
+        .map_err(|e| invalid(format!("cannot read {path:?}: {e}")))?;
+    decode_script(&bytes).ok_or_else(|| {
+        invalid(format!(
+            "{path:?} is not UTF-8 (or UTF-16 with a byte-order mark). Save it as UTF-8."
+        ))
+    })
+}
+
+/// The text of a script file: UTF-8 (BOM stripped), or UTF-16 LE/BE when a BOM
+/// says so. `None` for anything else.
+fn decode_script(bytes: &[u8]) -> Option<String> {
+    let utf16 = |rest: &[u8], unit: fn([u8; 2]) -> u16| {
+        if !rest.len().is_multiple_of(2) {
+            return None;
+        }
+        let units: Vec<u16> = rest.chunks_exact(2).map(|c| unit([c[0], c[1]])).collect();
+        String::from_utf16(&units).ok()
+    };
+    match bytes {
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8(rest.to_vec()).ok(),
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, u16::from_le_bytes),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, u16::from_be_bytes),
+        _ => String::from_utf8(bytes.to_vec()).ok(),
+    }
+}
+
 fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> {
     let text =
         serde_json::to_string(value).map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
@@ -788,9 +872,10 @@ fn ok_json<T: serde::Serialize>(value: &T) -> Result<CallToolResult, ErrorData> 
 /// Kept as one list because three separate places need exactly it and would
 /// otherwise each keep their own copy: the `--read-only` gate below, and the
 /// two tests that pin down their annotations.
-const WRITE_TOOLS: [&str; 9] = [
+const WRITE_TOOLS: [&str; 10] = [
     "run_write",
     "run_writes",
+    "run_script",
     "insert_row",
     "update_cell",
     "delete_rows",
@@ -1756,7 +1841,9 @@ impl Huginn {
                       (CREATE/DROP/ALTER/…) need 'full'. Whole-relation \
                       UPDATE/DELETE with no predicate are refused. A read is \
                       refused here too — use `run_query`, which does not need \
-                      write permission. Every call is recorded in the app's \
+                      write permission. For several statements that must \
+                      share a session (temporary tables, a migration), use \
+                      `run_script`. Every call is recorded in the app's \
                       MCP audit log."
     )]
     async fn run_write(
@@ -1943,6 +2030,86 @@ impl Huginn {
         }
         let verify = self.read_many(&target, &a.connection_id, &a.verify).await;
         ok_json(&Reply { batch, verify })
+    }
+
+    #[tool(
+        title = "Run a SQL script on one session",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = true
+        ),
+        description = "Run a whole SQL script — a migration, a .sql file — on \
+                      ONE pinned session, in order, so temporary tables \
+                      (CREATE TEMPORARY TABLE, #temp), SET and variables \
+                      persist from one statement to the next. Mix DDL, \
+                      INSERT … SELECT, multi-row INSERTs and SELECTs to \
+                      verify; each SELECT's rows come back (one --max-rows \
+                      budget). Pass the script as `sql`, or a local .sql \
+                      file as `path` so it never goes through the \
+                      conversation. One transaction by default (all or \
+                      nothing; BEGIN/COMMIT in the script are refused — pass \
+                      `transaction: false` to run them as written). The \
+                      session is closed afterwards, so nothing carries to the \
+                      next call. Needs policy 'data'; any DDL, temporary \
+                      tables included, needs 'full'. Postgres, MySQL, SQLite, \
+                      SQL Server — not MongoDB. Recorded in the MCP audit log."
+    )]
+    async fn run_script(
+        &self,
+        Parameters(mut a): Parameters<args::Script>,
+    ) -> Result<CallToolResult, ErrorData> {
+        use crate::commands::script;
+        a.connection_id = self.canonical_connection(&a.connection_id)?;
+        let text = match (a.sql, a.path) {
+            (Some(sql), None) => sql,
+            (None, Some(path)) => read_script_file(&path).await?,
+            _ => {
+                return Err(ErrorData::invalid_params(
+                    "run_script takes the script as `sql` or as a `path` to a .sql file — \
+                     exactly one of them"
+                        .to_string(),
+                    None,
+                ))
+            }
+        };
+        let transaction = a.transaction.unwrap_or(true);
+        if text.len() > script::MAX_SCRIPT_BYTES {
+            return Err(ErrorData::invalid_params(
+                format!(
+                    "the script is {} bytes; run_script takes at most {}. Split it.",
+                    text.len(),
+                    script::MAX_SCRIPT_BYTES
+                ),
+                None,
+            ));
+        }
+        // Before a pool is opened, as `run_writes` does. The executor checks
+        // again on whichever side runs it.
+        script::check_script(&script::split_script(&text), transaction)
+            .map_err(|e| ErrorData::invalid_params(e.to_string(), None))?;
+        self.ensure_connected(&a.connection_id)
+            .await
+            .map_err(to_err)?;
+        self.require_verbs(&a.connection_id, script::verbs_of_script(&text))?;
+
+        let value = self
+            .call(
+                BridgeRequest::RunScript {
+                    connection_id: a.connection_id.clone(),
+                    policy_id: a.connection_id.clone(),
+                    sql: text,
+                    transaction,
+                    max_rows: self.config.max_rows.max(0) as usize,
+                },
+                true,
+            )
+            .await
+            .map_err(to_err)?;
+        let result: script::ScriptResult =
+            serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
+        ok_json(&result)
     }
 
     #[tool(
@@ -2661,13 +2828,18 @@ fn instructions() -> String {
          list_connections first to see which connection ids are available \
          (each shows its write policy), then pass a connection_id to the \
          other tools. Reads always work; writes (run_write, run_writes, \
-         insert_row, update_cell, delete_rows) only succeed when the \
-         connection's policy permits them — 'data' for row changes, \
-         'full' for schema changes — and every write is recorded in the \
-         app's MCP audit log. To save calls, batch: several reads go in \
-         one run_queries, several row writes in one run_writes (one \
+         run_script, insert_row, update_cell, delete_rows) only succeed \
+         when the connection's policy permits them — 'data' for row \
+         changes, 'full' for schema changes — and every write is recorded \
+         in the app's MCP audit log. To save calls, batch: several reads go \
+         in one run_queries, several row writes in one run_writes (one \
          transaction, with `verify` reads returned after the commit — no \
-         need to re-read).",
+         need to re-read). Separate calls may land on different pooled \
+         sessions, so session state does not carry between them. For a \
+         migration or any multi-step SQL script — temporary tables (CREATE \
+         TEMPORARY TABLE, #temp), SET, staging inserts, INSERT … SELECT, \
+         verification SELECTs — use run_script: the whole script on ONE \
+         session, in one transaction, inline or from a local .sql file.",
     );
     let record = crate::updater::record::load();
     if let Some(note) =
@@ -2879,6 +3051,48 @@ mod tests {
     /// Every tool answers through `ok_json`, and what it writes is billed to
     /// the user's plan by the token: a pretty-printed result set spent one
     /// newline-and-indent run per cell.
+    #[test]
+    fn a_script_file_is_read_as_utf8_or_bom_marked_utf16() {
+        let text = "INSERT INTO t VALUES ('ñ');";
+        assert_eq!(decode_script(text.as_bytes()).as_deref(), Some(text));
+        let bom = [&[0xEF, 0xBB, 0xBF][..], text.as_bytes()].concat();
+        assert_eq!(decode_script(&bom).as_deref(), Some(text));
+        let le: Vec<u8> = [0xFF, 0xFE]
+            .into_iter()
+            .chain(text.encode_utf16().flat_map(u16::to_le_bytes))
+            .collect();
+        assert_eq!(decode_script(&le).as_deref(), Some(text));
+        let be: Vec<u8> = [0xFE, 0xFF]
+            .into_iter()
+            .chain(text.encode_utf16().flat_map(u16::to_be_bytes))
+            .collect();
+        assert_eq!(decode_script(&be).as_deref(), Some(text));
+        assert_eq!(decode_script(&[0xC3, 0x28]), None);
+    }
+
+    #[tokio::test]
+    async fn run_script_reads_only_absolute_sql_files() {
+        let dir = std::env::temp_dir().join(format!("huginndb-script-path-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let sql = dir.join("migrate.SQL");
+        std::fs::write(&sql, "INSERT INTO t VALUES (1);").unwrap();
+        let txt = dir.join("notes.txt");
+        std::fs::write(&txt, "secret").unwrap();
+
+        assert_eq!(
+            read_script_file(sql.to_str().unwrap()).await.unwrap(),
+            "INSERT INTO t VALUES (1);"
+        );
+        let refused = |r: Result<String, ErrorData>| r.unwrap_err().message.to_string();
+        assert!(refused(read_script_file(txt.to_str().unwrap()).await).contains(".sql file"));
+        assert!(refused(read_script_file("migrate.sql").await).contains("absolute"));
+        assert!(
+            refused(read_script_file(dir.join("missing.sql").to_str().unwrap()).await)
+                .contains("cannot read")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn tool_results_are_compact_json() {
         let result = query::QueryResult::rows(
@@ -4112,6 +4326,8 @@ mod tests {
             "run_writes",
             // Not a write, but a list argument, checked for the same shapes.
             "run_queries",
+            // Optional string/boolean arguments.
+            "run_script",
         ] {
             let tool = tools
                 .iter()

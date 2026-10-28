@@ -178,6 +178,7 @@ impl MsSqlPool {
             client: Some(client),
             _permit: permit,
             healthy: false,
+            close_on_drop: false,
         })
     }
 
@@ -305,9 +306,20 @@ pub struct PooledClient {
     /// `tokio::time::timeout` — is discarded rather than handed to the next
     /// caller with the stream left mid-read.
     healthy: bool,
+    /// Set by [`Self::close_on_drop`]: the session is closed with this guard
+    /// even when it is healthy.
+    close_on_drop: bool,
 }
 
 impl PooledClient {
+    /// Close this session when the guard drops instead of returning it to the
+    /// pool — for a caller that leaves session state behind (`#temp` tables,
+    /// `SET` options) the next borrower must not inherit. The twin of
+    /// `sqlx::pool::PoolConnection::close_on_drop`.
+    pub fn close_on_drop(&mut self) {
+        self.close_on_drop = true;
+    }
+
     /// Run a parameterised statement and collect the first result set.
     ///
     /// Parameters are bound as nullable strings (see the module docs). `sql`
@@ -471,7 +483,7 @@ impl Drop for PooledClient {
         // Only a session `classify` has proven is at a clean stream boundary
         // goes back to `idle` — anything else (including "never classified at
         // all", the cancelled-future case) is left to close with this guard.
-        if self.healthy {
+        if self.healthy && !self.close_on_drop {
             if let Some(client) = self.client.take() {
                 // `try_lock` cannot fail in practice (the lock is only ever held
                 // for a push/pop), and dropping the session on contention is

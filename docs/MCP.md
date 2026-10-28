@@ -438,6 +438,7 @@ connector — leaving only the connections you opened yourself.
 | `run_write` *(write)* | Run a single statement that **changes** the database. DML needs `data`, DDL needs `full`. A read is refused here too — it belongs in `run_query`, which needs no write permission. |
 | `run_queries` | Run several **read-only** statements in one call, each as `run_query` would. One that fails is reported in its own slot and the rest still run. Rows share one `--max-rows` budget. |
 | `run_writes` *(write)* | Apply several row writes (`INSERT`/`UPDATE`/`DELETE`) in **one transaction** — all land or none do. Each write can carry `expect_rows`; `verify` reads run after the commit and come back in the same reply. Requires `data` or `full`. See [Batching](#batching-fewer-calls-fewer-tokens). |
+| `run_script` *(write)* | Run a whole SQL script — a migration, a `.sql` file — on **one pinned session**, in order, so temporary tables, `SET`s and variables carry from one statement to the next. One transaction by default. Pass it inline as `sql` or as a local file `path`. Requires `data`; any DDL, temporary tables included, requires `full`. Not MongoDB. See [Scripts](#scripts-temporary-tables-and-migrations). |
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
@@ -461,7 +462,7 @@ assistant knows up front what it may do.
 
 Every tool also carries a **title** and MCP **annotations** — `readOnlyHint`
 for the eighteen that only read, and `destructiveHint` / `idempotentHint` on
-the nine that write (`insert_row` and `create_index` are marked additive
+the ten that write (`insert_row` and `create_index` are marked additive
 rather than destructive). Clients use these to decide how much friction a call
 deserves, so a `list_tables` no longer looks as risky as a `delete_rows`.
 
@@ -511,6 +512,60 @@ A reply from `run_writes` looks like this:
 ```json
 {"atomic":true,"rows_affected":[1,1],"total_affected":2,"verify":[{"columns":[{"name":"v","data_type":"TEXT"}],"rows":[["on"]],"rows_affected":1,"elapsed_ms":0,"total":null,"truncated":false}]}
 ```
+
+### Scripts: temporary tables and migrations
+
+Every other tool takes whichever pooled session is free, so session state does
+not survive from one call to the next: a `CREATE TEMPORARY TABLE` (or T-SQL
+`#staging`) made by one `run_write` is usually gone — or on another session —
+when the next call looks for it, and a `SET` is lost the same way. That made it
+look as if HuginnDB "does not support temporary tables or batches", and an
+assistant would rewrite a migration into single statements full of CTEs.
+
+**`run_script`** runs a whole script on **one session**, in order, and answers
+in one reply:
+
+- **The script**, as `sql` (statements separated by `;`; a line holding only
+  `GO` separates too, so SQL Server scripts run as saved), or as `path` — the
+  absolute path of a local `.sql` file, which the connector reads itself so a
+  large migration never passes through the conversation. UTF-8, with or without
+  a BOM, and UTF-16 with a BOM (what SQL Server Management Studio saves). Up to
+  10 000 statements and 16 MB per call.
+- **One transaction by default**: `BEGIN` before the first statement, `COMMIT`
+  after the last, and a rollback at the first failure, with an error naming the
+  statement and its line. `BEGIN`/`COMMIT`/`SAVEPOINT`/`SET autocommit` inside
+  the script are refused in this mode. With `"transaction": false` the script
+  runs exactly as written — its own transaction control included — and a
+  failure reports how many statements before it ran and stay applied.
+- **On MySQL**, a persistent schema change (and `LOCK TABLES`) commits
+  implicitly, which would split the transaction, so in transaction mode it is
+  refused with a pointer to `"transaction": false`. `CREATE/DROP TEMPORARY
+  TABLE` does not commit on MySQL and is fine either way.
+- **Results**: every `SELECT` in the script returns its rows (all of them share
+  one `--max-rows` budget), tagged with the statement index and line; writes are
+  summed into `total_affected`. Per-statement counts are left out — on a
+  migration they are thousands of numbers nobody reads.
+- **The session is closed afterwards**, never returned to the pool, so
+  temporary tables, `SET`s, a `USE` or a transaction the script left open never
+  leak into the next call or into the app's grid.
+
+The tier is the script's: row writes need `data`, and **any DDL needs `full` —
+temporary tables included**. That is a decision (ADR #121), not an oversight: a
+temporary table cannot change the persistent schema, but the policy stays a
+plain reading of the statement and a `data` connection keeps meaning "rows
+only". A script that only reads is refused — `run_queries` runs those in the
+read-only transaction every AI read gets. Executable comments (`/*!40101 … */`,
+common in `mysqldump` output) are checked as MySQL runs them. `DELIMITER` is a
+`mysql` client command, not SQL, and is refused: send a routine whose body
+holds `;` through `run_write`. **MongoDB** is refused — it has no session
+objects to pin; `run_writes` runs a list of MongoDB writes in order.
+
+```json
+{"transaction":true,"statements":6,"total_affected":8,"results":[{"statement":4,"line":5,"columns":[{"name":"n","data_type":"INTEGER"}],"rows":[[3]],"rows_affected":1,"elapsed_ms":0,"total":null,"truncated":false}]}
+```
+
+A script that runs for more than five minutes outlives the bridge's wait for
+the app's answer; split long loads into several calls.
 
 ### Indexes: why the two write tools are MongoDB-only
 
