@@ -448,6 +448,21 @@ pub fn reachable_by_ai(state: &AppState, profile: &ConnectionProfile) -> bool {
     }
 }
 
+/// The ceiling the policy puts on how many rows one MCP tool call returns for
+/// this person (`mcpMaxRows` on their role), or `None` when it sets none.
+///
+/// A pending or broken policy answers `None` rather than failing closed: it
+/// already refuses every AI read in [`enforce`], so there are no rows for a
+/// ceiling to bound. The number is applied by [`crate::state::mcp_max_rows`].
+// Read by the MCP sidecar only, which the `mcp` feature gates.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+pub fn mcp_max_rows(state: &AppState) -> Option<u32> {
+    match &*state.policy.read() {
+        PolicyState::Active { doc, .. } => doc.role_for(current_user()).1.mcp_max_rows,
+        _ => None,
+    }
+}
+
 /// What the app's own interface may offer a person, per connection — the
 /// frontend half of the people phase. The backend refuses regardless; this is
 /// so a control the policy forbids is shown locked, with the reason, instead
@@ -1217,6 +1232,36 @@ mod tests {
             "{warnings:?}"
         );
         assert!(parse(r#"{ "required": true, "allowWindowsHello": false }"#).is_ok());
+    }
+
+    /// A state whose active policy gives the running account a role with
+    /// `mcpMaxRows` set to `cap` (raw JSON), or none.
+    fn state_with_mcp_max_rows(cap: Option<&str>) -> AppState {
+        let state = AppState::new();
+        let field = cap.map_or(String::new(), |c| format!(r#", "mcpMaxRows": {c}"#));
+        let text = format!(
+            r#"{{ "version": 1, "defaultRole": "r", "users": {{ {user:?}: "r" }},
+                 "roles": {{ "r": {{ "rules": []{field} }} }} }}"#,
+            user = current_user_or_test(),
+        );
+        let (doc, _) = super::super::model::PolicyDoc::parse(&text).unwrap();
+        *state.policy.write() = PolicyState::Active {
+            doc: Arc::new(doc),
+            source: "test".into(),
+            warnings: Vec::new(),
+        };
+        state
+    }
+
+    #[test]
+    fn a_role_can_cap_the_mcp_row_limit() {
+        assert_eq!(mcp_max_rows(&AppState::new()), None, "unmanaged");
+        assert_eq!(mcp_max_rows(&state_with_mcp_max_rows(None)), None);
+        assert_eq!(mcp_max_rows(&state_with_mcp_max_rows(Some("50"))), Some(50));
+        let zero = super::super::model::PolicyDoc::parse(
+            r#"{ "version": 1, "defaultRole": "r", "roles": { "r": { "mcpMaxRows": 0 } } }"#,
+        );
+        assert!(zero.is_err(), "a zero ceiling is a typo, not a policy");
     }
 
     #[test]

@@ -436,6 +436,7 @@ pub fn run() {
             commands::connection::set_mcp_write_policy,
             commands::connection::set_pulse_enabled,
             commands::connection::set_mcp_exposed,
+            commands::connection::set_mcp_max_rows,
             commands::connection::set_ai_enabled,
             commands::connection::set_ai_rows_allowed,
             commands::connection::set_ai_notes,

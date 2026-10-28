@@ -201,6 +201,15 @@ export const api = {
     invoke<number>("set_mcp_exposed", { ids, exposed }),
 
   /**
+   * Set (a number) or clear (`null`, back to the global default) the MCP row
+   * cap of several connections in one write. Same "how many actually changed"
+   * return as `setMcpWritePolicy`; the backend clamps to 1..10000. The sidecar
+   * re-reads it per call, so no client restart is needed.
+   */
+  setMcpMaxRows: (ids: string[], rows: number | null) =>
+    invoke<number>("set_mcp_max_rows", { ids, rows }),
+
+  /**
    * Let the in-app AI panel reach (or stop reaching) several connections in one
    * write. Same "how many actually changed" return as `setMcpWritePolicy`.
    *

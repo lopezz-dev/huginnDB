@@ -194,6 +194,97 @@ impl McpWritePolicy {
     }
 }
 
+/// Default for the global `connections.mcpMaxRows` preference: the most rows
+/// one MCP tool call returns when neither the connection nor the sidecar's
+/// command line says otherwise.
+///
+/// 200, down from the 1000 the sidecar hard-coded until 1.37. The cap exists to
+/// keep a result inside the model's context, and 1000 did not: Claude Code
+/// refuses an MCP tool result over 25 000 tokens by default, and a thousand
+/// rows of an ordinary ten-column table serialise to several times that — so
+/// the old default produced a result the client threw away instead of a
+/// truncated one the model could act on. Two hundred such rows land around
+/// 10–15 000 tokens, which fits with room for the rest of the turn, and is
+/// still more than an assistant needs to see a table's shape; past that it
+/// should be aggregating or paging, which is what the truncation notice tells
+/// it to do.
+pub const DEFAULT_MCP_MAX_ROWS: u32 = 200;
+
+/// Highest row cap any source may set. Well past what any client accepts in
+/// one result; it exists so a hand-edited `profiles.json` cannot ask the
+/// sidecar to buffer and serialise an unbounded result.
+pub const MAX_MCP_MAX_ROWS: u32 = 10_000;
+
+/// Which setting decided an [`McpRowCap`] — named in the truncation notice so
+/// the model can tell the user exactly which knob to turn.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpRowCapSource {
+    /// The connection's own [`ConnectionProfile::mcp_max_rows`].
+    Connection,
+    /// The sidecar's `--max-rows` argument, standing in for the preference.
+    Flag,
+    /// The global `connections.mcpMaxRows` preference.
+    Preference,
+    /// A managed policy's `mcpMaxRows` ceiling, which was lower than all of
+    /// the above.
+    Policy,
+}
+
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+impl McpRowCapSource {
+    /// Where a person changes it, in the words the truncation notice uses.
+    pub fn describe(self) -> &'static str {
+        match self {
+            McpRowCapSource::Connection => {
+                "this connection's own limit (HuginnDB → Settings → MCP, next to the connection)"
+            }
+            McpRowCapSource::Flag => "the --max-rows argument in the MCP client's configuration",
+            McpRowCapSource::Preference => "the default limit in HuginnDB → Settings → MCP",
+            McpRowCapSource::Policy => {
+                "the organization's managed policy (mcpMaxRows), which only an administrator can raise"
+            }
+        }
+    }
+}
+
+/// The row cap in force for one connection, and what set it.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct McpRowCap {
+    pub rows: u32,
+    pub source: McpRowCapSource,
+}
+
+/// The one place the MCP row cap is decided.
+///
+/// The connection's own value wins; without one, the sidecar's `--max-rows`
+/// (a client-wide default someone typed into that client's config) stands in
+/// for the global `preference`. Whatever comes out is clamped into
+/// `1..=MAX_MCP_MAX_ROWS`, and then a managed policy's ceiling applies on top —
+/// it only ever lowers the number, never raises one a person chose below it.
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+pub fn mcp_max_rows(
+    profile: Option<&ConnectionProfile>,
+    preference: u32,
+    flag: Option<u32>,
+    policy: Option<u32>,
+) -> McpRowCap {
+    let (rows, source) = match (profile.and_then(|p| p.mcp_max_rows), flag) {
+        (Some(rows), _) => (rows, McpRowCapSource::Connection),
+        (None, Some(rows)) => (rows, McpRowCapSource::Flag),
+        (None, None) => (preference, McpRowCapSource::Preference),
+    };
+    let rows = rows.clamp(1, MAX_MCP_MAX_ROWS);
+    match policy {
+        Some(ceiling) if ceiling.max(1) < rows => McpRowCap {
+            rows: ceiling.max(1),
+            source: McpRowCapSource::Policy,
+        },
+        _ => McpRowCap { rows, source },
+    }
+}
+
 /// User-defined connection profile stored on disk.
 ///
 /// Only contains non-sensitive metadata; the matching password is kept in
@@ -374,6 +465,23 @@ pub struct ConnectionProfile {
     /// make it — nor a bundle you imported to look at.
     #[serde(default)]
     pub mcp_exposed: bool,
+    /// Most rows one MCP tool call may hand an AI client from this connection,
+    /// overriding the global `connections.mcpMaxRows` preference. `None` (the
+    /// default, and every profile written before this field existed) means
+    /// "use the preference".
+    ///
+    /// Per connection because the right number depends on what the rows *are*:
+    /// a lookup table of codes is cheap to read whole, while a table with a
+    /// JSON column per row floods the model's context at a few dozen.
+    ///
+    /// **Strictly local**, like `mcp_write`: how much of a server this
+    /// machine's AI clients may read in one go is a decision about this
+    /// machine, so `merge_into` preserves it across a shared-origin sync.
+    /// Resolved — with the preference, the sidecar's `--max-rows` and a
+    /// managed policy's ceiling — only by [`mcp_max_rows`], which also clamps a
+    /// hand-edited value into `1..=MAX_MCP_MAX_ROWS`.
+    #[serde(default)]
+    pub mcp_max_rows: Option<u32>,
     /// Whether the in-app AI panel may reach this connection at all.
     ///
     /// Opt-in, off by default, and strictly local — the same three properties
@@ -1978,6 +2086,70 @@ mod tests {
         .expect("Option fields may be omitted");
         assert!(args.connect_profile.is_none());
         assert!(args.adhoc_host.is_none());
+    }
+
+    /// The MCP row cap's precedence, in one table: the connection's own value,
+    /// then `--max-rows`, then the preference — clamped — and a policy ceiling
+    /// that only ever lowers the result.
+    #[test]
+    fn mcp_row_cap_resolves_connection_then_flag_then_preference_under_policy() {
+        use McpRowCapSource::*;
+        let with = |rows: Option<u32>| ConnectionProfile {
+            mcp_max_rows: rows,
+            ..crate::testkit::profile("p")
+        };
+        let cap = |rows, source| McpRowCap { rows, source };
+
+        assert_eq!(mcp_max_rows(None, 200, None, None), cap(200, Preference));
+        assert_eq!(
+            mcp_max_rows(Some(&with(None)), 200, None, None),
+            cap(200, Preference)
+        );
+        assert_eq!(
+            mcp_max_rows(Some(&with(None)), 200, Some(50), None),
+            cap(50, Flag)
+        );
+        assert_eq!(
+            mcp_max_rows(Some(&with(Some(30))), 200, Some(50), None),
+            cap(30, Connection),
+            "the connection's own limit outranks a client-wide flag"
+        );
+
+        // Clamped, so a hand-edited file can neither return nothing nor
+        // buffer an unbounded result.
+        assert_eq!(
+            mcp_max_rows(Some(&with(Some(0))), 200, None, None),
+            cap(1, Connection)
+        );
+        assert_eq!(
+            mcp_max_rows(Some(&with(Some(u32::MAX))), 200, None, None),
+            cap(MAX_MCP_MAX_ROWS, Connection)
+        );
+
+        // A policy ceiling lowers a larger limit and leaves a smaller one.
+        assert_eq!(
+            mcp_max_rows(Some(&with(Some(500))), 200, None, Some(100)),
+            cap(100, Policy)
+        );
+        assert_eq!(
+            mcp_max_rows(Some(&with(Some(20))), 200, None, Some(100)),
+            cap(20, Connection)
+        );
+        assert_eq!(
+            mcp_max_rows(None, 200, None, Some(100_000)),
+            cap(200, Preference)
+        );
+    }
+
+    /// A profile written before the field existed has no row cap of its own.
+    #[test]
+    fn a_profile_without_mcp_max_rows_defers_to_the_preference() {
+        let json = serde_json::to_value(crate::testkit::profile("p")).unwrap();
+        let mut object = json.as_object().unwrap().clone();
+        object.remove("mcp_max_rows");
+        let profile: ConnectionProfile =
+            serde_json::from_value(serde_json::Value::Object(object)).unwrap();
+        assert_eq!(profile.mcp_max_rows, None);
     }
 
     /// The per-connection MCP policy never split the row writes, and the verb

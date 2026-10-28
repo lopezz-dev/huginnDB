@@ -58,12 +58,13 @@ describe("searchDocs", () => {
 
   it("points a body hit at the ### it sits under, as a slug the page has", () => {
     // Search a phrase that lives in a `###` of the MCP guide's Security section.
+    // Other guides may match too, so each hit is checked against its own page.
     const hits = searchDocs("blocks the call", "en");
-    const mcp = parseDoc(getDocBody(getDoc("mcp")!, "en"));
     const withAnchor = hits.filter((h) => h.anchor);
-    expect(withAnchor.length).toBeGreaterThan(0);
+    expect(withAnchor.some((h) => h.docId === "mcp")).toBe(true);
     for (const h of withAnchor) {
-      const section = mcp.sections.find((s) => s.slug === h.section);
+      const page = parseDoc(getDocBody(getDoc(h.docId)!, "en"));
+      const section = page.sections.find((s) => s.slug === h.section);
       expect(section?.subs.some((s) => s.slug === h.anchor)).toBe(true);
     }
   });

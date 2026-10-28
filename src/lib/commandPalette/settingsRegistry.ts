@@ -526,6 +526,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     toggle: (p, w) => w.updateConnections({ mcpBridge: !p.connections.mcpBridge }),
   },
 
+  {
+    prefId: "connections.mcpMaxRows",
+    section: "mcp",
+    labelKey: "settings.mcp.maxRows.label",
+    descKey: "settings.mcp.maxRows.desc",
+    keywords: "mcp rows limit max filas límite tope truncar ai ia",
+    value: num((p) => p.connections.mcpMaxRows),
+  },
+
   // ── Appearance → data view ────────────────────────────────────────────────
   {
     prefId: "grid.documentViewMode",

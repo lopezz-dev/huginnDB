@@ -37,9 +37,13 @@
 //!   (password from the keychain) and cached in the shared [`AppState`]. It is
 //!   a separate process from the running desktop app — it does not share the
 //!   GUI's live pools.
-//! * **Row cap.** `--max-rows` (default [`DEFAULT_MAX_ROWS`]) bounds how many
-//!   rows a single `run_query` / `browse_table` call can return, so a tool
-//!   call can't dump a whole table into the model's context.
+//! * **Row cap.** Bounds how many rows a single `run_query` / `run_queries` /
+//!   `browse_table` call can return, so a tool call can't dump a whole table
+//!   into the model's context. Resolved per call by [`Huginn::row_cap`] — the
+//!   connection's own limit, else `--max-rows`, else the global preference
+//!   ([`crate::state::DEFAULT_MCP_MAX_ROWS`]), under any managed-policy
+//!   ceiling — and a cut result says so in a `notice` naming the cap and the
+//!   setting that chose it.
 
 pub mod delegate;
 
@@ -57,10 +61,7 @@ use crate::bridge::protocol::BridgeRequest;
 use crate::db::sql::{StmtClass, Verbs};
 use crate::error::AppResult;
 use crate::log_bus::{LogEntry, LogSink, NoopSink};
-use crate::state::{ActivePool, AppState, McpWritePolicy};
-
-/// Default cap on rows returned by a single `run_query` / `browse_table` call.
-const DEFAULT_MAX_ROWS: i64 = 1000;
+use crate::state::{ActivePool, AppState, McpRowCap, McpWritePolicy};
 
 /// Default pool ceiling per exposed connection, overridable with
 /// `--max-connections`.
@@ -136,8 +137,10 @@ struct Config {
     /// guaranteed-safe mode without editing any profile. Default `false`
     /// (the per-connection policy governs).
     read_only: bool,
-    /// Upper bound on rows returned per call.
-    max_rows: i64,
+    /// Row cap from `--max-rows`, or `None` when the flag was absent. It
+    /// stands in for the global preference for this one client; a
+    /// connection's own limit still wins — see [`crate::state::mcp_max_rows`].
+    max_rows: Option<u32>,
     /// Pool ceiling per exposed connection (`--max-connections`). See
     /// [`DEFAULT_MAX_CONNECTIONS`] for why this process defaults lower than
     /// the desktop app. A profile that pins its own
@@ -173,7 +176,7 @@ impl Config {
     fn from_args(argv: &[String]) -> Self {
         let mut pinned: Option<HashSet<String>> = None;
         let mut read_only = false;
-        let mut max_rows = DEFAULT_MAX_ROWS;
+        let mut max_rows = None;
         let mut max_connections = DEFAULT_MAX_CONNECTIONS;
         let mut saw_allow_writes = false;
 
@@ -215,9 +218,9 @@ impl Config {
                     saw_allow_writes = true;
                 }
                 "--max-rows" => {
-                    if let Some(v) = value(&mut iter).and_then(|v| v.parse::<i64>().ok()) {
+                    if let Some(v) = value(&mut iter).and_then(|v| v.parse::<u32>().ok()) {
                         if v > 0 {
-                            max_rows = v;
+                            max_rows = Some(v);
                         }
                     }
                 }
@@ -1510,10 +1513,28 @@ impl Huginn {
             )
             .await
             .map_err(to_err)?;
-        let mut result: crate::commands::query::QueryResult =
+        let result: crate::commands::query::QueryResult =
             serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
-        truncate_rows(&mut result, self.config.max_rows);
-        ok_json(&result)
+        let cap = self.row_cap(&a.connection_id);
+        ok_json(&Capped::cut(result, cap.rows as usize, cap))
+    }
+
+    /// The row cap in force for `connection_id`, read **fresh** — the profile
+    /// from `profiles.json` and the preference from `prefs.json` — so a limit
+    /// changed in Settings → MCP applies to the next call without restarting
+    /// the client, the same contract [`Self::write_policy`] keeps. The rules
+    /// live in [`crate::state::mcp_max_rows`].
+    fn row_cap(&self, connection_id: &str) -> McpRowCap {
+        let profile = self
+            .all_profiles()
+            .into_iter()
+            .find(|p| p.id == connection_id);
+        crate::state::mcp_max_rows(
+            profile.as_ref(),
+            crate::prefs::load_preferences().connections.mcp_max_rows,
+            self.config.max_rows,
+            crate::policy::mcp_max_rows(&self.state),
+        )
     }
 
     /// The write policy in force for `connection_id`, read **fresh from
@@ -1569,8 +1590,9 @@ impl Huginn {
         annotations(read_only_hint = true, open_world_hint = false),
         description = "List the databases this server is allowed to reach \
                       (name, profile id, driver, host, database, whether a \
-                      pool is currently open, and the MCP write policy in \
-                      force: read-only / data / full). Every other tool \
+                      pool is currently open, the MCP write policy in \
+                      force: read-only / data / full, and max_rows: the \
+                      most rows one call returns). Every other tool \
                       accepts either the name or the id; prefer the name. \
                       An empty list means the user has not exposed any \
                       connection yet — they do that in HuginnDB under \
@@ -1594,6 +1616,10 @@ impl Huginn {
             /// fresh so it reflects the current Settings → MCP choice and the
             /// global `--read-only` kill-switch.
             write_policy: &'static str,
+            /// Most rows one call returns from this connection, resolved the
+            /// way every read tool resolves it — so a model can size a query
+            /// (or page) before it runs one rather than after it is cut.
+            max_rows: u32,
         }
         let active: HashSet<String> = self.state.connections.read().ids().into_iter().collect();
         // Collect the allowed ids first, then resolve each policy through
@@ -1611,6 +1637,7 @@ impl Huginn {
             .into_iter()
             .map(|p| Conn {
                 write_policy: self.write_policy(&p.id).label(),
+                max_rows: self.row_cap(&p.id).rows,
                 id: p.id.clone(),
                 name: p.name.clone(),
                 // The profile's own wire name, not a `Debug` repr: the latter
@@ -1773,21 +1800,23 @@ impl Huginn {
     /// One after another, not concurrently: concurrent reads would each take a
     /// connection, and on a tunnelled server a burst of new sessions is the
     /// thing ADRs #104 and #105 exist to avoid. The saving these tools are for
-    /// is model turns, not milliseconds. The rows share one `--max-rows`
-    /// budget across the list, so ten queries cannot put ten times the cap in
-    /// the model's context.
+    /// is model turns, not milliseconds. The rows share one `cap` budget
+    /// across the list, so ten queries cannot put ten times the cap in the
+    /// model's context.
     async fn read_many(
         &self,
         target: &str,
         policy_id: &str,
         queries: &[String],
+        cap: McpRowCap,
     ) -> Vec<ReadOutcome> {
-        let mut left = self.config.max_rows.max(0);
+        let mut left = cap.rows as usize;
         let mut out = Vec::with_capacity(queries.len());
         for sql in queries {
-            out.push(match self.read_one(target, policy_id, sql, left).await {
+            out.push(match self.read_one(target, policy_id, sql).await {
                 Ok(result) => {
-                    left -= result.rows.len() as i64;
+                    let result = Capped::cut(result, left, cap);
+                    left -= result.result.rows.len();
                     ReadOutcome::Rows(result)
                 }
                 Err(error) => ReadOutcome::Failed { error },
@@ -1804,7 +1833,6 @@ impl Huginn {
         target: &str,
         policy_id: &str,
         sql: &str,
-        max_rows: i64,
     ) -> Result<crate::commands::query::QueryResult, String> {
         let verbs = crate::db::classify::verbs_of(sql);
         if verbs.class() != StmtClass::Read {
@@ -1825,10 +1853,7 @@ impl Huginn {
             )
             .await
             .map_err(|e| e.to_string())?;
-        let mut result: crate::commands::query::QueryResult =
-            serde_json::from_value(value).map_err(|e| e.to_string())?;
-        truncate_rows(&mut result, max_rows);
-        Ok(result)
+        serde_json::from_value(value).map_err(|e| e.to_string())
     }
 
     #[tool(
@@ -1839,7 +1864,7 @@ impl Huginn {
                       `run_query` would; one that fails is reported in its \
                       slot (`{\"error\": …}`) without stopping the rest. \
                       Returns one result per statement, in order. Rows share \
-                      one --max-rows budget."
+                      one budget: the connection's MCP row limit."
     )]
     async fn run_queries(
         &self,
@@ -1861,7 +1886,12 @@ impl Huginn {
         let target = self
             .resolve_mongo_target(&a.connection_id, a.database.as_deref())
             .await?;
-        ok_json(&self.read_many(&target, &a.connection_id, &a.queries).await)
+        let cap = self.row_cap(&a.connection_id);
+        ok_json(
+            &self
+                .read_many(&target, &a.connection_id, &a.queries, cap)
+                .await,
+        )
     }
 
     #[tool(
@@ -1941,7 +1971,10 @@ impl Huginn {
             #[serde(skip_serializing_if = "Vec::is_empty")]
             verify: Vec<ReadOutcome>,
         }
-        let verify = self.read_many(&target, &a.connection_id, &a.verify).await;
+        let cap = self.row_cap(&a.connection_id);
+        let verify = self
+            .read_many(&target, &a.connection_id, &a.verify, cap)
+            .await;
         ok_json(&Reply { batch, verify })
     }
 
@@ -1949,33 +1982,43 @@ impl Huginn {
         title = "Browse table rows",
         annotations(read_only_hint = true, open_world_hint = true),
         description = "Browse one page of rows from a table without writing \
-                      SQL. Returns columns + rows; limit is clamped to the \
-                      server's --max-rows."
+                      SQL. Returns columns + rows + total; limit defaults to, \
+                      and is clamped to, the connection's MCP row limit — page \
+                      past it with offset."
     )]
     async fn browse_table(
         &self,
         Parameters(mut a): Parameters<args::Browse>,
     ) -> Result<CallToolResult, ErrorData> {
         a.connection_id = self.canonical_connection(&a.connection_id)?;
-        let limit = a
-            .limit
-            .unwrap_or(self.config.max_rows)
-            .clamp(1, self.config.max_rows);
+        let cap = self.row_cap(&a.connection_id);
+        let max = i64::from(cap.rows);
+        let limit = a.limit.unwrap_or(max).clamp(1, max);
         let offset = a.offset.unwrap_or(0).max(0);
         let policy_id = a.connection_id.clone();
         let (schema, table) = (a.schema, a.table);
-        self.read_tool(&policy_id, schema.as_deref(), |connection_id| {
-            BridgeRequest::FetchTableData {
-                connection_id,
-                policy_id: policy_id.clone(),
-                schema: schema.clone(),
-                table,
-                limit,
-                offset,
-                with_count: Some(true),
-            }
-        })
-        .await
+        self.ensure_connected(&policy_id).await.map_err(to_err)?;
+        let target = self
+            .resolve_mongo_target(&policy_id, schema.as_deref())
+            .await?;
+        let value = self
+            .call(
+                BridgeRequest::FetchTableData {
+                    connection_id: target,
+                    policy_id: policy_id.clone(),
+                    schema,
+                    table,
+                    limit,
+                    offset,
+                    with_count: Some(true),
+                },
+                false,
+            )
+            .await
+            .map_err(to_err)?;
+        let result: crate::commands::query::QueryResult =
+            serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
+        ok_json(&Capped::page(result, a.limit, offset, cap))
     }
 
     #[tool(
@@ -2604,16 +2647,95 @@ impl Huginn {
 /// call asking again. `row_types` (MongoDB's per-cell types) is row-aligned and
 /// cut with `rows`, or the two desynchronise. `rows_affected` keeps what the
 /// engine reported — we drop the tail rather than lie about the count.
-fn truncate_rows(result: &mut crate::commands::query::QueryResult, max: i64) -> usize {
-    let max = max.max(0) as usize;
-    if result.rows.len() > max {
-        result.rows.truncate(max);
-        if let Some(types) = result.row_types.as_mut() {
-            types.truncate(max);
+/// A result as an MCP tool returns it: the rows, plus — when the connection's
+/// row cap is what stopped them — the cap and a sentence saying so.
+///
+/// The sentence is the point. `truncated: true` alone told a model that rows
+/// were missing but not how many it was allowed, nor that the number is a
+/// setting rather than a property of the data, so it would retry the same
+/// query or report the partial answer as complete. The notice names the cap,
+/// the setting that chose it ([`crate::state::McpRowCapSource`]) and what to
+/// do instead. Both fields are absent on a result that was not cut, so an
+/// ordinary answer costs no extra tokens.
+#[derive(serde::Serialize)]
+struct Capped {
+    #[serde(flatten)]
+    result: crate::commands::query::QueryResult,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    row_limit: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notice: Option<String>,
+}
+
+impl Capped {
+    /// Keep at most `budget` rows of a free statement's result — `cap.rows`
+    /// for one statement, what is left of it for a later one in a list.
+    fn cut(mut result: crate::commands::query::QueryResult, budget: usize, cap: McpRowCap) -> Self {
+        let cut = result.rows.len() > budget;
+        if cut {
+            result.rows.truncate(budget);
+            if let Some(types) = result.row_types.as_mut() {
+                types.truncate(budget);
+            }
+            result.truncated = true;
         }
-        result.truncated = true;
+        let notice = cut.then(|| {
+            let shown = result.rows.len();
+            let source = cap.source.describe();
+            let limit = cap.rows;
+            if shown == 0 {
+                format!(
+                    "No rows shown: earlier statements in this call used the whole MCP row \
+                     limit of {limit}, set by {source}. Run this one on its own, or narrow \
+                     the others."
+                )
+            } else {
+                format!(
+                    "Only the first {shown} rows are shown: the MCP row limit is {limit}, set \
+                     by {source}. Do not treat this as the complete result — aggregate \
+                     (COUNT/GROUP BY), filter, or page with LIMIT/OFFSET (.skip()/.limit() \
+                     on MongoDB)."
+                )
+            }
+        });
+        Capped {
+            result,
+            row_limit: notice.as_ref().map(|_| cap.rows),
+            notice,
+        }
     }
-    result.rows.len()
+
+    /// A `browse_table` page. Nothing is cut here — the limit was clamped
+    /// before the fetch — but when the cap is what bounded the page, a model
+    /// that asked for more (or asked for nothing and got the cap) is told so,
+    /// with where the next page starts.
+    fn page(
+        result: crate::commands::query::QueryResult,
+        requested: Option<i64>,
+        offset: i64,
+        cap: McpRowCap,
+    ) -> Self {
+        let shown = result.rows.len() as u64;
+        let more = result
+            .total
+            .is_some_and(|total| total > offset.max(0) as u64 + shown);
+        let bounded = shown == u64::from(cap.rows)
+            && (requested.is_some_and(|r| r > i64::from(cap.rows)) || requested.is_none());
+        let notice = (bounded && more).then(|| {
+            format!(
+                "This page holds {shown} rows: the MCP row limit is {}, set by {}. Call again \
+                 with offset {} for the next page.",
+                cap.rows,
+                cap.source.describe(),
+                offset.max(0) as u64 + shown
+            )
+        });
+        Capped {
+            result,
+            row_limit: notice.as_ref().map(|_| cap.rows),
+            notice,
+        }
+    }
 }
 
 /// Most statements one `run_queries` call, or one `run_writes` `verify` list,
@@ -2629,7 +2751,7 @@ const MAX_BATCH_READS: usize = crate::commands::write_batch::MAX_WRITES;
 #[derive(serde::Serialize)]
 #[serde(untagged)]
 enum ReadOutcome {
-    Rows(crate::commands::query::QueryResult),
+    Rows(Capped),
     Failed { error: String },
 }
 
@@ -2806,7 +2928,10 @@ pub async fn serve() -> anyhow::Result<()> {
             } else {
                 ""
             },
-            config.max_rows,
+            config.max_rows.map_or_else(
+                || "per-connection (Settings → MCP)".to_string(),
+                |n| format!("{n} via --max-rows unless a connection sets its own"),
+            ),
             config.max_connections,
             POOL_IDLE_TTL.as_secs(),
         );
@@ -2868,7 +2993,7 @@ mod tests {
         );
         assert!(!c.read_only);
         assert!(!c.saw_allow_writes);
-        assert_eq!(c.max_rows, DEFAULT_MAX_ROWS);
+        assert_eq!(c.max_rows, None, "no --max-rows defers to Settings → MCP");
         assert_eq!(
             c.max_connections, DEFAULT_MAX_CONNECTIONS,
             "the sidecar must default well below the desktop app: it is one of \
@@ -2894,6 +3019,71 @@ mod tests {
         let text = wire["content"][0]["text"].as_str().expect("one text block");
         assert!(!text.contains('\n'), "pretty-printed tool result: {text}");
         assert!(text.contains(r#""rows":[[1],[2]]"#), "{text}");
+    }
+
+    fn rows(n: i64) -> query::QueryResult {
+        query::QueryResult::rows(
+            vec![query::ColumnMeta {
+                name: "id".into(),
+                data_type: "INTEGER".into(),
+            }],
+            (0..n).map(|i| vec![serde_json::json!(i)]).collect(),
+            0,
+        )
+    }
+
+    fn cap(rows: u32, source: crate::state::McpRowCapSource) -> McpRowCap {
+        McpRowCap { rows, source }
+    }
+
+    /// A cut result says how many rows it kept, what the limit is and which
+    /// setting chose it — the policy case naming the one a person cannot
+    /// change themselves.
+    #[test]
+    fn a_cut_result_names_the_limit_and_where_it_comes_from() {
+        use crate::state::McpRowCapSource::{Policy, Preference};
+        let out = Capped::cut(rows(10), 3, cap(3, Preference));
+        let json = serde_json::to_value(&out).unwrap();
+        assert_eq!(json["rows"].as_array().unwrap().len(), 3);
+        assert_eq!(json["truncated"], true);
+        assert_eq!(json["row_limit"], 3);
+        let notice = json["notice"].as_str().unwrap();
+        assert!(notice.contains("first 3 rows"), "{notice}");
+        assert!(notice.contains("default limit"), "{notice}");
+
+        let policy = Capped::cut(rows(10), 5, cap(5, Policy));
+        assert!(policy.notice.unwrap().contains("administrator"));
+
+        // Exactly at the cap is not a cut.
+        let whole = serde_json::to_value(Capped::cut(rows(3), 3, cap(3, Preference))).unwrap();
+        assert_eq!(whole["truncated"], false);
+        assert!(whole.get("row_limit").is_none() && whole.get("notice").is_none());
+    }
+
+    /// A `browse_table` page bounded by the cap points at the next page; one
+    /// the model sized itself, or the last page, says nothing.
+    #[test]
+    fn a_browse_page_bounded_by_the_cap_points_at_the_next_one() {
+        use crate::state::McpRowCapSource::Connection;
+        let page = |n: i64, total: u64| {
+            let mut r = rows(n);
+            r.total = Some(total);
+            r
+        };
+        let bounded = Capped::page(page(5, 100), None, 20, cap(5, Connection));
+        let notice = bounded.notice.expect("the cap bounded this page");
+        assert!(notice.contains("offset 25"), "{notice}");
+        assert!(notice.contains("this connection's own limit"), "{notice}");
+        assert!(Capped::page(page(5, 100), Some(500), 0, cap(5, Connection))
+            .notice
+            .is_some());
+
+        assert!(Capped::page(page(5, 100), Some(5), 0, cap(5, Connection))
+            .notice
+            .is_none());
+        assert!(Capped::page(page(5, 5), None, 0, cap(5, Connection))
+            .notice
+            .is_none());
     }
 
     #[test]
@@ -2932,7 +3122,7 @@ mod tests {
         assert!(pinned.contains("gamma"));
         assert_eq!(pinned.len(), 3);
         assert!(c.read_only);
-        assert_eq!(c.max_rows, 50);
+        assert_eq!(c.max_rows, Some(50));
     }
 
     #[test]
@@ -2952,7 +3142,7 @@ mod tests {
         Config {
             pinned: pinned.map(|ids| ids.iter().map(|s| s.to_string()).collect()),
             read_only: false,
-            max_rows: DEFAULT_MAX_ROWS,
+            max_rows: None,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             saw_allow_writes: false,
         }
@@ -3123,7 +3313,7 @@ mod tests {
             Arc::new(Config {
                 pinned: Some(allowed),
                 read_only,
-                max_rows: DEFAULT_MAX_ROWS,
+                max_rows: None,
                 max_connections: DEFAULT_MAX_CONNECTIONS,
                 saw_allow_writes: false,
             }),
@@ -3174,7 +3364,7 @@ mod tests {
         huginn.config = Arc::new(Config {
             pinned: Some(HashSet::from([id.to_string()])),
             read_only: false,
-            max_rows: 4,
+            max_rows: None,
             max_connections: DEFAULT_MAX_CONNECTIONS,
             saw_allow_writes: false,
         });
@@ -3193,17 +3383,42 @@ mod tests {
                     "SELECT * FROM missing".into(),
                     "DELETE FROM t WHERE id = 1".into(),
                     "SELECT id FROM t ORDER BY id".into(),
+                    "SELECT id FROM t ORDER BY id".into(),
                 ],
+                McpRowCap {
+                    rows: 4,
+                    source: crate::state::McpRowCapSource::Connection,
+                },
             )
             .await;
         let json = serde_json::to_value(&out).unwrap();
         assert_eq!(json[0]["rows"], serde_json::json!([[1], [2], [3]]));
         assert_eq!(json[0]["truncated"], false);
+        assert!(
+            json[0].get("notice").is_none(),
+            "an uncut result carries no notice: {}",
+            json[0]
+        );
         assert!(json[1]["error"].as_str().unwrap().contains("missing"));
         assert!(json[2]["error"].as_str().unwrap().contains("writes"));
         // Three of the four rows the budget allows went to the first read.
         assert_eq!(json[3]["rows"], serde_json::json!([[1]]));
         assert_eq!(json[3]["truncated"], true);
+        assert_eq!(json[3]["row_limit"], 4);
+        let notice = json[3]["notice"].as_str().unwrap();
+        assert!(notice.contains("first 1 rows"), "{notice}");
+        assert!(notice.contains("limit is 4"), "{notice}");
+        assert!(notice.contains("Settings → MCP"), "{notice}");
+        // The budget is spent: the last read is told why it is empty.
+        assert_eq!(json[4]["rows"], serde_json::json!([]));
+        assert!(
+            json[4]["notice"]
+                .as_str()
+                .unwrap()
+                .contains("earlier statements"),
+            "{}",
+            json[4]
+        );
         // And the refused DELETE did not run.
         let Ok(DbPool::Sqlite(p)) = huginn.state.pool_for(id) else {
             unreachable!()

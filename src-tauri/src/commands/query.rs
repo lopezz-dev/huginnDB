@@ -795,8 +795,8 @@ pub struct RowValue {
 /// Result set returned to the frontend.
 ///
 /// `Deserialize` as well as `Serialize` since the MCP bridge sends this back
-/// across a process boundary: the sidecar re-reads it to apply its `--max-rows`
-/// cap before handing it to the model.
+/// across a process boundary: the sidecar re-reads it to apply the connection's
+/// MCP row cap (`crate::state::mcp_max_rows`) before handing it to the model.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResult {
     /// Columns of the result set, in order.

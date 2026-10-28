@@ -282,6 +282,23 @@ Sin política, la descarga está permitida.
 "roles": { "analista": { "allowToolDownloads": true, "rules": [ … ] } }
 ```
 
+### Limitar las filas que lee un cliente de IA
+
+`"mcpMaxRows"` en un **rol** es el máximo de filas que una llamada MCP puede
+devolver a un cliente de IA, en cualquier conexión, para quienes lo tienen. Es
+un techo sobre lo que cada persona fija en **Ajustes → MCP**: un límite mayor se
+rebaja a él, uno menor se respeta, y un resultado recortado por él le dice al
+asistente que solo un administrador puede subirlo. Tiene que ser al menos 1. Sin
+él, vale el límite de la persona (200 por defecto; véase `MCP.es.md`).
+
+```json
+"roles": { "analista": { "mcpMaxRows": 100, "rules": [ … ] } }
+```
+
+> **Actualiza todas las instalaciones antes de añadir `mcpMaxRows`.** Un HuginnDB
+> anterior a esta versión no conoce el campo, da toda la política por no válida
+> y bloquea todas las conexiones.
+
 ### Exigir el bloqueo de la app
 
 `"appLock"` en un **rol** fija qué pueden decidir sus personas sobre el bloqueo
