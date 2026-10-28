@@ -1753,6 +1753,17 @@
         "full": "Full (+ schema changes)"
       },
       "writePolicyHint": "Write access is per connection. “Read-only” allows only reads; “Data” allows row changes (INSERT/UPDATE/DELETE); “Full” also allows schema changes (CREATE/DROP/ALTER). Changes take effect without restarting the AI client. The client still asks you to approve each action, and every write is recorded in mcp-audit.log next to your profiles.",
+      "limitsLabel": "Limits",
+      "maxRows": {
+        "label": "Rows per call",
+        "desc": "Most rows one tool call (run_query, run_queries, browse_table) hands an AI client, unless a connection sets its own below. Past it the result is cut and says so, with the limit, so the model aggregates or pages instead of reading a partial answer as complete. Larger results also outgrow what clients accept in one reply — Claude Code turns down anything over about 25,000 tokens.",
+        "hint": "Rows per call is also per connection: leave the field blank to follow the default, or set a number for a connection whose rows are unusually wide or unusually cheap. Changes take effect without restarting the AI client; your organization's policy may lower it.",
+        "rowLabel": "Most rows per MCP call from {{name}}",
+        "rowTitle": "Most rows one MCP call returns from this connection. Blank: the default ({{rows}}).",
+        "saved": "{{name}}: up to {{rows}} rows per call",
+        "clearedSaved": "{{name}}: follows the default ({{rows}} rows per call)",
+        "saveError": "Couldn't save the row limit."
+      },
       "writePolicySaveError": "Couldn't save the write policy.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / other clients (JSON)",

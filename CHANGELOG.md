@@ -6,6 +6,39 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **MCP connector: a row limit per connection.**
+  - How many rows one tool call hands an AI client (`run_query`,
+    `run_queries`, `browse_table`, a `run_writes` `verify` list) is now a
+    setting instead of a command-line constant: a default under
+    **Settings → MCP → Limits → Rows per call**, and a number next to each
+    connection in the same panel for one whose rows are unusually wide or
+    unusually cheap. Blank follows the default. Both are read on every call,
+    so a change applies without restarting the AI client.
+  - The per-connection limit is local, like the write policy: a shared-origin
+    sync keeps yours.
+  - **A cut result now says so in words.** Besides `"truncated": true` it
+    carries `row_limit` and a `notice` naming the limit, the setting that chose
+    it, and what to do instead (aggregate, filter or page) — so the model stops
+    treating a partial answer as complete. A `browse_table` page bounded by the
+    limit gives the `offset` of the next one.
+  - `list_connections` reports each connection's limit as `max_rows`, so an
+    assistant can size a query before running it.
+  - **A managed policy can cap it**: `mcpMaxRows` on a role lowers every
+    person's limit to it and never raises one. Update every installation
+    before adding it — an older HuginnDB reads an unknown field as an invalid
+    policy.
+
+### Changed
+
+- **MCP connector: the default row limit is 200, down from 1000.** A thousand
+  rows of an ordinary table are several times the 25,000 tokens Claude Code
+  accepts in one MCP tool result, so the old default produced a result the
+  client discarded instead of a shorter one the model could use. `--max-rows`
+  still works, now as the default for that one client; a connection with its
+  own limit keeps it.
+
 ## [1.36.0] — 2026-10-27
 
 ### Added

@@ -8,6 +8,41 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Conector MCP: un límite de filas por conexión.**
+  - Cuántas filas entrega una llamada a un cliente de IA (`run_query`,
+    `run_queries`, `browse_table`, la lista `verify` de `run_writes`) es ahora
+    un ajuste en vez de una constante de línea de comandos: un valor por
+    defecto en **Ajustes → MCP → Límites → Filas por llamada**, y un número
+    junto a cada conexión en el mismo panel para la que tenga filas
+    especialmente anchas o especialmente ligeras. Vacío sigue el valor por
+    defecto. Ambos se leen en cada llamada, así que un cambio surte efecto sin
+    reiniciar el cliente de IA.
+  - El límite por conexión es local, como el nivel de escritura: una
+    sincronización de un origen compartido conserva el tuyo.
+  - **Un resultado recortado ahora lo dice con palabras.** Además de
+    `"truncated": true` lleva `row_limit` y un `notice` que nombra el límite,
+    el ajuste que lo fijó y qué hacer en su lugar (agregar, filtrar o paginar),
+    para que el modelo deje de dar por completa una respuesta parcial. Una
+    página de `browse_table` acotada por el límite da el `offset` de la
+    siguiente.
+  - `list_connections` informa del límite de cada conexión como `max_rows`,
+    para que el asistente dimensione una consulta antes de lanzarla.
+  - **Una política gestionada puede ponerle techo**: `mcpMaxRows` en un rol
+    rebaja a él el límite de cada persona y nunca sube ninguno. Actualiza todas
+    las instalaciones antes de añadirlo: un HuginnDB anterior da un campo
+    desconocido por política no válida.
+
+### Cambiado
+
+- **Conector MCP: el límite de filas por defecto es 200, antes 1000.** Mil
+  filas de una tabla corriente son varias veces los 25 000 tokens que Claude
+  Code acepta en un resultado de herramienta MCP, así que el valor anterior
+  producía un resultado que el cliente descartaba en vez de uno más corto que
+  el modelo pudiera usar. `--max-rows` sigue funcionando, ahora como valor por
+  defecto de ese cliente; una conexión con límite propio lo conserva.
+
 ## [1.36.0] — 2026-10-27
 
 ### Añadido

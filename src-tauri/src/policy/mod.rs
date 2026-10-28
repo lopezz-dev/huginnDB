@@ -41,6 +41,9 @@ pub use resolve::Need;
 // Only the MCP sidecar's `list_connections` asks this.
 #[cfg(feature = "mcp")]
 pub use enforce::reachable_by_ai;
+// And its row cap.
+#[cfg(feature = "mcp")]
+pub use enforce::mcp_max_rows;
 
 use parking_lot::RwLock;
 use std::sync::{Arc, OnceLock};

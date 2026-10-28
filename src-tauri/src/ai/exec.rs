@@ -55,7 +55,7 @@ use serde_json::Value;
 /// Hard ceiling on the rows one tool reply may carry, whatever the user's
 /// preference says.
 ///
-/// The same number the MCP connector defaults `--max-rows` to. It is not the
+/// The number the MCP connector's row cap defaulted to before 1.37. It is not the
 /// operative cap here — [`DEFAULT_MAX_CONTEXT_ROWS`] is, and it is twenty times
 /// smaller — but it bounds a hand-edited `prefs.json` that asks for a million.
 pub const MAX_TOOL_ROWS: i64 = 1000;

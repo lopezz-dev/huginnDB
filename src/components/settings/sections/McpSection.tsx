@@ -5,8 +5,8 @@
  * a ready-to-paste client config, so wiring up an AI tool doesn't require
  * hunting through the install directory or the source tree (see
  * `docs/MCP.md` and ADR #20). It never starts the server —
- * that is the AI client's job — but it does write one field: each connection's
- * MCP write policy.
+ * that is the AI client's job — but it does write the connector's per-connection
+ * settings: exposure, write policy and row cap, plus the global row-cap default.
  *
  * The picker is a tree grouped by provenance, mirroring the connection manager's
  * rail (`McpConnectionTree`), because that is the distinction this panel turns on:
@@ -22,6 +22,7 @@ import { notify } from "@/lib/notify";
 import { Copy, Terminal } from "lucide-react";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { api } from "@/lib/tauri";
 import {
   filterByScope,
@@ -31,6 +32,15 @@ import {
 } from "@/lib/connection/origin";
 import { buildRailSections } from "@/lib/connection/railSections";
 import { useOrigins } from "@/stores/sync/origins";
+import {
+  usePreferences,
+  selectConnectionPrefs,
+} from "@/stores/preferences/preferences";
+import {
+  MAX_MCP_MAX_ROWS,
+  MIN_MCP_MAX_ROWS,
+  parseMcpMaxRows,
+} from "@/lib/connection/mcpMaxRows";
 import type {
   ClaudeCodeRegistration,
   ClaudeCodeStatus,
@@ -42,6 +52,7 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { ConnectionTreeCard } from "./ConnectionTreeCard";
 import { PrefGroup } from "./PrefGroup";
+import { PrefRow } from "./PrefRow";
 import { McpConnectionTree } from "./McpConnectionTree";
 import { WRITE_LEVELS } from "./McpWritePolicySelect";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -102,6 +113,8 @@ export function McpSection() {
     null,
   );
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const defaultMaxRows = usePreferences(selectConnectionPrefs).mcpMaxRows;
+  const updateConnections = usePreferences((s) => s.updateConnections);
 
   useEffect(() => {
     void api
@@ -239,6 +252,36 @@ export function McpSection() {
       );
     } catch {
       notify.error(t("settings.mcp.writePolicySaveError"));
+      void api
+        .listProfiles()
+        .then(setProfiles)
+        .catch(() => {});
+    }
+  }
+
+  /**
+   * Persist one connection's MCP row cap, or clear it (`null`) so it follows
+   * the default. Same shape and the same reasons as `setWritePolicy` above —
+   * one field through its own command, optimistic, resynced on failure — and,
+   * like it, picked up by the sidecar on its next call.
+   */
+  async function setMaxRows(id: string, rows: number | null) {
+    const name = profiles.find((p) => p.id === id)?.name ?? id;
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, mcp_max_rows: rows } : p)),
+    );
+    try {
+      await api.setMcpMaxRows([id], rows);
+      notify.success(
+        rows == null
+          ? t("settings.mcp.maxRows.clearedSaved", {
+              name,
+              rows: defaultMaxRows,
+            })
+          : t("settings.mcp.maxRows.saved", { name, rows }),
+      );
+    } catch {
+      notify.error(t("settings.mcp.maxRows.saveError"));
       void api
         .listProfiles()
         .then(setProfiles)
@@ -451,6 +494,9 @@ export function McpSection() {
               {t("settings.mcp.writePolicyHint")}
             </p>
             <p className="text-2xs leading-relaxed text-muted-foreground">
+              {t("settings.mcp.maxRows.hint")}
+            </p>
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               {t("settings.mcp.sharedIdsHint")}
             </p>
             {/* The snippet below is valid whether or not anything is ticked, so
@@ -470,10 +516,35 @@ export function McpSection() {
           onToggle={(id) => void toggle(id)}
           onToggleAll={(ids) => void toggleAll(ids)}
           onSetPolicy={(id, level) => void setWritePolicy(id, level)}
+          onSetMaxRows={(id, rows) => void setMaxRows(id, rows)}
+          defaultMaxRows={defaultMaxRows}
           sharedTooltip={sharedTooltip}
           searching={filter.trim().length > 0}
         />
       </ConnectionTreeCard>
+
+      <PrefGroup title={t("settings.mcp.limitsLabel")}>
+        <PrefRow
+          label={t("settings.mcp.maxRows.label")}
+          prefId="connections.mcpMaxRows"
+          description={t("settings.mcp.maxRows.desc")}
+          htmlFor="prefs-mcp-max-rows"
+        >
+          <Input
+            id="prefs-mcp-max-rows"
+            type="number"
+            min={MIN_MCP_MAX_ROWS}
+            max={MAX_MCP_MAX_ROWS}
+            step={50}
+            value={defaultMaxRows}
+            onChange={(e) => {
+              const rows = parseMcpMaxRows(e.target.value);
+              if (rows != null) updateConnections({ mcpMaxRows: rows });
+            }}
+            className="h-8 w-24 text-right font-mono text-xs"
+          />
+        </PrefRow>
+      </PrefGroup>
 
       <PrefGroup
         title={t("settings.mcp.claudeCodeLabel")}
