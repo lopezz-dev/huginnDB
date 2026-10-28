@@ -336,6 +336,7 @@ pub(crate) fn connection_id_of(request: &BridgeRequest) -> String {
         | ListIndexes { connection_id, .. }
         | RunStatement { connection_id, .. }
         | RunWriteBatch { connection_id, .. }
+        | RunScript { connection_id, .. }
         | FetchTableData { connection_id, .. }
         | InsertRow { connection_id, .. }
         | UpdateCell { connection_id, .. }
@@ -362,6 +363,7 @@ fn policy_id_of(request: &BridgeRequest) -> Option<&str> {
     match request {
         RunStatement { policy_id, .. }
         | RunWriteBatch { policy_id, .. }
+        | RunScript { policy_id, .. }
         | FetchTableData { policy_id, .. }
         | InsertRow { policy_id, .. }
         | UpdateCell { policy_id, .. }
@@ -399,6 +401,8 @@ fn verbs_of_request(request: &BridgeRequest) -> Option<Verbs> {
         BridgeRequest::RunWriteBatch { writes, .. } => {
             Some(crate::commands::write_batch::verbs_of_writes(writes))
         }
+        // Whatever any statement does, read as MySQL would execute it too.
+        BridgeRequest::RunScript { sql, .. } => Some(crate::commands::script::verbs_of_script(sql)),
         BridgeRequest::FetchTableData { .. } => Some(Verbs::SELECT),
         BridgeRequest::InsertRow { .. } => Some(Verbs::INSERT),
         BridgeRequest::UpdateCell { .. } => Some(Verbs::UPDATE),

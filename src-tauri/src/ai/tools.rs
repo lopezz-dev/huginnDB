@@ -119,6 +119,7 @@ pub fn exposure(request: &BridgeRequest) -> Exposure {
         | UpdateCell { .. }
         | DeleteRows { .. }
         | RunWriteBatch { .. }
+        | RunScript { .. }
         | PreviewViewChange { .. }
         | ApplyViewChange { .. }
         | DropView { .. }

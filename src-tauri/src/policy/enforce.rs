@@ -74,6 +74,8 @@ fn needs_of(request: &BridgeRequest) -> Vec<Need> {
         RunWriteBatch { writes, .. } => vec![Need::FreeSql(
             crate::commands::write_batch::verbs_of_writes(writes),
         )],
+        // A whole script: free text, whatever any statement in it does.
+        RunScript { sql, .. } => vec![Need::FreeSql(crate::commands::script::verbs_of_script(sql))],
         // Other people's statements, the server's sessions, its accounts.
         ListUsers { .. }
         | ListPrivileges { .. }

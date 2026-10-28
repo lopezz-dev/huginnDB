@@ -1002,7 +1002,7 @@ pub struct BatchResult {
 }
 
 /// One-line, length-capped echo of a statement for the batch summary.
-fn stmt_preview(sql: &str) -> String {
+pub(crate) fn stmt_preview(sql: &str) -> String {
     let one_line = sql.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() > 120 {
         let head: String = one_line.chars().take(117).collect();
@@ -1025,7 +1025,7 @@ fn column_meta(pairs: Vec<(String, String)>) -> Vec<ColumnMeta> {
         .collect()
 }
 
-fn pg_result(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
+pub(crate) fn pg_result(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
     use sqlx::Row;
     let columns = rows
         .first()
@@ -1044,7 +1044,7 @@ fn pg_result(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>
 }
 
 /// Decode a MySQL result set into `(columns, rows)`. See [`pg_result`].
-fn mysql_result(rows: &[sqlx::mysql::MySqlRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
+pub(crate) fn mysql_result(rows: &[sqlx::mysql::MySqlRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
     use sqlx::Row;
     let columns = rows
         .first()
@@ -1063,7 +1063,9 @@ fn mysql_result(rows: &[sqlx::mysql::MySqlRow]) -> (Vec<ColumnMeta>, Vec<Vec<Val
 }
 
 /// Decode a SQLite result set into `(columns, rows)`. See [`pg_result`].
-fn sqlite_result(rows: &[sqlx::sqlite::SqliteRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
+pub(crate) fn sqlite_result(
+    rows: &[sqlx::sqlite::SqliteRow],
+) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
     use sqlx::Row;
     let columns = rows
         .first()
@@ -1726,7 +1728,7 @@ pub(crate) fn shed_to_batch_budget<T>(rows: &mut Vec<T>, kept: &mut usize) -> bo
 /// discarding) anything past that so the connection is left at a clean
 /// protocol boundary rather than mid-response — see [`MAX_ADHOC_QUERY_ROWS`].
 /// Returns `(rows, truncated)`.
-async fn fetch_capped<'q, 'c, DB, E>(
+pub(crate) async fn fetch_capped<'q, 'c, DB, E>(
     executor: E,
     sql: &'q str,
     cap: usize,

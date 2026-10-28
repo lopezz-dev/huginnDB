@@ -8,6 +8,35 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **`run_script` in the MCP connector: a whole SQL script on one session —
+  temporary tables and migrations included.**
+  - Every other tool takes whichever pooled session is free, so a temporary
+    table created by one call was not there for the next, and the `SELECT`
+    meant to check a step could never see it. An assistant asked to run a
+    migration through HuginnDB concluded that it "does not support temporary
+    tables or batches" and rewrote the script into single statements.
+  - **`run_script`** runs the script in order on **one session**: `CREATE
+    TEMPORARY TABLE` / `#temp` tables, `SET`s and variables carry from one
+    statement to the next, and every `SELECT` in the script returns its rows in
+    the same reply, tagged with its statement and line.
+  - **One transaction by default**: all of it lands or none does, and a
+    failure names the statement and its line. `transaction: false` runs the
+    script as written, its own `BEGIN`/`COMMIT` included. On MySQL, where a
+    schema change commits implicitly, those statements need `transaction:
+    false`.
+  - The script goes inline, or as the **path of a local `.sql` file** the
+    connector reads itself — a large migration never passes through the
+    conversation, and SQL Server Management Studio's UTF-16 files and `GO`
+    separators work as saved. Up to 10 000 statements and 16 MB per call.
+  - The session is **closed afterwards**, so nothing the script set up leaks
+    into the next call or into the app's grid.
+  - Needs the connection's MCP write policy at `data`; any schema change,
+    temporary tables included, needs `full`. PostgreSQL, MySQL, SQLite and SQL
+    Server; MongoDB is refused (use `run_writes`). Recorded in the MCP audit
+    log, and bound by a managed policy like `run_write`.
+  - The connector's instructions now point the AI at it for migrations and
+    multi-step scripts.
+
 - **MCP connector: a row limit per connection.**
   - How many rows one tool call hands an AI client (`run_query`,
     `run_queries`, `browse_table`, a `run_writes` `verify` list) is now a

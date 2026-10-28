@@ -10,6 +10,36 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **`run_script` en el conector MCP: un script SQL entero en una sola sesión,
+  tablas temporales y migraciones incluidas.**
+  - El resto de herramientas toma la sesión del pool que esté libre, así que
+    una tabla temporal creada en una llamada no estaba en la siguiente, y el
+    `SELECT` que debía comprobar un paso nunca podía verla. Un asistente al que
+    se pidió ejecutar una migración con HuginnDB concluyó que «no soporta
+    tablas temporales ni lotes» y reescribió el script en sentencias sueltas.
+  - **`run_script`** ejecuta el script en orden en **una sola sesión**: las
+    tablas `CREATE TEMPORARY TABLE` / `#temp`, los `SET` y las variables pasan
+    de una sentencia a la siguiente, y cada `SELECT` del script devuelve sus
+    filas en la misma respuesta, marcadas con su sentencia y su línea.
+  - **Una transacción por defecto**: o entra todo o nada, y un fallo nombra la
+    sentencia y su línea. `transaction: false` ejecuta el script tal cual,
+    con su propio `BEGIN`/`COMMIT`. En MySQL, donde un cambio de esquema hace
+    commit implícito, esas sentencias necesitan `transaction: false`.
+  - El script va en línea o como **ruta de un fichero `.sql` local** que lee el
+    propio conector: una migración grande no pasa nunca por la conversación, y
+    los ficheros UTF-16 de SQL Server Management Studio y sus separadores `GO`
+    funcionan tal como se guardaron. Hasta 10 000 sentencias y 16 MB por
+    llamada.
+  - La sesión **se cierra al terminar**, así que nada de lo que montó el script
+    se cuela en la siguiente llamada ni en la rejilla de la app.
+  - Necesita la política de escritura MCP de la conexión en `data`; cualquier
+    cambio de esquema, tablas temporales incluidas, necesita `full`.
+    PostgreSQL, MySQL, SQLite y SQL Server; MongoDB se rechaza (usa
+    `run_writes`). Queda en el registro de auditoría MCP y una política
+    gestionada lo limita igual que a `run_write`.
+  - Las instrucciones del conector ahora dirigen a la IA a esta herramienta
+    para migraciones y scripts de varios pasos.
+
 - **Conector MCP: un límite de filas por conexión.**
   - Cuántas filas entrega una llamada a un cliente de IA (`run_query`,
     `run_queries`, `browse_table`, la lista `verify` de `run_writes`) es ahora

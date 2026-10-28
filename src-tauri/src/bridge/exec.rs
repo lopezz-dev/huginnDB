@@ -272,6 +272,25 @@ pub async fn execute(
             )
             .await?,
         )?,
+        // Unbounded for the reason `RunWriteBatch` is, and more so: a migration
+        // is the one thing here expected to run for minutes.
+        RunScript {
+            connection_id,
+            sql,
+            transaction,
+            max_rows,
+            ..
+        } => serde_json::to_value(
+            crate::commands::script::execute_script_inner(
+                sink,
+                state,
+                connection_id,
+                sql,
+                *transaction,
+                *max_rows,
+            )
+            .await?,
+        )?,
         FetchTableData {
             connection_id,
             schema,

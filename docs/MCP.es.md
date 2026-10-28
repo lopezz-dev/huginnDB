@@ -447,6 +447,7 @@ datos a demanda.
 | `run_write` *(escritura)* | Ejecuta una única sentencia que **cambia** la base de datos. El DML necesita `data`, el DDL `full`. Una lectura también se rechaza aquí — va en `run_query`, que no necesita permiso de escritura. |
 | `run_queries` | Ejecuta varias sentencias **de solo lectura** en una llamada, cada una como lo haría `run_query`. La que falla se informa en su propio hueco y las demás se ejecutan igual. Las filas comparten un único presupuesto: el [límite de filas](#límite-de-filas) de la conexión. |
 | `run_writes` *(escritura)* | Aplica varias escrituras de fila (`INSERT`/`UPDATE`/`DELETE`) en **una transacción**: o entran todas o ninguna. Cada escritura puede llevar `expect_rows`; las lecturas de `verify` se ejecutan tras el commit y vuelven en la misma respuesta. Necesita `data` o `full`. Ver [Lotes](#lotes-menos-llamadas-menos-tokens). |
+| `run_script` *(escritura)* | Ejecuta un script SQL entero — una migración, un fichero `.sql` — en **una única sesión fijada**, en orden, así que las tablas temporales, los `SET` y las variables pasan de una sentencia a la siguiente. Una transacción por defecto. Va en línea como `sql` o como `path` a un fichero local. Necesita `data`; cualquier DDL, tablas temporales incluidas, necesita `full`. No MongoDB. Ver [Scripts](#scripts-tablas-temporales-y-migraciones). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
 | `list_users` / `list_privileges` | Usuarios/roles del servidor y sus permisos. |
@@ -470,7 +471,7 @@ para que el asistente sepa de antemano qué puede hacer.
 
 Cada herramienta lleva además un **título** y **anotaciones** MCP:
 `readOnlyHint` en las dieciocho que solo leen, y `destructiveHint` /
-`idempotentHint` en las nueve que escriben (`insert_row` y `create_index` se
+`idempotentHint` en las diez que escriben (`insert_row` y `create_index` se
 marcan como aditivas, no destructivas). Los clientes las usan para decidir
 cuánta fricción merece una llamada, así que un `list_tables` ya no parece tan
 arriesgado como un `delete_rows`.
@@ -563,6 +564,65 @@ Una respuesta de `run_writes` tiene esta forma:
 ```json
 {"atomic":true,"rows_affected":[1,1],"total_affected":2,"verify":[{"columns":[{"name":"v","data_type":"TEXT"}],"rows":[["on"]],"rows_affected":1,"elapsed_ms":0,"total":null,"truncated":false}]}
 ```
+
+### Scripts: tablas temporales y migraciones
+
+El resto de herramientas toma la sesión del pool que esté libre, así que el
+estado de sesión no sobrevive de una llamada a la siguiente: una `CREATE
+TEMPORARY TABLE` (o un `#staging` de T-SQL) creada por un `run_write` casi
+nunca está — o está en otra sesión — cuando la siguiente llamada la busca, y un
+`SET` se pierde igual. Por eso parecía que HuginnDB «no soporta tablas
+temporales ni lotes», y un asistente reescribía la migración en sentencias
+sueltas llenas de CTEs.
+
+**`run_script`** ejecuta un script entero en **una sola sesión**, en orden, y
+contesta en una respuesta:
+
+- **El script**, como `sql` (sentencias separadas por `;`; una línea con solo
+  `GO` también separa, así que los scripts de SQL Server corren tal cual se
+  guardaron), o como `path` — la ruta absoluta de un fichero `.sql` local, que
+  el conector lee él mismo para que una migración grande no pase nunca por la
+  conversación. UTF-8, con o sin BOM, y UTF-16 con BOM (lo que guarda SQL
+  Server Management Studio). Hasta 10 000 sentencias y 16 MB por llamada.
+- **Una transacción por defecto**: `BEGIN` antes de la primera sentencia,
+  `COMMIT` tras la última y rollback al primer fallo, con un error que nombra
+  la sentencia y su línea. `BEGIN`/`COMMIT`/`SAVEPOINT`/`SET autocommit` dentro
+  del script se rechazan en este modo. Con `"transaction": false` el script
+  corre exactamente como está escrito — su propio control de transacciones
+  incluido — y un fallo dice cuántas sentencias anteriores se ejecutaron y se
+  quedan aplicadas.
+- **En MySQL**, un cambio de esquema persistente (y `LOCK TABLES`) hace commit
+  implícito, lo que partiría la transacción, así que en modo transacción se
+  rechaza indicando `"transaction": false`. `CREATE/DROP TEMPORARY TABLE` no
+  hace commit en MySQL y vale en los dos modos.
+- **Resultados**: cada `SELECT` del script devuelve sus filas (todas comparten
+  un único presupuesto: el límite de filas de la conexión; un resultado
+  recortado lleva `row_limit` y un `notice`), marcadas con el índice de la sentencia
+  y su línea; las escrituras se suman en `total_affected`. Los recuentos por
+  sentencia se omiten: en una migración son miles de números que nadie lee.
+- **La sesión se cierra al terminar**, nunca vuelve al pool, así que las tablas
+  temporales, los `SET`, un `USE` o una transacción que el script dejara
+  abierta no se cuelan en la siguiente llamada ni en la rejilla de la app.
+
+El nivel es el del script: las escrituras de fila necesitan `data` y
+**cualquier DDL necesita `full`, tablas temporales incluidas**. Es una decisión
+(ADR #121), no un olvido: una tabla temporal no cambia el esquema persistente,
+pero la política sigue siendo una lectura literal de la sentencia y una
+conexión en `data` sigue significando «solo filas». Un script que solo lee se
+rechaza — `run_queries` ejecuta esas lecturas en la transacción de solo lectura
+que recibe toda lectura de la IA. Los comentarios ejecutables (`/*!40101 … */`,
+habituales en la salida de `mysqldump`) se comprueban tal como los ejecuta
+MySQL. `DELIMITER` es un comando del cliente `mysql`, no SQL, y se rechaza: una
+rutina cuyo cuerpo lleva `;` va por `run_write`. **MongoDB** se rechaza — no
+tiene objetos de sesión que fijar; `run_writes` ejecuta en orden una lista de
+escrituras de MongoDB.
+
+```json
+{"transaction":true,"statements":6,"total_affected":8,"results":[{"statement":4,"line":5,"columns":[{"name":"n","data_type":"INTEGER"}],"rows":[[3]],"rows_affected":1,"elapsed_ms":0,"total":null,"truncated":false}]}
+```
+
+Un script que tarda más de cinco minutos supera la espera del bridge por la
+respuesta de la app; divide las cargas largas en varias llamadas.
 
 ### Índices: por qué las dos herramientas de escritura son solo de MongoDB
 
