@@ -3,8 +3,8 @@
  * changes the answer.
  *
  * This is the universal surface for the feature: it works on every driver,
- * including the two where the structure editor does not exist (MongoDB and SQL
- * Server, per `supportsDdlEditing`), and it sits where the pain is — inside the
+ * including MongoDB, where the structure editor is read-only (per
+ * `supportsStructureEditing`), and it sits where the pain is — inside the
  * editor, next to the JSON-valid chip.
  *
  * Three things it deliberately does NOT do:

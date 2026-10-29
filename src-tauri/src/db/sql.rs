@@ -267,11 +267,14 @@ impl Dialect {
     /// The statement that renames `current` (in `schema`) to `new_name`.
     ///
     /// `new_name` must already be trimmed and validated; it is quoted here.
-    /// Returns [`AppError::UnsupportedDriver`] for SQL Server: T-SQL renames
-    /// through `EXEC sp_rename @old, @new, 'OBJECT'`, where both arguments are
-    /// *strings* rather than identifiers — bound parameters, not quoted names —
-    /// so it is not a variation on this statement but a different call, wired
-    /// up with the rest of the deferred SQL Server DDL work.
+    ///
+    /// SQL Server renames a table through [`mssql_sp_rename`], whose arguments
+    /// are strings rather than identifiers. A *view* it still refuses:
+    /// `sp_rename` leaves the old name inside the view's stored definition
+    /// (`sys.sql_modules`), so `OBJECT_DEFINITION` and any script generated
+    /// from it would recreate the view under its old name. Renaming a view
+    /// properly means re-issuing its `CREATE`, which belongs with the T-SQL
+    /// view builder.
     ///
     /// MongoDB never reaches this: `renameCollection` is a run-command on
     /// `admin`, dispatched before any SQL is built.
@@ -311,14 +314,51 @@ impl Dialect {
                 "ALTER TABLE {} RENAME TO {new_ident}",
                 self.quote_ident(current)
             ),
-            Dialect::MsSql => {
-                return Err(AppError::UnsupportedDriver(format!(
-                    "renaming a {} is not supported on SQL Server yet",
-                    relation.noun()
-                )))
-            }
+            Dialect::MsSql => match relation {
+                Relation::Table => {
+                    mssql_sp_rename(&self.qualify_defaulted(schema, current), new_name, None)
+                }
+                Relation::View => {
+                    return Err(AppError::UnsupportedDriver(format!(
+                        "renaming a {} is not supported on SQL Server yet",
+                        relation.noun()
+                    )))
+                }
+            },
         })
     }
+}
+
+/// A T-SQL Unicode string literal: `N'…'`, single quotes doubled.
+///
+/// For the places T-SQL takes a name as a *string* — `sp_rename`'s arguments,
+/// `OBJECT_ID(…)`, a catalog lookup by column name, the text handed to
+/// `EXEC(…)` — where [`Dialect::quote_ident`]'s brackets would not be enough:
+/// [`crate::db::ddl::validate_ident`] lets a `'` through, since it is a legal
+/// character in a bracketed name.
+pub fn mssql_nstring(s: &str) -> String {
+    format!("N'{}'", s.replace('\'', "''"))
+}
+
+/// `EXEC sp_rename N'<object>', N'<new>'[, N'<kind>']`.
+///
+/// `object` is the *current* name as `sp_rename` parses it — bracket-quoted
+/// and schema-qualified, as [`Dialect::qualify`] renders it (`[dbo].[t]`, or
+/// `[dbo].[t].[col]` for a column). `new_name` is passed **bare**: `sp_rename`
+/// does not unquote its second argument, so a bracketed one would become part
+/// of the name. `kind` is `Some("COLUMN")` / `Some("INDEX")`, or `None` for an
+/// object.
+pub fn mssql_sp_rename(object: &str, new_name: &str, kind: Option<&str>) -> String {
+    let mut sql = format!(
+        "EXEC sp_rename {}, {}",
+        mssql_nstring(object),
+        mssql_nstring(new_name)
+    );
+    if let Some(kind) = kind {
+        sql.push_str(", ");
+        sql.push_str(&mssql_nstring(kind));
+    }
+    sql
 }
 
 /// Best-effort classification of a SQL statement as a read-only query.
@@ -988,8 +1028,8 @@ fn contains_word(haystack_lower: &str, word: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        classify, is_ddl, is_read_only, is_unfiltered_write, split_statements, verbs, Dialect,
-        Relation, StmtClass, Verbs,
+        classify, is_ddl, is_read_only, is_unfiltered_write, mssql_sp_rename, split_statements,
+        verbs, Dialect, Relation, StmtClass, Verbs,
     };
 
     #[test]
@@ -1054,19 +1094,35 @@ mod tests {
     }
 
     #[test]
-    fn sql_server_rename_is_refused_by_relation_name() {
-        // `sp_rename` takes both sides as bound strings, not identifiers, so it
-        // is a different call rather than a variation on this statement.
+    fn sql_server_renames_a_table_through_sp_rename_but_not_a_view() {
+        // The current name bracket-quoted and qualified (defaulting to `dbo`),
+        // the new one bare, both as N-strings with `'` doubled.
+        assert_eq!(
+            Dialect::MsSql
+                .rename_stmt(None, "album", "record", Relation::Table)
+                .unwrap(),
+            "EXEC sp_rename N'[dbo].[album]', N'record'"
+        );
+        assert_eq!(
+            Dialect::MsSql
+                .rename_stmt(Some("sales"), "o'neil", "x]y", Relation::Table)
+                .unwrap(),
+            "EXEC sp_rename N'[sales].[o''neil]', N'x]y'"
+        );
+        // A view's stored definition would keep the old name.
         let err = Dialect::MsSql
             .rename_stmt(None, "album", "record", Relation::View)
             .unwrap_err()
             .to_string();
         assert!(err.contains("view"), "{err}");
-        let err = Dialect::MsSql
-            .rename_stmt(None, "album", "record", Relation::Table)
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("table"), "{err}");
+    }
+
+    #[test]
+    fn sp_rename_takes_a_kind_for_columns() {
+        assert_eq!(
+            mssql_sp_rename("[dbo].[t].[old]", "new", Some("COLUMN")),
+            "EXEC sp_rename N'[dbo].[t].[old]', N'new', N'COLUMN'"
+        );
     }
 
     #[test]

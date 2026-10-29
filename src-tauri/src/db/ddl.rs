@@ -153,6 +153,14 @@ pub fn validate_default(expr: &str) -> AppResult<()> {
         "CURRENT_DATE",
         "CURRENT_TIME",
         "NOW()",
+        // SQL Server's spellings of "now" and of a generated key.
+        "GETDATE()",
+        "GETUTCDATE()",
+        "SYSDATETIME()",
+        "SYSUTCDATETIME()",
+        "SYSDATETIMEOFFSET()",
+        "NEWID()",
+        "NEWSEQUENTIALID()",
     ];
     if KEYWORDS.contains(&upper.as_str()) {
         return Ok(());
@@ -189,8 +197,17 @@ pub fn validate_default(expr: &str) -> AppResult<()> {
     )))
 }
 
-fn validate_referential_action(action: &str) -> AppResult<()> {
-    match action.trim().to_ascii_uppercase().as_str() {
+fn validate_referential_action(dialect: Dialect, action: &str) -> AppResult<()> {
+    let action = action.trim().to_ascii_uppercase();
+    // T-SQL has no `RESTRICT`: `NO ACTION` is its only "refuse" action, and it
+    // already behaves the way `RESTRICT` does elsewhere (checked at the end of
+    // the statement, which in SQL Server is the only time it ever checks).
+    if dialect == Dialect::MsSql && action == "RESTRICT" {
+        return Err(AppError::InvalidInput(
+            "SQL Server has no RESTRICT referential action — use NO ACTION".into(),
+        ));
+    }
+    match action.as_str() {
         "CASCADE" | "SET NULL" | "RESTRICT" | "NO ACTION" | "SET DEFAULT" => Ok(()),
         other => Err(AppError::InvalidInput(format!(
             "unsupported referential action: {other:?}"
@@ -213,30 +230,11 @@ pub fn build_ddl(
     original: Option<&TableStructure>,
     desired: &TableStructure,
 ) -> AppResult<Vec<String>> {
-    reject_unsupported(dialect)?;
-    validate_structure(desired, original)?;
+    validate_structure(dialect, desired, original)?;
     match original {
         None => build_create(dialect, desired),
         Some(orig) => build_alter(dialect, orig, desired),
     }
-}
-
-/// Refuse to generate DDL for a dialect this builder doesn't implement yet.
-///
-/// SQL Server reads and edits *data* fine, but T-SQL's DDL diverges enough
-/// (`IDENTITY(1,1)`, one `ALTER COLUMN` per change, `EXEC sp_rename`,
-/// `DROP INDEX … ON …`, and the default constraint that has to be dropped
-/// before its column) that it is a separate piece of work rather than a few
-/// extra match arms. Guarding here — and in [`build_create`], which
-/// [`crate::db::dump`] calls directly — means the `unreachable!` arms further
-/// down are genuinely unreachable rather than a silent wrong-SQL path.
-fn reject_unsupported(dialect: Dialect) -> AppResult<()> {
-    if dialect == Dialect::MsSql {
-        return Err(AppError::UnsupportedDriver(
-            "the structure editor does not support SQL Server yet".into(),
-        ));
-    }
-    Ok(())
 }
 
 /// `original` lets a column's default skip re-validation when it hasn't
@@ -248,7 +246,11 @@ fn reject_unsupported(dialect: Dialect) -> AppResult<()> {
 /// changed goes through [`validate_default`]. See gotcha-style note on
 /// [`build_create`] for the sibling case (CREATE / SQLite rebuild), which
 /// skips the allowlist entirely for the same reason.
-fn validate_structure(s: &TableStructure, original: Option<&TableStructure>) -> AppResult<()> {
+fn validate_structure(
+    dialect: Dialect,
+    s: &TableStructure,
+    original: Option<&TableStructure>,
+) -> AppResult<()> {
     validate_ident("table", &s.name)?;
     if let Some(schema) = &s.schema {
         if !schema.is_empty() {
@@ -302,10 +304,10 @@ fn validate_structure(s: &TableStructure, original: Option<&TableStructure>) -> 
             validate_ident("referenced column", col)?;
         }
         if let Some(a) = &fk.on_delete {
-            validate_referential_action(a)?;
+            validate_referential_action(dialect, a)?;
         }
         if let Some(a) = &fk.on_update {
-            validate_referential_action(a)?;
+            validate_referential_action(dialect, a)?;
         }
     }
     Ok(())
@@ -347,7 +349,15 @@ fn column_clause(dialect: Dialect, c: &ColumnDef, include_inline_pk: bool) -> St
                 parts.push("NOT NULL".into());
             }
         }
-        Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl / build_create"),
+        Dialect::MsSql => {
+            if c.auto_increment {
+                parts.push("IDENTITY(1,1)".into());
+            }
+            // Spelled out both ways: a bare column's nullability in SQL Server
+            // depends on the session's ANSI_NULL_DFLT settings, so leaving
+            // `NULL` implicit would make the result depend on the connection.
+            parts.push(mssql_null_clause(c).into());
+        }
     }
 
     if let Some(d) = &c.default {
@@ -369,7 +379,6 @@ fn column_clause(dialect: Dialect, c: &ColumnDef, include_inline_pk: bool) -> St
 /// defaults already round-tripped from a live catalog (e.g. Postgres's
 /// `'foo'::text` cast-style defaults, which the allowlist would reject).
 pub(crate) fn build_create(dialect: Dialect, s: &TableStructure) -> AppResult<Vec<String>> {
-    reject_unsupported(dialect)?;
     let qt = dialect.qualify(s.schema.as_deref(), &s.name);
     let pk_cols: Vec<&ColumnDef> = s.columns.iter().filter(|c| c.is_primary_key).collect();
     // SQLite: a single INTEGER PRIMARY KEY AUTOINCREMENT must be inline.
@@ -489,7 +498,7 @@ fn build_alter(
     match dialect {
         Dialect::Sqlite => build_alter_sqlite(orig, desired),
         Dialect::Postgres | Dialect::Mysql => build_alter_pg_mysql(dialect, orig, desired),
-        Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl"),
+        Dialect::MsSql => build_alter_mssql(orig, desired),
     }
 }
 
@@ -581,6 +590,273 @@ fn build_alter_pg_mysql(
 
     // 5. FK diff (by name).
     diff_foreign_keys(dialect, desired, orig, &qt, &mut out);
+
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
+// SQL Server — T-SQL ALTER.
+// ---------------------------------------------------------------------------
+
+/// `NULL` / `NOT NULL` for a T-SQL column. A primary-key column is always
+/// `NOT NULL`: SQL Server refuses a key over a nullable column rather than
+/// tightening it the way MySQL does.
+fn mssql_null_clause(c: &ColumnDef) -> &'static str {
+    if c.nullable && !c.is_primary_key {
+        "NULL"
+    } else {
+        "NOT NULL"
+    }
+}
+
+/// Drop whichever default constraint is bound to `column`, if any.
+///
+/// A T-SQL default is a named constraint, and `TableStructure` does not carry
+/// its name — it is usually server-generated (`DF__orders__statu__3B75D760`),
+/// so it cannot be predicted either. The statement looks it up in
+/// `sys.default_constraints` and drops it through dynamic SQL, in one batch
+/// the preview shows exactly as it runs. A column with no default is a no-op.
+///
+/// Needed before three things SQL Server otherwise refuses with "object is
+/// dependent on column": dropping the column, changing its type, and giving it
+/// a different default.
+fn mssql_drop_default(qt: &str, column: &str) -> String {
+    use crate::db::sql::mssql_nstring;
+    format!(
+        "DECLARE @df sysname = (SELECT dc.name FROM sys.default_constraints dc \
+         JOIN sys.columns c ON c.object_id = dc.parent_object_id \
+         AND c.column_id = dc.parent_column_id \
+         WHERE dc.parent_object_id = OBJECT_ID({obj}) AND c.name = {col});\n\
+         IF @df IS NOT NULL EXEC({alter} + QUOTENAME(@df))",
+        obj = mssql_nstring(qt),
+        col = mssql_nstring(column),
+        alter = mssql_nstring(&format!("ALTER TABLE {qt} DROP CONSTRAINT ")),
+    )
+}
+
+/// Drop the table's primary-key constraint, whatever it is called — the same
+/// lookup as [`mssql_drop_default`], through `sys.key_constraints`.
+fn mssql_drop_primary_key(qt: &str) -> String {
+    use crate::db::sql::mssql_nstring;
+    format!(
+        "DECLARE @pk sysname = (SELECT name FROM sys.key_constraints \
+         WHERE parent_object_id = OBJECT_ID({obj}) AND type = 'PK');\n\
+         IF @pk IS NOT NULL EXEC({alter} + QUOTENAME(@pk))",
+        obj = mssql_nstring(qt),
+        alter = mssql_nstring(&format!("ALTER TABLE {qt} DROP CONSTRAINT ")),
+    )
+}
+
+/// The ordered T-SQL that takes `orig` to `desired`.
+///
+/// The order is not cosmetic. SQL Server refuses to drop or retype a column
+/// while anything depends on it — a default constraint, an index, a foreign
+/// key, the primary key — so everything that goes away is dropped first and
+/// everything new is added last:
+///
+/// 1. renames (`sp_rename`), so every later statement uses the new names;
+/// 2. removed foreign keys and indexes, and the primary key when it changes;
+/// 3. removed columns, each after its default;
+/// 4. changed columns: default off, `ALTER COLUMN`, default back on;
+/// 5. new columns;
+/// 6. the new primary key, new indexes, new foreign keys.
+///
+/// `apply` runs the list in one transaction (`db::exec::execute_all`), so a
+/// statement the server refuses halfway leaves the table as it was.
+///
+/// `IDENTITY` cannot be switched on or off an existing column: T-SQL has no
+/// `ALTER COLUMN` for it, and the only way is to rebuild the table — copy the
+/// rows out, drop it, recreate it — which this editor deliberately does not do
+/// behind a checkbox. That case is refused with the reason, rather than
+/// producing statements that would not do what the checkbox says.
+fn build_alter_mssql(orig: &TableStructure, desired: &TableStructure) -> AppResult<Vec<String>> {
+    use crate::db::sql::mssql_sp_rename;
+    let dialect = Dialect::MsSql;
+    let orig_by_name: std::collections::HashMap<&str, &ColumnDef> =
+        orig.columns.iter().map(|c| (c.name.as_str(), c)).collect();
+
+    // Refuse first, before a single statement is built.
+    for c in &desired.columns {
+        let Some(prev) = c.original_name.as_deref().and_then(|n| orig_by_name.get(n)) else {
+            continue;
+        };
+        if prev.auto_increment != c.auto_increment {
+            return Err(AppError::InvalidInput(format!(
+                "SQL Server cannot add or remove IDENTITY on the existing column {:?}: \
+                 that takes rebuilding the table. Add a new column instead, or change it \
+                 by hand with a script",
+                c.name
+            )));
+        }
+    }
+
+    // Unqualified when the structure carries no schema, like `build_create`
+    // and `create_index_stmt`: the name then resolves through the login's
+    // default schema, which is not necessarily `dbo`.
+    let qt = dialect.qualify(desired.schema.as_deref(), &desired.name);
+    let mut out = Vec::new();
+
+    // 1. Renames: the table, then its columns (addressed under the new table
+    // name, which is what `qt` already says).
+    if orig.name != desired.name {
+        let from = dialect.qualify(orig.schema.as_deref(), &orig.name);
+        out.push(mssql_sp_rename(&from, &desired.name, None));
+    }
+    for c in &desired.columns {
+        if let Some(orig_name) = &c.original_name {
+            if orig_name != &c.name {
+                let object = format!("{qt}.{}", dialect.quote_ident(orig_name));
+                out.push(mssql_sp_rename(&object, &c.name, Some("COLUMN")));
+            }
+        }
+    }
+
+    // 2. What goes away, before the columns it may depend on.
+    let desired_fk_names: std::collections::HashSet<&str> = desired
+        .foreign_keys
+        .iter()
+        .filter_map(|f| f.name.as_deref())
+        .collect();
+    for fk in &orig.foreign_keys {
+        if let Some(n) = &fk.name {
+            if !desired_fk_names.contains(n.as_str()) {
+                out.push(format!(
+                    "ALTER TABLE {qt} DROP CONSTRAINT {}",
+                    dialect.quote_ident(n)
+                ));
+            }
+        }
+    }
+    let desired_idx_names: std::collections::HashSet<&str> = desired
+        .indexes
+        .iter()
+        .filter_map(|i| i.name.as_deref())
+        .collect();
+    for idx in &orig.indexes {
+        if let Some(n) = &idx.name {
+            if !desired_idx_names.contains(n.as_str()) {
+                out.push(drop_index_stmt(dialect, &qt, n));
+            }
+        }
+    }
+    // The key compared by the names the columns will have, in table order —
+    // so renaming a key column is not a key change.
+    let renamed: std::collections::HashMap<&str, &str> = desired
+        .columns
+        .iter()
+        .filter_map(|c| c.original_name.as_deref().map(|o| (o, c.name.as_str())))
+        .collect();
+    let orig_pk: Vec<&str> = orig
+        .columns
+        .iter()
+        .filter(|c| c.is_primary_key)
+        .map(|c| renamed.get(c.name.as_str()).copied().unwrap_or(""))
+        .collect();
+    let desired_pk: Vec<&str> = desired
+        .columns
+        .iter()
+        .filter(|c| c.is_primary_key)
+        .map(|c| c.name.as_str())
+        .collect();
+    let pk_changed = orig_pk != desired_pk;
+    if pk_changed && !orig_pk.is_empty() {
+        out.push(mssql_drop_primary_key(&qt));
+    }
+
+    // 3. Removed columns.
+    let claimed: std::collections::HashSet<&str> = desired
+        .columns
+        .iter()
+        .filter_map(|c| c.original_name.as_deref())
+        .collect();
+    for oc in &orig.columns {
+        if !claimed.contains(oc.name.as_str()) {
+            if oc.default.is_some() {
+                out.push(mssql_drop_default(&qt, &oc.name));
+            }
+            out.push(format!(
+                "ALTER TABLE {qt} DROP COLUMN {}",
+                dialect.quote_ident(&oc.name)
+            ));
+        }
+    }
+
+    // 4. Changed columns; 5. new ones.
+    fn trimmed(d: &Option<String>) -> Option<&str> {
+        d.as_deref().map(str::trim).filter(|d| !d.is_empty())
+    }
+    for c in &desired.columns {
+        let col = dialect.quote_ident(&c.name);
+        let Some(prev) = c.original_name.as_deref().and_then(|n| orig_by_name.get(n)) else {
+            out.push(format!(
+                "ALTER TABLE {qt} ADD {}",
+                column_clause(dialect, c, false)
+            ));
+            continue;
+        };
+        let retype = prev.data_type.trim() != c.data_type.trim()
+            || mssql_null_clause(prev) != mssql_null_clause(c);
+        let old_default = trimmed(&prev.default);
+        let new_default = trimmed(&c.default);
+        // A bound default blocks the retype as well as its own replacement.
+        let unbind = old_default.is_some() && (retype || old_default != new_default);
+        if unbind {
+            out.push(mssql_drop_default(&qt, &c.name));
+        }
+        if retype {
+            out.push(format!(
+                "ALTER TABLE {qt} ALTER COLUMN {col} {} {}",
+                c.data_type.trim(),
+                mssql_null_clause(c)
+            ));
+        }
+        if let Some(d) = new_default {
+            if unbind || old_default.is_none() {
+                out.push(format!("ALTER TABLE {qt} ADD DEFAULT {d} FOR {col}"));
+            }
+        }
+    }
+
+    // 6. What is new, once every column it may name exists.
+    if pk_changed && !desired_pk.is_empty() {
+        let cols = desired_pk
+            .iter()
+            .map(|c| dialect.quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push(format!("ALTER TABLE {qt} ADD PRIMARY KEY ({cols})"));
+    }
+    let orig_idx_names: std::collections::HashSet<&str> = orig
+        .indexes
+        .iter()
+        .filter_map(|i| i.name.as_deref())
+        .collect();
+    for (i, idx) in desired.indexes.iter().enumerate() {
+        let is_new = idx
+            .name
+            .as_deref()
+            .is_none_or(|n| !orig_idx_names.contains(n));
+        if is_new {
+            out.push(create_index_stmt(dialect, desired, idx, i));
+        }
+    }
+    let orig_fk_names: std::collections::HashSet<&str> = orig
+        .foreign_keys
+        .iter()
+        .filter_map(|f| f.name.as_deref())
+        .collect();
+    for fk in &desired.foreign_keys {
+        let is_new = fk
+            .name
+            .as_deref()
+            .is_none_or(|n| !orig_fk_names.contains(n));
+        if is_new {
+            out.push(format!(
+                "ALTER TABLE {qt} ADD {}",
+                fk_clause(dialect, fk, false)
+            ));
+        }
+    }
 
     Ok(out)
 }
@@ -690,7 +966,7 @@ fn alter_column_stmts(
             v
         }
         Dialect::Sqlite => unreachable!("SQLite alters go through build_alter_sqlite"),
-        Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl"),
+        Dialect::MsSql => unreachable!("SQL Server alters go through build_alter_mssql"),
     }
 }
 
@@ -744,7 +1020,7 @@ fn drop_index_stmt(dialect: Dialect, qt: &str, name: &str) -> String {
         // than left to a catch-all so the arm is a deliberate choice — this is
         // exactly the kind of statement that used to silently take the
         // Postgres path and produce invalid SQL.
-        Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl"),
+        Dialect::MsSql => format!("DROP INDEX {} ON {qt}", dialect.quote_ident(name)),
     }
 }
 
@@ -772,13 +1048,12 @@ fn diff_foreign_keys(
                             dialect.quote_ident(n)
                         )
                     }
-                    Dialect::Postgres | Dialect::Sqlite => {
+                    Dialect::Postgres | Dialect::Sqlite | Dialect::MsSql => {
                         format!(
                             "ALTER TABLE {qt} DROP CONSTRAINT {}",
                             dialect.quote_ident(n)
                         )
                     }
-                    Dialect::MsSql => unreachable!("SQL Server is rejected by build_ddl"),
                 });
             }
         }
@@ -1259,5 +1534,241 @@ mod tests {
         let desired = table("t", vec![existing("b", "int"), existing("a", "int")]);
         let stmts = build_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
         assert!(stmts.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // SQL Server
+    // -----------------------------------------------------------------------
+
+    fn dbo(name: &str, cols: Vec<ColumnDef>) -> TableStructure {
+        TableStructure {
+            schema: Some("dbo".into()),
+            ..table(name, cols)
+        }
+    }
+
+    fn pk(mut c: ColumnDef) -> ColumnDef {
+        c.is_primary_key = true;
+        c.nullable = false;
+        c
+    }
+
+    #[test]
+    fn mssql_create_spells_identity_and_nullability() {
+        let mut id = pk(col("id", "int"));
+        id.auto_increment = true;
+        let mut status = col("status", "nvarchar(20)");
+        status.default = Some("'new'".into());
+        let mut t = dbo("orders", vec![id, status]);
+        t.indexes.push(IndexDef {
+            name: Some("ix_status".into()),
+            columns: vec!["status".into()],
+            unique: false,
+        });
+        let stmts = build_ddl(Dialect::MsSql, None, &t).unwrap();
+        assert_eq!(
+            stmts[0],
+            "CREATE TABLE [dbo].[orders] (\n  [id] int IDENTITY(1,1) NOT NULL,\n  \
+             [status] nvarchar(20) NULL DEFAULT 'new',\n  PRIMARY KEY ([id])\n)"
+        );
+        assert_eq!(
+            stmts[1],
+            "CREATE INDEX [ix_status] ON [dbo].[orders] ([status])"
+        );
+    }
+
+    #[test]
+    fn mssql_renames_go_first_through_sp_rename() {
+        let orig = dbo("orders", vec![existing("qty", "int")]);
+        let mut renamed = existing("qty", "int");
+        renamed.name = "quantity".into();
+        let desired = dbo("order_lines", vec![renamed]);
+        let stmts = build_ddl(Dialect::MsSql, Some(&orig), &desired).unwrap();
+        assert_eq!(
+            stmts,
+            [
+                "EXEC sp_rename N'[dbo].[orders]', N'order_lines'",
+                "EXEC sp_rename N'[dbo].[order_lines].[qty]', N'quantity', N'COLUMN'",
+            ]
+        );
+    }
+
+    #[test]
+    fn mssql_drops_a_columns_default_before_the_column() {
+        let mut flag = existing("flag", "bit");
+        flag.default = Some("(0)".into());
+        let orig = dbo("t", vec![existing("id", "int"), flag]);
+        let desired = dbo("t", vec![existing("id", "int")]);
+        let stmts = build_ddl(Dialect::MsSql, Some(&orig), &desired).unwrap();
+        assert_eq!(stmts.len(), 2);
+        assert!(stmts[0].contains("FROM sys.default_constraints"));
+        assert!(stmts[0].contains("OBJECT_ID(N'[dbo].[t]')"));
+        assert!(stmts[0].contains("c.name = N'flag'"));
+        assert!(
+            stmts[0].contains("EXEC(N'ALTER TABLE [dbo].[t] DROP CONSTRAINT ' + QUOTENAME(@df))")
+        );
+        assert_eq!(stmts[1], "ALTER TABLE [dbo].[t] DROP COLUMN [flag]");
+    }
+
+    #[test]
+    fn mssql_retype_unbinds_and_rebinds_an_unchanged_default() {
+        let mut prev = existing("qty", "int");
+        prev.default = Some("(0)".into());
+        let mut next = prev.clone();
+        next.data_type = "bigint".into();
+        next.nullable = false;
+        let stmts = build_ddl(
+            Dialect::MsSql,
+            Some(&dbo("t", vec![prev])),
+            &dbo("t", vec![next]),
+        )
+        .unwrap();
+        assert_eq!(stmts.len(), 3);
+        assert!(stmts[0].starts_with("DECLARE @df sysname"));
+        assert_eq!(
+            stmts[1],
+            "ALTER TABLE [dbo].[t] ALTER COLUMN [qty] bigint NOT NULL"
+        );
+        assert_eq!(stmts[2], "ALTER TABLE [dbo].[t] ADD DEFAULT (0) FOR [qty]");
+    }
+
+    #[test]
+    fn mssql_a_new_default_alone_is_one_statement() {
+        let prev = existing("note", "nvarchar(50)");
+        let mut next = prev.clone();
+        next.default = Some("'n/a'".into());
+        let stmts = build_ddl(
+            Dialect::MsSql,
+            Some(&dbo("t", vec![prev])),
+            &dbo("t", vec![next]),
+        )
+        .unwrap();
+        assert_eq!(
+            stmts,
+            ["ALTER TABLE [dbo].[t] ADD DEFAULT 'n/a' FOR [note]"]
+        );
+    }
+
+    #[test]
+    fn mssql_a_key_change_drops_the_old_key_and_adds_the_new_one_last() {
+        let orig = dbo("t", vec![pk(existing("a", "int")), existing("b", "int")]);
+        let desired = dbo(
+            "t",
+            vec![pk(existing("a", "int")), pk(existing("b", "int"))],
+        );
+        let stmts = build_ddl(Dialect::MsSql, Some(&orig), &desired).unwrap();
+        assert!(stmts[0].contains("FROM sys.key_constraints"));
+        assert!(stmts[0].contains("type = 'PK'"));
+        // `b` has to become NOT NULL before it can join the key.
+        assert_eq!(
+            stmts[1],
+            "ALTER TABLE [dbo].[t] ALTER COLUMN [b] int NOT NULL"
+        );
+        assert_eq!(stmts[2], "ALTER TABLE [dbo].[t] ADD PRIMARY KEY ([a], [b])");
+        assert_eq!(stmts.len(), 3);
+    }
+
+    #[test]
+    fn mssql_renaming_a_key_column_is_not_a_key_change() {
+        let orig = dbo("t", vec![pk(existing("id", "int"))]);
+        let mut renamed = pk(existing("id", "int"));
+        renamed.name = "order_id".into();
+        let stmts = build_ddl(Dialect::MsSql, Some(&orig), &dbo("t", vec![renamed])).unwrap();
+        assert_eq!(
+            stmts,
+            ["EXEC sp_rename N'[dbo].[t].[id]', N'order_id', N'COLUMN'"]
+        );
+    }
+
+    #[test]
+    fn mssql_dependents_go_before_columns_and_come_back_after() {
+        let mut orig = dbo("t", vec![existing("id", "int"), existing("old", "int")]);
+        orig.indexes.push(IndexDef {
+            name: Some("ix_old".into()),
+            columns: vec!["old".into()],
+            unique: false,
+        });
+        orig.foreign_keys.push(ForeignKeyDef {
+            name: Some("fk_old".into()),
+            columns: vec!["old".into()],
+            ref_schema: Some("dbo".into()),
+            ref_table: "other".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: None,
+            on_update: None,
+        });
+        let mut desired = dbo("t", vec![existing("id", "int"), col("fresh", "int")]);
+        desired.indexes.push(IndexDef {
+            name: Some("ix_fresh".into()),
+            columns: vec!["fresh".into()],
+            unique: true,
+        });
+        let stmts = build_ddl(Dialect::MsSql, Some(&orig), &desired).unwrap();
+        assert_eq!(
+            stmts,
+            [
+                "ALTER TABLE [dbo].[t] DROP CONSTRAINT [fk_old]",
+                "DROP INDEX [ix_old] ON [dbo].[t]",
+                "ALTER TABLE [dbo].[t] DROP COLUMN [old]",
+                "ALTER TABLE [dbo].[t] ADD [fresh] int NULL",
+                "CREATE UNIQUE INDEX [ix_fresh] ON [dbo].[t] ([fresh])",
+            ]
+        );
+    }
+
+    #[test]
+    fn mssql_refuses_to_toggle_identity_on_an_existing_column() {
+        let orig = dbo("t", vec![pk(existing("id", "int"))]);
+        let mut next = pk(existing("id", "int"));
+        next.auto_increment = true;
+        let err = build_ddl(Dialect::MsSql, Some(&orig), &dbo("t", vec![next]))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("IDENTITY"), "{err}");
+        // A new column may still be born with it.
+        let mut fresh = col("seq", "int");
+        fresh.auto_increment = true;
+        fresh.nullable = false;
+        let stmts = build_ddl(
+            Dialect::MsSql,
+            Some(&orig),
+            &dbo("t", vec![pk(existing("id", "int")), fresh]),
+        )
+        .unwrap();
+        assert_eq!(
+            stmts,
+            ["ALTER TABLE [dbo].[t] ADD [seq] int IDENTITY(1,1) NOT NULL"]
+        );
+    }
+
+    #[test]
+    fn mssql_has_no_restrict() {
+        let mut t = dbo("t", vec![existing("id", "int")]);
+        t.foreign_keys.push(ForeignKeyDef {
+            name: None,
+            columns: vec!["id".into()],
+            ref_schema: None,
+            ref_table: "other".into(),
+            ref_columns: vec!["id".into()],
+            on_delete: Some("RESTRICT".into()),
+            on_update: None,
+        });
+        assert!(build_ddl(Dialect::MsSql, None, &t).is_err());
+        assert!(build_ddl(Dialect::Postgres, None, &t).is_ok());
+    }
+
+    #[test]
+    fn mssql_names_with_quotes_are_escaped_inside_strings() {
+        let mut flag = existing("it's", "bit");
+        flag.default = Some("(0)".into());
+        let orig = dbo("o'neil", vec![existing("id", "int"), flag]);
+        let desired = dbo("o'neil", vec![existing("id", "int")]);
+        let stmts = build_ddl(Dialect::MsSql, Some(&orig), &desired).unwrap();
+        assert!(
+            stmts[0].contains("OBJECT_ID(N'[dbo].[o''neil]')"),
+            "{}",
+            stmts[0]
+        );
+        assert!(stmts[0].contains("c.name = N'it''s'"), "{}", stmts[0]);
     }
 }
