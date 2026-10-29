@@ -561,6 +561,20 @@ fn resolve_secrets(
         matches!(slot, SecretSlot::FromKeychain)
             || (rotate_from.is_some() && matches!(slot, SecretSlot::Keep { .. }))
     };
+    // A MongoDB password written into a connection string — a document saved
+    // before this rule existed, or a row whose URI was pasted with it — is
+    // taken out of the row before anything is published, so it can only leave
+    // this machine encrypted. On a `Clear` row it is simply dropped: the
+    // publisher chose to publish no secret for it, and a password in the URI
+    // does not overrule that. Index-paired with `draft.connections`.
+    let embedded: Vec<Option<String>> = draft
+        .connections
+        .iter_mut()
+        .map(|c| {
+            let pw = crate::credentials::take_embedded_password(&mut c.profile);
+            pw.filter(|_| !matches!(c.secret, SecretSlot::Clear))
+        })
+        .collect();
     // Counted before the loop, and only over the slots that actually derive a
     // key: a document of verbatim envelopes reports nothing, which is what
     // makes "no bar" mean "there was nothing slow to wait for" rather than
@@ -568,7 +582,8 @@ fn resolve_secrets(
     let total = draft
         .connections
         .iter()
-        .filter(|c| needs_work(&c.secret))
+        .zip(&embedded)
+        .filter(|(c, pw)| needs_work(&c.secret) || pw.is_some())
         .count();
     if total == 0 {
         return Ok(());
@@ -581,13 +596,13 @@ fn resolve_secrets(
     };
 
     let mut done = 0usize;
-    for conn in &mut draft.connections {
+    for (conn, embedded) in draft.connections.iter_mut().zip(embedded) {
         // Reported *before* the derivation, not after: the first slot is as slow
         // as the rest, so emitting afterwards would leave the bar unpainted for
         // the whole of it — the one stretch the user most needs to see.
         // Connections that need no work are skipped without a tick, so the
         // denominator stays what it promised.
-        if needs_work(&conn.secret) {
+        if needs_work(&conn.secret) || embedded.is_some() {
             on_progress(done, total);
             done += 1;
         }
@@ -605,6 +620,26 @@ fn resolve_secrets(
                 };
             }
             SecretSlot::Keep { .. } | SecretSlot::Clear => {}
+        }
+        // The URI's password goes into the envelope's DB slot — over whatever
+        // was there, since it is the one the driver signed in with — and the
+        // SSH slot is kept as it was. A `FromKeychain` row that found nothing
+        // has become `Clear` above; the URI's password fills it, since that
+        // `Clear` was the keychain's answer, not the publisher's.
+        if let Some(pw) = embedded {
+            let db_password = Some(transfer::encrypt_secret(&pw, pass)?);
+            conn.secret = SecretSlot::Keep {
+                envelope: match &conn.secret {
+                    SecretSlot::Keep { envelope } => ExportedSecret {
+                        db_password,
+                        ssh_secret: envelope.ssh_secret.clone(),
+                    },
+                    _ => ExportedSecret {
+                        db_password,
+                        ssh_secret: None,
+                    },
+                },
+            };
         }
     }
     on_progress(total, total);
@@ -733,4 +768,94 @@ fn write_document(path: &Path, draft: &OriginDraft) -> AppResult<Vec<u8>> {
     let bytes = serde_json::to_vec_pretty(&file)?;
     state_file::write_atomic(path, &bytes)?;
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::origin_doc::DraftConnection;
+    use crate::state::Driver;
+
+    fn mongo(id: &str, uri: &str, secret: SecretSlot) -> DraftConnection {
+        DraftConnection {
+            profile: ConnectionProfile {
+                driver: Driver::Mongo,
+                connection_string: Some(uri.into()),
+                ..crate::testkit::profile(id)
+            },
+            secret,
+        }
+    }
+
+    /// A document published before the rule existed carries the password in
+    /// the URI. Saving it again must move it into the encrypted slot (keeping
+    /// the SSH one), and drop it where the publisher chose to publish nothing.
+    #[test]
+    fn a_password_in_a_uri_is_published_encrypted_or_not_at_all() {
+        let ssh = transfer::encrypt_secret("tunnel", "pass").unwrap();
+        let mut draft = OriginDraft {
+            connections: vec![
+                mongo(
+                    "kept",
+                    "mongodb://app:s3cret@h1/db",
+                    SecretSlot::Keep {
+                        envelope: ExportedSecret {
+                            db_password: None,
+                            ssh_secret: Some(ssh.clone()),
+                        },
+                    },
+                ),
+                mongo("cleared", "mongodb://app:s3cret@h2/db", SecretSlot::Clear),
+                mongo("plain", "mongodb://app@h3/db", SecretSlot::Clear),
+            ],
+            ..OriginDraft::default()
+        };
+        resolve_secrets(&mut draft, Some("pass"), None, |_, _| {}).unwrap();
+
+        let uris: Vec<_> = draft
+            .connections
+            .iter()
+            .map(|c| c.profile.connection_string.as_deref().unwrap())
+            .collect();
+        assert_eq!(
+            uris,
+            [
+                "mongodb://app@h1/db",
+                "mongodb://app@h2/db",
+                "mongodb://app@h3/db"
+            ]
+        );
+        match &draft.connections[0].secret {
+            SecretSlot::Keep { envelope } => {
+                let db = envelope.db_password.as_deref().unwrap();
+                assert_eq!(transfer::decrypt_secret(db, "pass").unwrap(), "s3cret");
+                assert_eq!(envelope.ssh_secret.as_deref(), Some(ssh.as_str()));
+            }
+            other => panic!("expected an envelope, got {other:?}"),
+        }
+        assert!(matches!(draft.connections[1].secret, SecretSlot::Clear));
+        // Nothing of the password survives anywhere in the published file.
+        let file = origin_doc::build_origin_file(&draft, "2026-10-29T00:00:00Z");
+        assert!(!serde_json::to_string(&file).unwrap().contains("s3cret"));
+    }
+
+    /// Encrypting needs the document's passphrase; without one the save is
+    /// refused rather than publishing the password in clear or losing it.
+    #[test]
+    fn a_password_in_a_uri_needs_a_passphrase() {
+        let mut draft = OriginDraft {
+            connections: vec![mongo(
+                "m",
+                "mongodb://app:s3cret@h1/db",
+                SecretSlot::Keep {
+                    envelope: ExportedSecret {
+                        db_password: None,
+                        ssh_secret: None,
+                    },
+                },
+            )],
+            ..OriginDraft::default()
+        };
+        assert!(resolve_secrets(&mut draft, None, None, |_, _| {}).is_err());
+    }
 }

@@ -227,14 +227,14 @@ Multi-document transactions (require a replica set).
 - **Hook:** `Client::start_session`; thread a session through the mongo CRUD
   helpers in `db/mongo/query.rs`.
 
-### 5. Profile transfer / export for MongoDB
-Include MongoDB profiles (and their connection strings) in encrypted
-export/import.
-- **Why deferred:** the connection string can embed credentials; the export
-  encryption (`transfer.rs`) was designed around the keychain password/SSH
-  secret split and needs a decision on how to treat an inline-credential URI.
-- **Hook:** `transfer.rs` `ExportedSecret`; decide whether to strip/encrypt the
-  URI's userinfo.
+### ~~5. Profile transfer / export for MongoDB~~ — done
+MongoDB profiles had in fact been exported, imported and synced through shared
+origins all along: `transfer.rs` excludes no driver. What stayed open was the
+inline-credential URI, and that was a leak rather than a missing feature: the
+password rode in clear in `profiles.json`, in "encrypted" exports and in
+published origins. Resolved by **stripping it**: wherever a profile is written,
+the password leaves the URI for the keychain, and an export or a published
+origin carries it in the encrypted `ExportedSecret` slot (ADR #122).
 
 ### 6. SRV + SSH tunnel
 Tunnel `mongodb+srv://` (Atlas) connections.

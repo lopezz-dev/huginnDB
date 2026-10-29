@@ -144,6 +144,11 @@ pub fn status(state: &AppState) -> LockStatus {
 /// its own path, which refuses for the same reason (`mcp::Huginn::require_open`).
 pub async fn announce(app: &AppHandle) {
     sync_gate(app.state::<AppState>().inner());
+    // A MongoDB password still inside a saved connection string could not move
+    // to the vault while it was locked; now it can.
+    if crate::credentials::migrate_embedded_passwords(&app.state::<AppState>().profiles) {
+        let _ = app.emit(crate::commands::connection::PROFILES_CHANGED_EVENT, ());
+    }
     crate::bridge::server::reconcile(app).await;
     let _ = app.emit(CHANGED_EVENT, status(app.state::<AppState>().inner()));
 }

@@ -118,6 +118,33 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   editar, copiar y borrar filas sigue identificando cada fila por sus valores,
   nunca por su posición (ADR #7).
 
+### Seguridad
+
+- **La contraseña de MongoDB escrita dentro de la cadena de conexión ya no
+  llega al disco en claro.** Una URI escrita con **Editar cadena de conexión**
+  en el diálogo de conexión (`mongodb://usuario:contraseña@…`) se guardaba tal
+  cual,
+  así que la contraseña quedaba en texto plano en `profiles.json`, se veía en la
+  lista de conexiones y viajaba sin cifrar dentro de las exportaciones hechas
+  «con contraseñas cifradas» y del fichero de un origen compartido, hasta cada
+  equipo que lo sincronizaba.
+  - Ahora la contraseña **se mueve al llavero del sistema** (o a la bóveda del
+    bloqueo de la app) al guardar, importar o sincronizar desde un origen
+    compartido. La URI conserva el usuario y la conexión funciona igual que
+    antes.
+  - **Las conexiones guardadas por una versión anterior se corrigen la primera
+    vez que arranca la app.** Con el bloqueo de la app activado, en cuanto se
+    desbloquea.
+  - **Las exportaciones y los orígenes publicados** llevan esa contraseña en
+    su hueco cifrado, o la omiten si la exportación no incluye contraseñas o
+    si el origen está configurado para no publicar ninguna de esa conexión.
+    Publicarla pide la frase de paso del origen, como cualquier otra
+    contraseña.
+  - **Un origen compartido que ya publicó una contraseña así** la sigue
+    teniendo en su fichero hasta que quien lo publica lo vuelve a guardar desde
+    el editor de orígenes. Mientras tanto, cada equipo que lo sincroniza mueve
+    la contraseña a su propio llavero en lugar de guardarla en disco. ADR #122.
+
 ## [1.36.0] — 2026-10-27
 
 ### Añadido

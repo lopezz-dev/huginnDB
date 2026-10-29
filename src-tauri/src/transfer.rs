@@ -587,6 +587,18 @@ pub fn build_exported_profiles(
 ) -> AppResult<Vec<ExportedProfile>> {
     let mut exported = Vec::with_capacity(profiles.len());
     for profile in profiles {
+        // A person's own database user is theirs, not the file's: it is
+        // never exported (and `merge_into` / the import clear it anyway).
+        let mut out = ConnectionProfile {
+            personal_username: None,
+            ..profile.clone()
+        };
+        // A MongoDB password inside the connection string never reaches the
+        // file in clear: it rides in the encrypted slot when passwords are
+        // exported, and is dropped when they are not. The save path already
+        // keeps it out of `profiles.json`; this covers a profile that predates
+        // that and has not been swept yet.
+        let embedded = crate::credentials::take_embedded_password(&mut out);
         let secrets = if include_passwords {
             let pp = passphrase.ok_or_else(|| {
                 AppError::InvalidInput(
@@ -596,9 +608,14 @@ pub fn build_exported_profiles(
             let db_password = if matches!(profile.driver, Driver::Sqlite) {
                 None
             } else {
-                keychain::get_password(&profile.keyring_account())?
-                    .map(|pw| encrypt_secret(&pw, pp))
-                    .transpose()?
+                // The URI's password first: it is the one the driver signs in
+                // with when both exist.
+                match embedded {
+                    Some(pw) => Some(pw),
+                    None => keychain::get_password(&profile.keyring_account())?,
+                }
+                .map(|pw| encrypt_secret(&pw, pp))
+                .transpose()?
             };
             let ssh_secret = profile
                 .ssh_keyring_account()
@@ -613,12 +630,7 @@ pub fn build_exported_profiles(
             None
         };
         exported.push(ExportedProfile {
-            // A person's own database user is theirs, not the file's: it is
-            // never exported (and `merge_into` / the import clear it anyway).
-            profile: ConnectionProfile {
-                personal_username: None,
-                ..profile.clone()
-            },
+            profile: out,
             secrets,
         });
     }
@@ -847,6 +859,25 @@ fn derive_key(passphrase: &str, salt: &[u8]) -> [u8; KEY_LEN] {
 mod tests {
     use super::*;
     use crate::state::Driver;
+
+    /// An export without passwords must not carry one inside a MongoDB
+    /// connection string either: that slot is metadata and is written in clear.
+    /// Keychain-free, since `include_passwords: false` never reads it.
+    #[test]
+    fn an_export_without_passwords_drops_the_one_in_a_mongo_uri() {
+        let p = ConnectionProfile {
+            driver: Driver::Mongo,
+            connection_string: Some("mongodb://app:s3cret@h1/db".into()),
+            ..crate::testkit::profile("m")
+        };
+        let out = build_exported_profiles(&[p], false, None).unwrap();
+        assert_eq!(
+            out[0].profile.connection_string.as_deref(),
+            Some("mongodb://app@h1/db")
+        );
+        assert!(out[0].secrets.is_none());
+        assert!(!serde_json::to_string(&out).unwrap().contains("s3cret"));
+    }
 
     /// An encrypted secret with no passphrase must never reach the keychain.
     ///

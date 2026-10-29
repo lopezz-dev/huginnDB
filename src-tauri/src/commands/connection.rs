@@ -360,6 +360,10 @@ pub fn save_profile(
             .find(|p| p.id == profile.id)
             .and_then(|p| p.personal_username.clone());
     }
+    // A password typed into a MongoDB URI (raw-edit mode) goes to the keychain,
+    // never into `profiles.json`. Taken out first, because it can rename the
+    // profile's user — and with it the keychain account both writes below use.
+    let embedded = crate::credentials::take_embedded_password(&mut profile);
 
     if let Some(pw) = password {
         if !matches!(profile.driver, Driver::Sqlite) {
@@ -370,6 +374,11 @@ pub fn save_profile(
                 crate::credentials::effective_profile(&state.policy, &profile).keyring_account();
             keychain::set_password(&account, &pw)?;
         }
+    }
+    // After the field's password, so the one in the URI wins when both were
+    // given: it is the one the driver used to sign in with.
+    if let Some(pw) = embedded {
+        keychain::set_password(&profile.keyring_account(), &pw)?;
     }
 
     match (profile.ssh_keyring_account(), ssh_secret) {
@@ -2289,11 +2298,15 @@ pub(crate) fn apply_profile_imports(
         // is a local copy; the shared-origin sync (`origins::merge_into`) is
         // the only path that stamps ownership.
         new_profile.origin_id = None;
+        // A file written before exports stripped it can carry a MongoDB
+        // password inside the connection string, in clear. Taken out before the
+        // envelope lands, since it can rename the user both are keyed by.
+        let embedded = crate::credentials::take_embedded_password(&mut new_profile);
 
         // Decrypt and store secrets if present. `Strict` because the user is
         // sitting in the import dialog: a wrong passphrase has to surface here
         // rather than yielding a pile of connections that cannot authenticate.
-        let has_secrets = match &ep.secrets {
+        let mut has_secrets = match &ep.secrets {
             Some(secrets) => crate::transfer::land_secrets(
                 &new_profile,
                 secrets,
@@ -2302,6 +2315,12 @@ pub(crate) fn apply_profile_imports(
             )?,
             None => false,
         };
+        // After the envelope: the URI's password is the one the driver signed
+        // in with, so it wins when a file has both.
+        if let Some(pw) = embedded {
+            keychain::set_password(&new_profile.keyring_account(), &pw)?;
+            has_secrets = true;
+        }
 
         if !has_secrets && !matches!(new_profile.driver, Driver::Sqlite) {
             result.needs_password.push(new_id.clone());

@@ -108,6 +108,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   editing, copying and deleting rows still address a row by its values, never
   by its position (ADR #7).
 
+### Security
+
+- **A MongoDB password written into the connection string no longer reaches
+  disk in clear.** A URI written with **Edit connection string** in the
+  connection dialog (`mongodb://user:password@…`) was saved as typed, so the password sat in
+  plain text in `profiles.json`, showed in the connection list, and travelled
+  unencrypted inside exports made "with encrypted passwords" and inside a
+  shared origin's file, to every machine that pulled it.
+  - The password is now **moved to the system keychain** (or the app lock's
+    vault) whenever a connection is saved, imported or pulled from a shared
+    origin. The URI keeps the user, and connecting works exactly as before.
+  - **Connections saved by an earlier version are fixed the first time the app
+    starts.** With the app lock on, this happens as soon as it is unlocked.
+  - **Exports and published origins** carry that password in their encrypted
+    slot, or leave it out when the export has no passwords or the origin is set
+    to publish none for that connection. Publishing it needs the origin's
+    passphrase, like any other password.
+  - **A shared origin that already published a password this way** keeps it in
+    its file until its publisher saves it again from the origin editor. Until
+    then, each machine that pulls it moves the password to its own keychain
+    instead of saving it to disk. ADR #122.
+
 ## [1.36.0] — 2026-10-27
 
 ### Added
