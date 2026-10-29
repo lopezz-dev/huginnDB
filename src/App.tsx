@@ -98,6 +98,7 @@ import { FeedbackDialog } from "@/components/shell/dialogs/FeedbackDialog";
 import { LEGACY_DOCKVIEW_LAYOUT_KEY } from "@/lib/constants";
 import { AdHocDriverDialog } from "@/components/connection/dialogs/AdHocDriverDialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import { focusTableSearch } from "@/lib/grid/tableSearch";
 import { sqliteFileLabel } from "@/lib/connectionLabel";
@@ -623,7 +624,7 @@ export default function App() {
               be either. */}
           <div className="ml-auto flex items-center gap-1">
             <NotificationCenter />
-            <span aria-hidden className="mx-0.5 h-4 w-px bg-border" />
+            <Separator className="mx-1" />
             <LayoutToggles />
           </div>
         </TitleBar>

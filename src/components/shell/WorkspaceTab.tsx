@@ -25,6 +25,7 @@ import {
 
 import { api } from "@/lib/tauri";
 import { SimpleTooltip } from "@/components/ui/tooltip";
+import { Separator } from "@/components/ui/separator";
 import {
   resolveConnectionDriver,
   resolveConnectionLabel,
@@ -428,7 +429,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps) {
                   >
                     {context}
                   </span>
-                  <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+                  <Separator size="sm" />
                 </>
               )}
               <span

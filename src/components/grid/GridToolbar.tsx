@@ -32,6 +32,7 @@ import {
 import { IconButton } from "@/components/ui/icon-button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { GridSearchInput } from "@/components/grid/GridSearchInput";
 import { ServerFilterChip } from "@/components/grid/ServerFilterChips";
 import { SortChip } from "@/components/grid/SortControls";
@@ -245,7 +246,7 @@ export function GridToolbar({
                 {t("dataGrid.insert")}
               </Button>
             </SimpleTooltip>
-            <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
+            <Separator />
             <DropdownMenu>
               <SimpleTooltip label={t("dataGrid.insertMore")}>
                 <DropdownMenuTrigger asChild>
@@ -375,7 +376,7 @@ export function GridToolbar({
             <Fragment key={item.id}>{item.bar}</Fragment>
           ))}
         {!collapseChrome && toolbarLeading && toolbarLeading.length > 0 && (
-          <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+          <Separator />
         )}
         <GridSearchInput
           value={filterInput ?? globalFilter ?? ""}
@@ -519,7 +520,7 @@ export function GridToolbar({
             </>
           )}
           {filterChips.length > 0 && sortChips.length > 0 && (
-            <span aria-hidden className="mx-1 h-3.5 w-px shrink-0 bg-border" />
+            <Separator />
           )}
           {sortChips.length > 0 && onToggleSort && onRemoveSort && (
             <>
@@ -541,10 +542,7 @@ export function GridToolbar({
           {queryChips?.map((c, i) => (
             <Fragment key={c.id}>
               {(i > 0 || filterChips.length > 0 || sortChips.length > 0) && (
-                <span
-                  aria-hidden
-                  className="mx-1 h-3.5 w-px shrink-0 bg-border"
-                />
+                <Separator />
               )}
               <span className="text-3xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {c.section}

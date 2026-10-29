@@ -73,6 +73,7 @@ It gives an objective answer to the question that used to be settled by feel:
 | `badge.tsx`           | `Badge`, `badgeVariants`               | `tone` names the meaning, not a colour                                                                      |
 | `spinner.tsx`         | `Spinner`                              | `aria-hidden` unless given a `label`                                                                        |
 | `kbd.tsx`             | `Kbd`                                  |                                                                                                             |
+| `separator.tsx`       | `Separator`                            | the hairline between groups on one line: `default` (`h-4`) between controls, `sm` (`h-3`) between text runs; no margin — the row's `gap` spaces it |
 | `dialog.tsx`          | `Dialog*`                              | Radix; `DialogContent` supplies the overlay and the close button                                            |
 | `dialog-actions.tsx`  | `DialogActions`                        | the Cancel/confirm footer pair; separate file so Dialog's consumers don't pull in `Button`                  |
 | `dropdown.tsx`        | `DropdownMenu*`                        | Radix; `text-sm`, `min-w-[8rem]`                                                                            |

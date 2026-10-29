@@ -96,6 +96,7 @@ import {
 } from "@/components/ui/select";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { Segmented } from "@/components/ui/segmented";
+import { Separator } from "@/components/ui/separator";
 import {
   panelsFromBatch,
   type ResultPanel,
@@ -766,7 +767,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               )}
             </Button>
             <QueryTimer ref={queryTimerRef} running={running} />
-            <div className="mx-0.5 h-4 w-px shrink-0 bg-border" aria-hidden />
+            <Separator className="mx-1" />
             <Button
               size="sm"
               variant="ghost"

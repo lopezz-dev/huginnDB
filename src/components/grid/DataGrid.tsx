@@ -73,6 +73,7 @@ import { CellPreview } from "@/components/grid/CellPreview";
 import { isAutoPkColumn } from "@/components/grid/DraftCellControl";
 import { DraftRowView } from "@/components/grid/DraftRowView";
 import { IconButton } from "@/components/ui/icon-button";
+import { Separator } from "@/components/ui/separator";
 import {
   GridToolbar,
   type GridToolbarItem,
@@ -1740,7 +1741,7 @@ export function DataGrid({
             </div>
           )}
           {showListControls && footer && (
-            <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+            <Separator />
           )}
           {/* Column sizing and row zoom are neighbours but not one group, and a
               gap alone does not say so — the same separator `GridToolbar` uses
@@ -1748,7 +1749,7 @@ export function DataGrid({
               caller footer (a query result) this cluster is the whole row and a
               trailing rule would divide it from nothing. */}
           {showFitControls && footer && (
-            <div className="h-4 w-px shrink-0 bg-border" aria-hidden />
+            <Separator />
           )}
           {footer}
         </div>
