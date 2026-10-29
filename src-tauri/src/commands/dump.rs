@@ -10,7 +10,7 @@
 //! `commands::query::execute_batch`) instead of a second, parallel
 //! execution path here (see `ImportSqlDialog.tsx`).
 //!
-//! Export writes in three global phases for Postgres/MySQL — bare
+//! Export writes in three global phases for Postgres/MySQL/SQL Server — bare
 //! `CREATE TABLE`, then all data, then `ALTER TABLE ADD CONSTRAINT` (FK) +
 //! `CREATE INDEX` — so a whole-database dump doesn't need a table-dependency
 //! topological sort, and doesn't need elevated privileges (e.g. Postgres's
@@ -25,8 +25,9 @@ use crate::commands::schema::{list_tables_inner, TableInfo};
 use crate::commands::structure::{mysql_structure, pg_structure};
 use crate::db::ddl::{build_create, TableStructure};
 use crate::db::dump::{
-    build_insert_statements, mysql_auto_increment_resync_stmt, mysql_literal, pg_literal,
-    pg_sequence_resync_stmt, sqlite_literal,
+    build_insert_statements, mssql_identity_insert, mssql_insertable, mssql_literal,
+    mysql_auto_increment_resync_stmt, mysql_literal, pg_literal, pg_sequence_resync_stmt,
+    sqlite_literal,
 };
 use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
@@ -222,14 +223,8 @@ pub async fn export_databases(
             DbPool::Sqlite(p) => {
                 export_sqlite(&mut w, p, &r.tables, data_mode, &mut on_progress).await?
             }
-            // SQL Server export needs its own literal encoder (`0x…` binaries,
-            // `N'…'` unicode strings) plus `SET IDENTITY_INSERT` bracketing
-            // instead of the sequence/auto-increment resync the others do —
-            // deferred, so refuse rather than emit a dump that won't load.
-            DbPool::MsSql(_) => {
-                return Err(AppError::UnsupportedDriver(
-                    "database export is not supported for SQL Server yet".into(),
-                ))
+            DbPool::MsSql(p) => {
+                export_mssql(&mut w, p, &r.tables, data_mode, &mut on_progress).await?
             }
             DbPool::Mongo(_) => unreachable!("rejected above"),
         }
@@ -377,10 +372,8 @@ pub async fn export_table(
     // wiring up an event nobody listens for.
     let mut no_progress = |_rows: i64| {};
     match pool {
-        DbPool::MsSql(_) => {
-            return Err(AppError::UnsupportedDriver(
-                "table export is not supported for SQL Server yet".into(),
-            ))
+        DbPool::MsSql(p) => {
+            export_mssql(&mut w, &p, &tables, DataMode::Insert, &mut no_progress).await?
         }
         DbPool::Postgres(p) => {
             export_pg(&mut w, &p, &tables, DataMode::Insert, &mut no_progress).await?
@@ -434,11 +427,6 @@ pub async fn export_table_rows(
                 .into(),
         ));
     }
-    if matches!(&pool, DbPool::MsSql(_)) {
-        return Err(AppError::UnsupportedDriver(
-            "row export is not supported for SQL Server yet".into(),
-        ));
-    }
     let dialect = Dialect::try_of(&pool)?;
     // The same clause the browse runs, the expression included.
     let (where_clause, binds) = filter.clause(dialect)?;
@@ -472,7 +460,42 @@ pub async fn export_table_rows(
     // fetched rows' own metadata — the same technique `export_sqlite` already
     // uses for its per-row dump.
     match &pool {
-        DbPool::MsSql(_) => unreachable!("sql server rejected above"),
+        DbPool::MsSql(p) => {
+            let rows = p.query_all(&select_sql, &binds).await?;
+            if !rows.is_empty() {
+                // The structure answers what the result set cannot: which
+                // column is the `IDENTITY` (its values need `IDENTITY_INSERT`)
+                // and which are `rowversion` (never insertable).
+                let structure =
+                    crate::db::mssql::schema::table_structure(p, schema.as_deref(), &table).await?;
+                let declared = |name: &str| structure.columns.iter().find(|c| c.name == name);
+                let columns = rows[0].columns();
+                let keep: Vec<usize> = (0..columns.len())
+                    .filter(|&i| {
+                        declared(columns[i].name()).is_none_or(|d| mssql_insertable(&d.data_type))
+                    })
+                    .collect();
+                let identity = keep
+                    .iter()
+                    .any(|&i| declared(columns[i].name()).is_some_and(|d| d.auto_increment));
+                let quoted_cols: Vec<String> = keep
+                    .iter()
+                    .map(|&i| Dialect::MsSql.quote_ident(columns[i].name()))
+                    .collect();
+                let literal_rows: Vec<Vec<String>> = rows
+                    .iter()
+                    .map(|row| keep.iter().map(|&i| mssql_literal(row, i)).collect())
+                    .collect();
+                for stmt in build_insert_statements(&qt, &quoted_cols, &literal_rows, BATCH_SIZE) {
+                    let stmt = if identity {
+                        mssql_identity_insert(&qt, &stmt)
+                    } else {
+                        stmt
+                    };
+                    writeln!(w, "{stmt};\nGO\n")?;
+                }
+            }
+        }
         DbPool::Postgres(p) => {
             let mut q = sqlx::query(&select_sql);
             for b in &binds {
@@ -724,6 +747,107 @@ async fn export_mysql(
     for c in &cached {
         for stmt in &c.tail {
             writeln!(w, "{stmt};\n")?;
+        }
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// SQL Server
+// ---------------------------------------------------------------------------
+
+/// The same three phases as [`export_pg`]: every bare `CREATE TABLE`, then
+/// every table's rows, then foreign keys and indexes — so the file loads
+/// without a dependency sort.
+///
+/// What differs is T-SQL's:
+///
+/// * Every statement is followed by a `GO` line, so the file is a script SSMS
+///   and `sqlcmd` run as-is. HuginnDB's own importer splits a SQL Server file
+///   on those lines (`src/lib/sql/tsqlBatches.ts`).
+/// * An `IDENTITY` column's values go in through `SET IDENTITY_INSERT`,
+///   wrapped around each `INSERT` in one batch ([`mssql_identity_insert`]
+///   says why), and need no reseed.
+/// * `rowversion` / `timestamp` columns are left out of the `INSERT`: the
+///   server stamps them and refuses an explicit value.
+///
+/// A computed column is recreated as a plain column of its type, and its
+/// values are loaded as data. `TableStructure` does not carry the expression.
+/// That is the same loss `build_create` has on every engine, which also drops
+/// `CHECK`s.
+async fn export_mssql(
+    w: &mut impl Write,
+    pool: &crate::db::mssql::MsSqlPool,
+    tables: &[TableInfo],
+    data_mode: DataMode,
+    on_progress: &mut impl FnMut(i64),
+) -> AppResult<()> {
+    let mut cached = Vec::with_capacity(tables.len());
+    for t in tables {
+        let structure =
+            crate::db::mssql::schema::table_structure(pool, Some(&t.schema), &t.name).await?;
+        let mut stmts = build_create(Dialect::MsSql, &structure)?;
+        let create = stmts.remove(0);
+        let qt = Dialect::MsSql.qualify(structure.schema.as_deref(), &structure.name);
+        cached.push(CachedTable {
+            create,
+            tail: stmts,
+            structure,
+            qt,
+        });
+    }
+
+    for c in &cached {
+        writeln!(w, "{};\nGO\n", c.create)?;
+    }
+
+    for c in &cached {
+        let columns: Vec<&crate::db::ddl::ColumnDef> = c
+            .structure
+            .columns
+            .iter()
+            .filter(|col| mssql_insertable(&col.data_type))
+            .collect();
+        let identity = columns.iter().any(|col| col.auto_increment);
+        let quoted_cols: Vec<String> = columns
+            .iter()
+            .map(|col| Dialect::MsSql.quote_ident(&col.name))
+            .collect();
+
+        // The columns named, never `*`: each literal row has to line up with
+        // `quoted_cols`, which leaves `rowversion` out.
+        let rows = pool
+            .query_all(
+                &format!("SELECT {} FROM {}", quoted_cols.join(", "), c.qt),
+                &[],
+            )
+            .await?;
+        let literal_rows: Vec<Vec<String>> = rows
+            .iter()
+            .map(|row| {
+                (0..quoted_cols.len())
+                    .map(|i| mssql_literal(row, i))
+                    .collect()
+            })
+            .collect();
+
+        if data_mode == DataMode::TruncateInsert {
+            writeln!(w, "DELETE FROM {};\nGO\n", c.qt)?;
+        }
+        for stmt in build_insert_statements(&c.qt, &quoted_cols, &literal_rows, BATCH_SIZE) {
+            let stmt = if identity {
+                mssql_identity_insert(&c.qt, &stmt)
+            } else {
+                stmt
+            };
+            writeln!(w, "{stmt};\nGO\n")?;
+        }
+        on_progress(literal_rows.len() as i64);
+    }
+
+    for c in &cached {
+        for stmt in &c.tail {
+            writeln!(w, "{stmt};\nGO\n")?;
         }
     }
     Ok(())
