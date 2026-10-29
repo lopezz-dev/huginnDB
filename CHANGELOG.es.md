@@ -76,6 +76,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   una actualización la sustituyen, y una respuesta que llegue después de
   cualquiera de los dos se descarta.
 
+- **Los gestos de tamaño de columnas del grid se alcanzan con el teclado.**
+  *Ajustar todas las columnas al contenido* y *Ajustar todas las columnas al
+  ancho visible* eran dos botones del pie del grid y nada más: solo con ratón
+  en una app pensada para teclado. Ahora las dos son acciones: aparecen en la
+  paleta de comandos mientras haya un grid en pantalla y se pueden asignar en
+  **Ajustes → Atajos** (vienen sin tecla, como la mayoría del catálogo, porque
+  ninguna tiene una convención que copiar). Actúan sobre el grid que tiene el
+  foco o, si no, sobre el grid visible que usaste por última vez, así que
+  funcionan igual en una pestaña de tabla, en un resultado de consulta o en la
+  vista previa del editor de vistas; y una tecla asignada no hace nada, ni se
+  traga, donde no hay grid o el grid está en vista de lista.
+
 ### Cambiado
 
 - **Conector MCP: el límite de filas por defecto es 200, antes 1000.** Mil

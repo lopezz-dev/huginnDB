@@ -54,6 +54,11 @@ import {
 } from "@/lib/grid/autoFitColumn";
 import { useGridPrefs } from "@/lib/grid/useGridPrefs";
 import {
+  noteGridFocus,
+  registerGridSizing,
+  type GridSizingRunner,
+} from "@/lib/grid/gridSizing";
+import {
   DocumentListView,
   type ExpandAllSignal,
   type FieldSave,
@@ -1000,6 +1005,31 @@ export function DataGrid({
   }
 
   /**
+   * The two fit gestures, reachable from a shortcut and the command palette
+   * (`lib/grid/gridSizing.ts` decides which grid answers). Gated exactly like
+   * the footer buttons: where those are hidden, this declines.
+   *
+   * Registered once per mount and read through a ref, so the registration
+   * never churns on the re-renders that change what the closures see.
+   */
+  const rootRef = useRef<HTMLDivElement>(null);
+  const sizingRef = useRef<GridSizingRunner>(() => false);
+  sizingRef.current = (gesture) => {
+    if (!showFitControls) return false;
+    if (gesture === "fitContent") {
+      autoFitColumns(result.columns.map((c) => c.name));
+    } else {
+      fitColumnsToWidth();
+    }
+    return true;
+  };
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    return registerGridSizing(root, (gesture) => sizingRef.current(gesture));
+  }, []);
+
+  /**
    * Live mirror of fkEditCell/inlineEdit/selectedCell, read by the `cell`
    * renderers below instead of closing over the state directly. TanStack's
    * `flexRender` treats `columnDef.cell` as a component TYPE (anything
@@ -1245,7 +1275,13 @@ export function DataGrid({
 
   return (
     // `relative` allows CellPreview to be positioned absolute within this container.
-    <div className="relative flex h-full flex-col">
+    <div
+      ref={rootRef}
+      className="relative flex h-full flex-col"
+      onFocus={() => {
+        if (rootRef.current) noteGridFocus(rootRef.current);
+      }}
+    >
       <GridToolbar
         toolbarLeading={toolbarLeading}
         insertExtra={insertExtra}
