@@ -72,14 +72,12 @@ export function supportsStructureEditing(driver: Driver | undefined): boolean {
 
 /** The view editor's `CREATE VIEW` / `ALTER VIEW`, and renaming a view.
  *
- *  A separate question from `supportsStructureEditing`, because the answer
- *  differs for SQL Server: its table DDL is written, its view DDL is not
- *  (`db::view_ddl` refuses it). Renaming waits for the same builder —
- *  `sp_rename` leaves the old name inside a view's stored definition, so a
- *  correct rename means re-issuing its `CREATE`. MongoDB views are pipelines
+ *  Kept apart from `supportsStructureEditing` although the two answers are the
+ *  same today: they are different builders (`db::view_ddl` vs `db::ddl`), and
+ *  SQL Server had one long before the other. MongoDB views are pipelines,
  *  edited in the aggregation editor instead. */
 export function supportsViewEditing(driver: Driver | undefined): boolean {
-  return driver !== "mongodb" && driver !== "sqlserver";
+  return driver !== "mongodb";
 }
 
 /** The structure editor's "CREATE" section: the table's definition as the

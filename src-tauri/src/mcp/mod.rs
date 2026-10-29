@@ -2580,13 +2580,12 @@ impl Huginn {
                       itself to decide whether this is a create or a replace \
                       and how to express it on this engine (Postgres CREATE OR \
                       REPLACE, MySQL RENAME TABLE, SQLite drop-and-recreate, \
-                      MongoDB createView/collMod). Set `preview: true` to see \
-                      the statements without running them — that dry run is a \
+                      SQL Server ALTER VIEW / sp_rename, MongoDB \
+                      createView/collMod). Set `preview: true` to see the \
+                      statements without running them — that dry run is a \
                       read and works on any connection. Note a rename plus a \
-                      body change is atomic on Postgres but NOT on MySQL, \
-                      which commits each DDL statement implicitly. Not \
-                      supported on SQL Server, whose T-SQL view DDL is not \
-                      written yet."
+                      body change is atomic on Postgres and SQL Server but NOT \
+                      on MySQL, which commits each DDL statement implicitly."
     )]
     async fn save_view(
         &self,

@@ -110,19 +110,25 @@ fn validate_view(v: &ViewDefinition) -> AppResult<()> {
 ///
 /// `original = None` means "create a new view"; `Some(snapshot)` diffs the
 /// two on name and body.
+///
+/// `header_options` are the `WITH …` options SQL Server keeps in a view's
+/// header (`SCHEMABINDING`, `VIEW_METADATA`); pass `&[]` everywhere else.
+///
+/// They have to be passed in because they are not in [`ViewDefinition`]:
+/// [`strip_view_header`] drops the header to leave the body, and T-SQL's
+/// `ALTER VIEW` *replaces* the header along with the body. An `ALTER VIEW v AS
+/// <body>` built from the stripped text alone would silently unbind a
+/// schema-bound view — and with it the guarantee that the tables under it
+/// cannot change. The command layer reads them from the catalog
+/// (`db::mssql::schema::view_options`) rather than widening the DTO, which
+/// is round-tripped through the frontend and through MCP's `save_view`.
+/// Every other dialect ignores `header_options`.
 pub fn build_view_ddl(
     dialect: Dialect,
     original: Option<&ViewDefinition>,
     desired: &ViewDefinition,
+    header_options: &[&str],
 ) -> AppResult<(Vec<String>, bool)> {
-    // SQL Server would need `CREATE OR ALTER VIEW` (2016+) and `EXEC sp_rename`
-    // rather than a rename clause; deferred with the rest of its DDL support
-    // (see `crate::db::ddl`).
-    if dialect == Dialect::MsSql {
-        return Err(AppError::UnsupportedDriver(
-            "the view editor does not support SQL Server yet".into(),
-        ));
-    }
     validate_view(desired)?;
     let qt = dialect.qualify(desired.schema.as_deref(), &desired.name);
 
@@ -182,7 +188,40 @@ pub fn build_view_ddl(
             }
             Ok((stmts, false))
         }
-        Dialect::MsSql => unreachable!("SQL Server is rejected above"),
+        Dialect::MsSql => {
+            if orig.schema.as_deref().unwrap_or_default()
+                != desired.schema.as_deref().unwrap_or_default()
+            {
+                // `ALTER SCHEMA … TRANSFER` exists, but no caller offers a move,
+                // and every other dialect refuses one here too (see
+                // `save_any_view_inner`).
+                return Err(AppError::InvalidInput(
+                    "moving a view to another schema is not supported".into(),
+                ));
+            }
+            let with = if header_options.is_empty() {
+                String::new()
+            } else {
+                format!(" WITH {}", header_options.join(", "))
+            };
+            let mut stmts = Vec::new();
+            if renamed {
+                let old_qt = dialect.qualify(orig.schema.as_deref(), &orig.name);
+                stmts.push(crate::db::sql::mssql_sp_rename(
+                    &old_qt,
+                    &desired.name,
+                    None,
+                ));
+            }
+            // After a rename this runs even when the body is unchanged:
+            // `sp_rename` leaves the *old* name inside the stored definition
+            // (`sys.sql_modules`), so `OBJECT_DEFINITION` — and every script
+            // generated from it — would recreate the view under the name it no
+            // longer has. `ALTER VIEW` rewrites that text, and unlike a drop
+            // and create it keeps the view's permissions.
+            stmts.push(format!("ALTER VIEW {qt}{with} AS {}", desired.query.trim()));
+            Ok((stmts, false))
+        }
     }
 }
 
@@ -204,6 +243,7 @@ mod tests {
             Dialect::Postgres,
             None,
             &view(Some("public"), "v_active", "SELECT 1"),
+            &[],
         )
         .unwrap();
         assert_eq!(
@@ -217,7 +257,8 @@ mod tests {
     fn postgres_body_change_uses_create_or_replace() {
         let orig = view(None, "v", "SELECT 1");
         let desired = view(None, "v", "SELECT 2");
-        let (stmts, rebuild) = build_view_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
+        let (stmts, rebuild) =
+            build_view_ddl(Dialect::Postgres, Some(&orig), &desired, &[]).unwrap();
         assert_eq!(stmts, vec!["CREATE OR REPLACE VIEW \"v\" AS SELECT 2"]);
         assert!(!rebuild);
     }
@@ -226,7 +267,7 @@ mod tests {
     fn postgres_rename_and_redefine() {
         let orig = view(None, "old", "SELECT 1");
         let desired = view(None, "new", "SELECT 2");
-        let (stmts, _) = build_view_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
+        let (stmts, _) = build_view_ddl(Dialect::Postgres, Some(&orig), &desired, &[]).unwrap();
         assert_eq!(
             stmts,
             vec![
@@ -240,7 +281,7 @@ mod tests {
     fn mysql_rename_only_no_body_change() {
         let orig = view(None, "old", "SELECT 1");
         let desired = view(None, "new", "SELECT 1");
-        let (stmts, _) = build_view_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
+        let (stmts, _) = build_view_ddl(Dialect::Mysql, Some(&orig), &desired, &[]).unwrap();
         assert_eq!(stmts, vec!["RENAME TABLE `old` TO `new`"]);
     }
 
@@ -248,7 +289,7 @@ mod tests {
     fn sqlite_always_drop_and_recreate() {
         let orig = view(None, "v", "SELECT 1");
         let desired = view(None, "v", "SELECT 2");
-        let (stmts, rebuild) = build_view_ddl(Dialect::Sqlite, Some(&orig), &desired).unwrap();
+        let (stmts, rebuild) = build_view_ddl(Dialect::Sqlite, Some(&orig), &desired, &[]).unwrap();
         assert_eq!(
             stmts,
             vec!["DROP VIEW IF EXISTS \"v\"", "CREATE VIEW \"v\" AS SELECT 2"]
@@ -260,14 +301,56 @@ mod tests {
     fn no_change_yields_no_statements() {
         let orig = view(None, "v", "SELECT 1");
         let (stmts, rebuild) =
-            build_view_ddl(Dialect::Postgres, Some(&orig), &orig.clone()).unwrap();
+            build_view_ddl(Dialect::Postgres, Some(&orig), &orig.clone(), &[]).unwrap();
         assert!(stmts.is_empty());
         assert!(!rebuild);
     }
 
     #[test]
+    fn mssql_body_change_alters_in_place_and_keeps_the_header() {
+        let orig = view(Some("dbo"), "v", "SELECT a FROM dbo.t");
+        let desired = view(Some("dbo"), "v", "SELECT a, b FROM dbo.t");
+        let (stmts, rebuild) =
+            build_view_ddl(Dialect::MsSql, Some(&orig), &desired, &["SCHEMABINDING"]).unwrap();
+        assert_eq!(
+            stmts,
+            vec!["ALTER VIEW [dbo].[v] WITH SCHEMABINDING AS SELECT a, b FROM dbo.t"]
+        );
+        assert!(!rebuild);
+    }
+
+    #[test]
+    fn mssql_rename_rewrites_the_stored_definition() {
+        let orig = view(Some("dbo"), "old", "SELECT 1 AS x");
+        let desired = view(Some("dbo"), "new", "SELECT 1 AS x");
+        let (stmts, _) = build_view_ddl(Dialect::MsSql, Some(&orig), &desired, &[]).unwrap();
+        assert_eq!(
+            stmts,
+            vec![
+                "EXEC sp_rename N'[dbo].[old]', N'new'",
+                "ALTER VIEW [dbo].[new] AS SELECT 1 AS x",
+            ]
+        );
+    }
+
+    #[test]
+    fn mssql_create_and_schema_move() {
+        let (stmts, _) = build_view_ddl(
+            Dialect::MsSql,
+            None,
+            &view(Some("dbo"), "v", "SELECT 1 AS x"),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(stmts, vec!["CREATE VIEW [dbo].[v] AS SELECT 1 AS x"]);
+        let orig = view(Some("dbo"), "v", "SELECT 1 AS x");
+        let moved = view(Some("sales"), "v", "SELECT 1 AS x");
+        assert!(build_view_ddl(Dialect::MsSql, Some(&orig), &moved, &[]).is_err());
+    }
+
+    #[test]
     fn empty_query_rejected() {
-        assert!(build_view_ddl(Dialect::Postgres, None, &view(None, "v", "   ")).is_err());
+        assert!(build_view_ddl(Dialect::Postgres, None, &view(None, "v", "   "), &[]).is_err());
     }
 
     // -----------------------------------------------------------------------

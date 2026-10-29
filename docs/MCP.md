@@ -1013,10 +1013,10 @@ drivers as the desktop app, via the same backend code.
 The read tools work identically across all of them, and so do the row-level
 write tools (`insert_row`, `update_cell`, `delete_rows`).
 
-The one gap is `save_view` on SQL Server, whose T-SQL view DDL builder is not
-written yet — it returns an "unsupported driver" error there. Everything else
-about views works on all five: `describe_table` reports a view's definition on
-every driver, and `drop_view` works on every driver.
+Views work on all five: `save_view` creates, redefines and renames a view on
+every driver (on SQL Server through `ALTER VIEW`, keeping the view's
+`SCHEMABINDING` / `VIEW_METADATA` options and its permissions),
+`describe_table` reports a view's definition, and `drop_view` drops one.
 
 `create_index` and `drop_index` are MongoDB-only and return an "unsupported
 driver" error elsewhere; `list_indexes` reads on all five. See [Indexes: why the

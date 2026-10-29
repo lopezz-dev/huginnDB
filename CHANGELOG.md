@@ -8,9 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- **SQL Server: the structure editor can change tables, and tables can be
-  renamed.** Until now the structure tab only showed a SQL Server table's
-  columns, keys and indexes, read-only.
+- **SQL Server: tables and views can be edited and renamed.** Until now the
+  structure tab only showed a SQL Server table's columns, keys and indexes,
+  read-only, and views could not be edited at all.
   - **Create and alter tables** from the structure editor: add, drop, rename
     and retype columns, change nullability and defaults, change the primary
     key, and add or drop indexes and foreign keys. The preview shows the T-SQL
@@ -22,10 +22,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     looks the constraint up and drops it first, then puts the default back
     when the column still has one.
   - **Rename table** in the schema tree now works on SQL Server.
+  - **The view editor** creates and redefines SQL Server views, and **Rename
+    view** works. A view is changed in place with `ALTER VIEW`, so it keeps
+    its permissions and its `SCHEMABINDING` / `VIEW_METADATA` options. A
+    rename also rewrites the view's stored definition: SQL Server's own rename
+    leaves the old name inside it.
+  - The MCP connector's `save_view` now works on SQL Server too.
   - Not yet: switching `IDENTITY` on or off for a column that already exists
     (SQL Server can only do that by rebuilding the table, so the editor
-    explains this instead), the view editor, renaming a view, and `.sql`
-    export/import.
+    explains this instead), and `.sql` export/import.
 
 - **`run_script` in the MCP connector: a whole SQL script on one session —
   temporary tables and migrations included.**
