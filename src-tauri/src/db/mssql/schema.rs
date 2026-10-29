@@ -699,6 +699,42 @@ pub async fn view_definition(
         .map(|sql| crate::db::view_ddl::strip_view_header(&sql)))
 }
 
+/// The `WITH …` options in a view's header, as `ALTER VIEW` would spell them.
+///
+/// [`view_definition`] hands back the body with its header stripped, and
+/// `ALTER VIEW` replaces the header too — so these have to be read separately
+/// and passed to `db::view_ddl::build_view_ddl`, or editing a view would
+/// silently drop them. `ENCRYPTION` is not here: an encrypted view has no
+/// readable definition, so [`view_definition`] already reports it as absent.
+pub async fn view_options(
+    pool: &MsSqlPool,
+    schema: Option<&str>,
+    view: &str,
+) -> AppResult<Vec<&'static str>> {
+    let object = object_name(schema, view);
+    let mut c = pool.acquire().await?;
+    let rows = c
+        .query_rows(
+            "SELECT m.is_schema_bound AS [schemabinding], \
+                    v.has_opaque_metadata AS [view_metadata] \
+             FROM sys.views v JOIN sys.sql_modules m ON m.object_id = v.object_id \
+             WHERE v.object_id = OBJECT_ID(@P1)",
+            &[Some(object)],
+        )
+        .await?;
+    let Some(r) = rows.first() else {
+        return Ok(Vec::new());
+    };
+    let mut options = Vec::new();
+    if b(r, "schemabinding") {
+        options.push("SCHEMABINDING");
+    }
+    if b(r, "view_metadata") {
+        options.push("VIEW_METADATA");
+    }
+    Ok(options)
+}
+
 /// Decode a whole result set into the `(columns, rows)` shape the query and
 /// browse paths hand back to the frontend.
 pub fn decode_rows(rows: &[Row]) -> (Vec<(String, String)>, Vec<Vec<Value>>) {

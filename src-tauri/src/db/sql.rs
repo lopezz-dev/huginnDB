@@ -269,12 +269,12 @@ impl Dialect {
     /// `new_name` must already be trimmed and validated; it is quoted here.
     ///
     /// SQL Server renames a table through [`mssql_sp_rename`], whose arguments
-    /// are strings rather than identifiers. A *view* it still refuses:
+    /// are strings rather than identifiers. A *view* is refused here: a bare
     /// `sp_rename` leaves the old name inside the view's stored definition
     /// (`sys.sql_modules`), so `OBJECT_DEFINITION` and any script generated
-    /// from it would recreate the view under its old name. Renaming a view
-    /// properly means re-issuing its `CREATE`, which belongs with the T-SQL
-    /// view builder.
+    /// from it would recreate the view under its old name. `rename_view` sends
+    /// SQL Server through `db::view_ddl::build_view_ddl` instead, which
+    /// follows the rename with an `ALTER VIEW` that rewrites that text.
     ///
     /// MongoDB never reaches this: `renameCollection` is a run-command on
     /// `admin`, dispatched before any SQL is built.

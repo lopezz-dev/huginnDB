@@ -10,9 +10,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
-- **SQL Server: el editor de estructura ya modifica tablas, y las tablas se
-  pueden renombrar.** Hasta ahora la pestaña de estructura solo mostraba, en
-  modo lectura, las columnas, claves e índices de una tabla de SQL Server.
+- **SQL Server: las tablas y las vistas ya se pueden editar y renombrar.**
+  Hasta ahora la pestaña de estructura solo mostraba, en modo lectura, las
+  columnas, claves e índices de una tabla de SQL Server, y las vistas no se
+  podían editar.
   - **Crear y modificar tablas** desde el editor de estructura: añadir,
     eliminar, renombrar y cambiar el tipo de columnas, cambiar la nulabilidad
     y los valores por defecto, cambiar la clave primaria y añadir o eliminar
@@ -25,10 +26,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     El editor busca ese constraint y lo elimina primero, y vuelve a poner el
     valor por defecto si la columna lo conserva.
   - **Renombrar tabla** en el árbol del esquema ya funciona en SQL Server.
+  - **El editor de vistas** crea y redefine vistas de SQL Server, y
+    **Renombrar vista** funciona. La vista se modifica en el sitio con
+    `ALTER VIEW`, así que conserva sus permisos y sus opciones
+    `SCHEMABINDING` / `VIEW_METADATA`. Al renombrarla también se reescribe su
+    definición guardada: el renombrado propio de SQL Server deja dentro el
+    nombre antiguo.
+  - `save_view` del conector MCP ya funciona también en SQL Server.
   - Todavía no: activar o quitar `IDENTITY` en una columna que ya existe (SQL
     Server solo puede hacerlo reconstruyendo la tabla, así que el editor lo
-    explica), el editor de vistas, renombrar una vista y exportar/importar
-    `.sql`.
+    explica) y exportar/importar `.sql`.
 
 - **`run_script` en el conector MCP: un script SQL entero en una sola sesión,
   tablas temporales y migraciones incluidas.**

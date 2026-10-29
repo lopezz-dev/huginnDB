@@ -39,7 +39,7 @@ use tauri::State;
 /// argument: Postgres resolves an omitted schema to `public`, MySQL echoes what
 /// it was given (an empty one means "the session's current database", which has
 /// no name to report), and SQLite has only `main`. That matters beyond
-/// cosmetics — [`build_view_ddl`] reads a differing schema as a *move*, so a
+/// cosmetics — [`crate::db::view_ddl::build_view_ddl`] reads a differing schema as a *move*, so a
 /// caller that round-trips this value through `desired` gets no spurious
 /// rename.
 pub async fn view_definition_inner(
@@ -49,11 +49,8 @@ pub async fn view_definition_inner(
     view: &str,
 ) -> AppResult<Option<ViewDefinition>> {
     let pool = state.pool_for(connection_id)?;
-    // No SQL Server refusal here, unlike `preview`/`apply` below: reading a
-    // definition is a plain catalog query, and the T-SQL DDL *builder* is the
-    // only thing that isn't written yet (`db::view_ddl::build_view_ddl` still
-    // refuses it). `Dialect::try_of` is what rejects MongoDB, whose views are
-    // stored pipelines and belong to the aggregation editor.
+    // `Dialect::try_of` is what rejects MongoDB, whose views are stored
+    // pipelines and belong to the aggregation editor.
     Dialect::try_of(&pool)?;
     let (schema, query) = match &pool {
         DbPool::Postgres(p) => {
@@ -83,6 +80,22 @@ pub async fn view_definition_inner(
         name: view.to_string(),
         query,
     }))
+}
+
+/// The header options an edit of `original` has to keep — SQL Server's
+/// `WITH SCHEMABINDING` / `VIEW_METADATA`, which `ALTER VIEW` would otherwise
+/// drop (see `db::view_ddl::build_view_ddl`). Empty for a new view and on
+/// every other driver.
+async fn header_options(
+    pool: &DbPool,
+    original: Option<&ViewDefinition>,
+) -> AppResult<Vec<&'static str>> {
+    match (pool, original) {
+        (DbPool::MsSql(p), Some(o)) => {
+            crate::db::mssql::schema::view_options(p, o.schema.as_deref(), &o.name).await
+        }
+        _ => Ok(Vec::new()),
+    }
 }
 
 #[tauri::command]
@@ -207,8 +220,9 @@ pub async fn preview_view_change(
     crate::commands::guard::free_read(state.inner(), &args.connection_id)?;
     let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
+    let options = header_options(&pool, args.original.as_ref()).await?;
     let (statements, drop_and_recreate) =
-        build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
+        build_view_ddl(dialect, args.original.as_ref(), &args.desired, &options)?;
     Ok(ViewPreview {
         statements,
         drop_and_recreate,
@@ -243,7 +257,8 @@ pub async fn apply_view_change(
     crate::commands::guard::free_read(state.inner(), &args.connection_id)?;
     let pool = state.pool_for(&args.connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
-    let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired)?;
+    let options = header_options(&pool, args.original.as_ref()).await?;
+    let (statements, _) = build_view_ddl(dialect, args.original.as_ref(), &args.desired, &options)?;
 
     // Wrapped on Postgres so a rename plus a body change cannot half-apply; see
     // `db::exec::execute_all` for the per-engine policy.
@@ -307,7 +322,7 @@ pub struct ViewChangeOutcome {
 ///
 /// The request carries only the view's name and its new body: this function
 /// reads the current definition itself to decide between a create and a
-/// replace, and to build the `original` [`build_view_ddl`] diffs against. That
+/// replace, and to build the `original` [`crate::db::view_ddl::build_view_ddl`] diffs against. That
 /// division of labour is the point — a caller (in particular an AI client over
 /// MCP) supplying a synthesised `original` is how a rename becomes a silent
 /// redefinition, and it is the reason `docs/MCP_CONNECTOR_ROADMAP.md` deferred a
@@ -348,7 +363,9 @@ pub async fn save_any_view_inner(
         name: req.name.clone(),
         query: req.query.clone(),
     };
-    let (statements, drop_and_recreate) = build_view_ddl(dialect, original.as_ref(), &desired)?;
+    let options = header_options(&pool, original.as_ref()).await?;
+    let (statements, drop_and_recreate) =
+        build_view_ddl(dialect, original.as_ref(), &desired, &options)?;
 
     if req.preview {
         return Ok(ViewChangeOutcome {
@@ -518,8 +535,7 @@ pub async fn drop_view_inner(
     let dialect = Dialect::try_of(&pool)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), view);
     let sql = format!("DROP VIEW {qt}");
-    // Dropping a view is plain, portable DDL — supported on every SQL driver
-    // even though *editing* one isn't yet (see `build_view_ddl`). MongoDB took
+    // Dropping a view is plain, portable DDL on every SQL driver. MongoDB took
     // the branch above.
     let res = crate::db::exec::execute(&pool, &sql).await;
     log_sql_sink(
@@ -541,6 +557,11 @@ pub async fn drop_view_inner(
 /// Rename a view. Postgres uses `ALTER VIEW ... RENAME TO`; MySQL treats
 /// views and tables as the same namespace so `RENAME TABLE` works; SQLite
 /// likewise accepts `ALTER TABLE ... RENAME TO` for a view.
+///
+/// SQL Server goes through the view editor's builder instead, because a bare
+/// `sp_rename` leaves the old name inside the stored definition: it renames
+/// and then re-issues the body with `ALTER VIEW`, in one transaction
+/// (`db::view_ddl::build_view_ddl`).
 #[tauri::command]
 pub async fn rename_view(
     app: tauri::AppHandle,
@@ -573,6 +594,18 @@ pub async fn rename_view(
     )?;
     let pool = state.pool_for(&connection_id)?;
     let dialect = Dialect::try_of(&pool)?;
+    if dialect == Dialect::MsSql {
+        let original = view_definition_inner(state.inner(), &connection_id, schema, &view)
+            .await?
+            .ok_or_else(|| AppError::NotFound(format!("view {view}")))?;
+        let desired = ViewDefinition {
+            name: new_name.trim().to_string(),
+            ..original.clone()
+        };
+        let options = header_options(&pool, Some(&original)).await?;
+        let (statements, _) = build_view_ddl(dialect, Some(&original), &desired, &options)?;
+        return crate::db::exec::execute_all(&pool, &statements).await;
+    }
     let sql = dialect.rename_stmt(schema.as_deref(), &view, new_name.trim(), Relation::View)?;
     crate::db::exec::execute(&pool, &sql).await?;
     Ok(())

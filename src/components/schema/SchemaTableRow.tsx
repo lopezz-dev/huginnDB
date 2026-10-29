@@ -147,8 +147,7 @@ export const TableRow = memo(function TableRow({
   };
 
   const isMongo = actions.driver === "mongodb";
-  /** View editing needs a view-DDL builder for the driver, which SQL Server
-   *  does not have yet (its *table* DDL is written — see `driver.ts`). */
+  /** View editing needs a view-DDL builder for the driver (`driver.ts`). */
   const canEditView = supportsViewEditing(actions.driver);
 
   return (

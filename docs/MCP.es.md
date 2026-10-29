@@ -1052,10 +1052,10 @@ drivers que la app de escritorio, mediante el mismo código de backend.
 Las herramientas de lectura funcionan igual en todos, y también las de
 escritura a nivel de fila (`insert_row`, `update_cell`, `delete_rows`).
 
-El único hueco es `save_view` en SQL Server, cuyo generador de DDL T-SQL para
-vistas todavía no existe: ahí devuelve un error de «driver no soportado». Todo
-lo demás sobre vistas funciona en los cinco: `describe_table` informa de la
-definición de una vista en todos los drivers, y `drop_view` funciona en todos.
+Las vistas funcionan en los cinco: `save_view` crea, redefine y renombra una
+vista en todos los drivers (en SQL Server mediante `ALTER VIEW`, conservando las
+opciones `SCHEMABINDING` / `VIEW_METADATA` de la vista y sus permisos),
+`describe_table` informa de su definición y `drop_view` la elimina.
 
 `create_index` y `drop_index` son solo de MongoDB y devuelven un error de
 «driver no soportado» en el resto; `list_indexes` lee en los cinco. Ver
