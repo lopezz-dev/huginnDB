@@ -358,6 +358,11 @@ pub fn run() {
             {
                 use tauri::Manager;
                 app_lock::sync_gate(app.state::<AppState>().inner());
+                // Before any window reads the profiles: a MongoDB password
+                // saved inside a connection string by an older version moves
+                // to the keychain. Locked, the vault refuses and the sweep
+                // runs again on unlock (`app_lock::announce`).
+                credentials::migrate_embedded_passwords(&app.state::<AppState>().profiles);
             }
             app_lock::spawn_idle_watcher(app.handle().clone());
             // And it locks with the operating system's session (ADR #119).

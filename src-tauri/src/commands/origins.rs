@@ -894,6 +894,28 @@ fn merge_profiles_bundle(
     let mut report;
     let live: Vec<String> = connections.read().ids();
 
+    // A file published before the origin editor learned to encrypt it can
+    // carry a MongoDB password inside the connection string, in clear. It is
+    // taken out here, before anything is merged, so it never reaches
+    // `profiles.json`, and landed below like any other published secret.
+    // Every keychain account from here on is derived from the stripped
+    // profile, since taking the password out can rename its user.
+    let mut embedded: Vec<(ConnectionProfile, String)> = Vec::new();
+    let stripped: Vec<ExportedProfile> = incoming
+        .iter()
+        .map(|entry| {
+            let mut profile = entry.profile.clone();
+            if let Some(pw) = crate::credentials::take_embedded_password(&mut profile) {
+                embedded.push((profile.clone(), pw));
+            }
+            ExportedProfile {
+                profile,
+                secrets: entry.secrets.clone(),
+            }
+        })
+        .collect();
+    let incoming = stripped.as_slice();
+
     {
         let mut profiles = profiles_lock.write();
         report = merge_into(&mut profiles, origin_id, incoming, &live);
@@ -987,6 +1009,29 @@ fn merge_profiles_bundle(
             if overridden.is_some() {
                 superseded.push(entry.profile.id.clone());
             }
+        }
+    }
+
+    // The clear-text passwords taken out of the URIs above, after the
+    // envelopes so the URI's wins when a file has both — it is the one the
+    // driver used to sign in with. The same exclusions as an envelope: never for
+    // a person signing in as themselves, never over a local override, and only
+    // into a connection this origin actually owns here. No fingerprint cache:
+    // there is no decryption to save, only a keychain write, skipped when the
+    // stored value already matches.
+    for (profile, pw) in &embedded {
+        let owned = profiles_lock
+            .read()
+            .iter()
+            .any(|p| p.id == profile.id && p.origin_id.as_deref() == Some(origin_id));
+        if !owned || personal.contains(&profile.id) || overrides.contains_key(&profile.id) {
+            continue;
+        }
+        let account = profile.keyring_account();
+        if keychain::get_password(&account).ok().flatten().as_deref() != Some(pw.as_str()) {
+            // Best effort, like the envelopes: a refused write leaves the
+            // connection asking for its password rather than failing the sync.
+            let _ = keychain::set_password(&account, pw);
         }
     }
 

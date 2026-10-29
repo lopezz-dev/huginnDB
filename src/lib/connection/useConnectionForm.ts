@@ -179,7 +179,8 @@ export function useConnectionForm(open: boolean) {
       // / db / user / authSource from the URI, and carrying every option
       // outside that set through untouched); only a URI no form can hold — SRV,
       // multi-host, an embedded password, unparseable — opens in raw-edit mode
-      // showing the URI verbatim.
+      // showing the URI verbatim. (A saved profile no longer carries a
+      // password: the backend moves it to the keychain on save — ADR #122.)
       if (p.driver === "mongodb") {
         const cs = (p.connection_string ?? "").trim();
         const parsed = cs ? parseMongoUri(cs) : null;
