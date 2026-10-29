@@ -57,6 +57,8 @@ export type ActionId =
   // grid
   | "refreshData"
   | "expandSelectedCell"
+  | "fitColumnsToContent"
+  | "fitColumnsToWidth"
   // schema
   | "refreshSchema"
   | "focusTreeFilter"
@@ -220,6 +222,28 @@ export const ACTIONS: ActionSpec[] = [
     scope: "grid",
     defaults: ["Space"],
     labelKey: "settings.shortcuts.expandSelectedCell",
+  },
+  // The grid footer's two sizing buttons, which were mouse-only. `global`
+  // rather than `grid`: the `grid` scope is only the scroller, so a `grid`
+  // binding would go deaf the moment the focus sat in the grid's own search
+  // box or toolbar. Which grid answers is `lib/grid/gridSizing.ts`'s call —
+  // the focused one, else the visible one used last — and with none the
+  // handler declines, so the key falls through. Ship unbound like most of the
+  // catalogue: no convention exists for either, and being here is already
+  // what puts them in the palette and the Settings list.
+  {
+    id: "fitColumnsToContent",
+    category: "grid",
+    scope: "global",
+    defaults: [],
+    labelKey: "dataGrid.fitColumns",
+  },
+  {
+    id: "fitColumnsToWidth",
+    category: "grid",
+    scope: "global",
+    defaults: [],
+    labelKey: "dataGrid.fitColumnsToWidth",
   },
 
   // ── Actions the command palette already knew how to run ──────────────────

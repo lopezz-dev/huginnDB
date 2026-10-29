@@ -100,6 +100,7 @@ import { AdHocDriverDialog } from "@/components/connection/dialogs/AdHocDriverDi
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { refreshTable } from "@/lib/grid/tableRefresh";
 import { focusTableSearch } from "@/lib/grid/tableSearch";
+import { runGridSizing } from "@/lib/grid/gridSizing";
 import { sqliteFileLabel } from "@/lib/connectionLabel";
 import { useBridge } from "@/lib/bridges/useBridge";
 import { startPolicyBridge } from "@/lib/bridges/policy-bridge";
@@ -455,6 +456,10 @@ export default function App() {
         if (active?.kind === "table" && focusTableSearch(active.id)) return;
         focusTreeFilter();
       },
+      // The grid footer's sizing buttons. Declines when no grid is on screen,
+      // so an unused binding never swallows its key.
+      fitColumnsToContent: () => runGridSizing("fitContent"),
+      fitColumnsToWidth: () => runGridSizing("fitWidth"),
       clearTreeFilter: () => {
         // Layered: text, then the scope one level at a time. When there is
         // nothing left to undo the keystroke still does something visible —

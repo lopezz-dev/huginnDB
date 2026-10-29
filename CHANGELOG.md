@@ -69,6 +69,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   would. The exact figure stays until a filter change or a refresh replaces
   it, and an answer that arrives after either is discarded.
 
+- **The grid's column-sizing gestures are reachable from the keyboard.**
+  *Fit all columns to their content* and *Fit all columns to the visible
+  width* were two buttons in the grid footer and nothing else — mouse-only in
+  a keyboard-first app. Both are now actions: listed in the command palette
+  while a grid is on screen, and bindable in **Settings → Shortcuts** (they
+  ship unbound, like most of the catalogue, since neither has a convention to
+  borrow). They act on the grid that has the focus, or else on the visible
+  grid you used last — so they work from a table tab, a query result or the
+  view editor's preview alike — and a key bound to them does nothing, and is
+  not swallowed, where there is no grid or the grid is in list view.
+
 ### Changed
 
 - **MCP connector: the default row limit is 200, down from 1000.** A thousand

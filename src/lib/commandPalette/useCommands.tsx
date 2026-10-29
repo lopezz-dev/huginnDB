@@ -59,6 +59,7 @@ import {
   SquareTerminal,
   Star,
   Table as TableIcon,
+  UnfoldHorizontal,
   KeyRound,
   LockKeyhole,
   Workflow,
@@ -101,6 +102,7 @@ import {
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { moduleEnabled } from "@/lib/panelModules";
 import { refreshTable } from "@/lib/grid/tableRefresh";
+import { hasActiveGrid, runGridSizing } from "@/lib/grid/gridSizing";
 import {
   ACTIONS,
   formatComboForDisplay,
@@ -331,6 +333,31 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
           if (!refreshTable(activeTab.id)) void refreshSchema(activeTab.connectionId);
         },
       });
+    }
+    // Asked while the palette opens, so the grid it finds is the one the user
+    // was just looking at — the palette has taken the focus by the time an
+    // entry runs, and `gridSizing` falls back to the visible grid used last.
+    if (hasActiveGrid()) {
+      list.push(
+        {
+          id: "action:fit-columns-content",
+          group: "actions",
+          combo: combo("fitColumnsToContent"),
+          label: t("dataGrid.fitColumns"),
+          keywords: "fit autosize columns width content ajustar columnas ancho contenido",
+          icon: <UnfoldHorizontal className="h-4 w-4" />,
+          run: () => void runGridSizing("fitContent"),
+        },
+        {
+          id: "action:fit-columns-width",
+          group: "actions",
+          combo: combo("fitColumnsToWidth"),
+          label: t("dataGrid.fitColumnsToWidth"),
+          keywords: "fit columns visible width window ajustar columnas ancho visible ventana",
+          icon: <Columns3 className="h-4 w-4" />,
+          run: () => void runGridSizing("fitWidth"),
+        },
+      );
     }
     if (activeTab) {
       list.push(

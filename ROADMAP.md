@@ -249,11 +249,17 @@ one level down — a vocabulary written and then not spoken. The work is not
 then either adopting the token or deleting it. A token with two uses is not a
 system.
 
-**Discoverability of the grid's sizing gestures.** Neither "fit to content" nor
-"fit to visible width" appears in `lib/keybindings/actions.ts`, so both are
-mouse-only in a keyboard-first app. Adding them to `ACTIONS` also gets them
-into the command palette and the settings shortcut list for free (ADR #53),
-which is most of the value.
+~~**Discoverability of the grid's sizing gestures.**~~ — **closed.** "Fit to
+content" and "fit to visible width" are `fitColumnsToContent` /
+`fitColumnsToWidth` in `ACTIONS`, so they are bindable and listed in Settings
+(ADR #53). One correction to what this entry assumed: the palette did *not*
+come for free — its action entries are hand-written in `useCommands.tsx`, and
+only the "shortcut for …" settings rows are generated from the catalogue — so
+both got an entry there too. The other thing worth knowing is which grid
+answers: a `DataGrid` has no tab id (a table tab, every query result set and
+the view editor's preview each mount one), so `lib/grid/gridSizing.ts`
+registers each grid's root and resolves the focused one, else the visible one
+used last, and declines rather than guess between two nobody has touched.
 
 **A class 4 instance, found and closed:** the schema tree and the tab area
 stayed fully interactive for the whole of an environment switch — seconds, on a
