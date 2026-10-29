@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-124 entries: 100 ADRs, 15 gotchas, 9 conventions.
+125 entries: 100 ADRs, 16 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -164,4 +164,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 122 | ADR | [A MongoDB connection string never carries its password to disk — it is moved to the keychain wherever a profile is written](adr/adr-122-a-mongodb-uri-never-carries-its-password-to-disk.md) | accepted | 2026-10-29 |
 | 123 | ADR | [The T-SQL structure builder looks up constraint names at run time, and refuses an IDENTITY change instead of rebuilding the table](adr/adr-123-t-sql-ddl-finds-constraint-names-at-run-time.md) | accepted | 2026-10-29 |
 | 124 | ADR | [A SQL Server view is changed in place with ALTER VIEW, its header options re-read from the catalog, and renamed with sp_rename plus ALTER VIEW](adr/adr-124-a-sql-server-view-is-altered-in-place-with-its-header-reread.md) | accepted | 2026-10-29 |
+| 125 | Gotcha | [T-SQL's `EXEC(…)` concatenates only literals and variables — `EXEC(N'…' + QUOTENAME(@n))` does not parse](gotchas/gotcha-125-tsql-exec-concatenation-takes-no-function-calls.md) | active | 2026-10-29 |
 <!-- index:end -->
