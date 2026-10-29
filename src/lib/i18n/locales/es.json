@@ -1004,7 +1004,6 @@
     "readOnlyMongo": "Solo lectura (MongoDB)",
     "indexManagerHint": "Los índices de MongoDB se editan en el gestor de índices; esta vista es de solo lectura.",
     "openIndexManager": "Abrir el gestor de índices",
-    "readOnlySqlServer": "Solo lectura (SQL Server)",
     "jsonSchemaRenameFailed": "La tabla se ha modificado, pero un vínculo de esquema JSON no ha podido seguir el renombrado: {{message}}",
     "rowCount": "{{count}} filas",
     "created": "Tabla {{name}} creada",

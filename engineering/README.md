@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-122 entries: 98 ADRs, 15 gotchas, 9 conventions.
+123 entries: 99 ADRs, 15 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -162,4 +162,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 120 | ADR | [a managed policy can require the app lock, only ever tightens it, and an unreadable one keeps the lock that is there](adr/adr-120-a-policy-can-require-the-app-lock-and-only-tightens-it.md) | accepted | 2026-10-26 |
 | 121 | ADR | [a script runs on one session that is closed after it, and a temporary table is still DDL](adr/adr-121-a-script-runs-on-one-session-that-is-closed-after-it.md) | accepted | 2026-10-28 |
 | 122 | ADR | [A MongoDB connection string never carries its password to disk — it is moved to the keychain wherever a profile is written](adr/adr-122-a-mongodb-uri-never-carries-its-password-to-disk.md) | accepted | 2026-10-29 |
+| 123 | ADR | [The T-SQL structure builder looks up constraint names at run time, and refuses an IDENTITY change instead of rebuilding the table](adr/adr-123-t-sql-ddl-finds-constraint-names-at-run-time.md) | accepted | 2026-10-29 |
 <!-- index:end -->

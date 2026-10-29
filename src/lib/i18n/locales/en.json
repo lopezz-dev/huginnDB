@@ -1004,7 +1004,6 @@
     "readOnlyMongo": "Read-only (MongoDB)",
     "indexManagerHint": "MongoDB indexes are edited in the index manager — this view is read-only.",
     "openIndexManager": "Open index manager",
-    "readOnlySqlServer": "Read-only (SQL Server)",
     "jsonSchemaRenameFailed": "The table was altered, but a JSON Schema binding could not follow the rename: {{message}}",
     "rowCount": "{{count}} rows",
     "created": "Table {{name}} created",

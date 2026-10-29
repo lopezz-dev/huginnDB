@@ -63,10 +63,22 @@ const DRIVER_ALIASES: Record<string, Driver> = {
  * than wrong SQL.
  */
 
-/** Structure/view editing (`ALTER TABLE`, rename, `CREATE VIEW`). MongoDB has
- *  no SQL DDL at all; SQL Server's T-SQL DDL builder is not written yet, so
- *  both surfaces are read-only there for now. */
-export function supportsDdlEditing(driver: Driver | undefined): boolean {
+/** The structure editor's `CREATE TABLE` / `ALTER TABLE`. MongoDB has no SQL
+ *  DDL at all, so its structure tab is read-only (inferred fields and real
+ *  indexes). Every SQL engine has a builder in `db::ddl`. */
+export function supportsStructureEditing(driver: Driver | undefined): boolean {
+  return driver !== "mongodb";
+}
+
+/** The view editor's `CREATE VIEW` / `ALTER VIEW`, and renaming a view.
+ *
+ *  A separate question from `supportsStructureEditing`, because the answer
+ *  differs for SQL Server: its table DDL is written, its view DDL is not
+ *  (`db::view_ddl` refuses it). Renaming waits for the same builder —
+ *  `sp_rename` leaves the old name inside a view's stored definition, so a
+ *  correct rename means re-issuing its `CREATE`. MongoDB views are pipelines
+ *  edited in the aggregation editor instead. */
+export function supportsViewEditing(driver: Driver | undefined): boolean {
   return driver !== "mongodb" && driver !== "sqlserver";
 }
 
@@ -96,17 +108,6 @@ export function supportsSqlDump(driver: Driver | undefined): boolean {
  *  (`commands::mongo_indexes`, which refuses every other driver). */
 export function supportsIndexManager(driver: Driver | undefined): boolean {
   return driver === "mongodb";
-}
-
-/** Renaming a table or collection.
- *
- *  Deliberately *not* folded into `supportsDdlEditing`: MongoDB has no DDL to
- *  diff, but it does have `renameCollection`, so gating rename on the DDL
- *  builder hid a capability the engine has. SQL Server is the one driver left
- *  out — T-SQL renames through `EXEC sp_rename`, whose arguments are strings
- *  rather than identifiers, and that is wired up with the rest of its DDL. */
-export function supportsRenameTable(driver: Driver | undefined): boolean {
-  return driver !== "sqlserver";
 }
 
 /** Creating a database. SQLite's file *is* the database, so there is nothing
@@ -179,23 +180,6 @@ export function supportsCreateCollection(driver: Driver | undefined): boolean {
  *  unsigned integer types at all. */
 export function supportsUnsignedIntegers(driver: Driver | undefined): boolean {
   return driver === "mysql";
-}
-
-/**
- * Why the structure editor is read-only for `driver`, or `null` when it is not.
- *
- * The two reasons are genuinely different and the UI says so — SQL Server's
- * T-SQL DDL builder is simply unwritten, while MongoDB has no DDL to write —
- * so the copy has to be chosen per driver. Returning the *reason* rather than
- * having the component compare drivers keeps `supportsDdlEditing` and the
- * message that explains it from drifting apart: add an engine to one and the
- * other is right here.
- */
-export function ddlReadOnlyReason(
-  driver: Driver | undefined,
-): "mssql" | "mongo" | null {
-  if (supportsDdlEditing(driver)) return null;
-  return driver === "sqlserver" ? "mssql" : "mongo";
 }
 
 /** Reordering columns in the structure editor. MySQL-only: `MODIFY COLUMN …

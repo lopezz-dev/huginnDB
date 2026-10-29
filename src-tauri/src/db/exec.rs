@@ -337,10 +337,15 @@ pub async fn in_tx_expect_at_most_one(
 ///   `db::ddl::build_sqlite_rebuild` emits toggles `PRAGMA foreign_keys` around
 ///   the work, and that pragma is a no-op inside a transaction. So the list
 ///   manages its own boundaries and must be run verbatim.
-///
-/// SQL Server never reaches here: `db::ddl::reject_unsupported` and
-/// `build_view_ddl` refuse it before a statement list is ever produced, which is
-/// what makes the arm below genuinely unreachable rather than merely unhandled.
+/// * **SQL Server** has transactional DDL too — `sp_rename` included — so the
+///   batch is wrapped, on one pinned session. `XACT_ABORT` makes any error
+///   doom the transaction rather than leave it open around a half-applied
+///   change. Each statement goes as a plain SQL batch (`simple_query_sets`),
+///   not through `sp_executesql`: a transaction opened or closed inside an RPC
+///   call trips SQL Server's "transaction count after EXECUTE" check (error
+///   266), and several statements here `DECLARE` a variable, which is local to
+///   its batch. The session is closed afterwards rather than pooled, so a
+///   failure can never hand the next borrower an open transaction.
 pub async fn execute_all(pool: &DbPool, statements: &[String]) -> AppResult<()> {
     match pool {
         DbPool::Postgres(p) => {
@@ -360,8 +365,22 @@ pub async fn execute_all(pool: &DbPool, statements: &[String]) -> AppResult<()> 
                 sqlx::query(stmt).execute(p).await?;
             }
         }
-        DbPool::MsSql(_) => {
-            unreachable!("SQL Server is refused before a statement list is built")
+        DbPool::MsSql(p) => {
+            let mut c = p.acquire().await?;
+            c.close_on_drop();
+            c.simple_query_sets("SET XACT_ABORT ON; BEGIN TRANSACTION")
+                .await?;
+            for stmt in statements {
+                if let Err(e) = c.simple_query_sets(stmt).await {
+                    // Best effort: with XACT_ABORT the server has usually rolled
+                    // back already, and the session is closed either way.
+                    let _ = c
+                        .simple_query_sets("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION")
+                        .await;
+                    return Err(e);
+                }
+            }
+            c.simple_query_sets("COMMIT TRANSACTION").await?;
         }
         DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
     }

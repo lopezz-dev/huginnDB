@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/context-menu";
 import { TreeRow } from "@/components/ui/tree-row";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
-import { supportsDdlEditing, supportsDropDatabase } from "@/lib/db/driver";
+import { supportsDropDatabase, supportsViewEditing } from "@/lib/db/driver";
 import { notify } from "@/lib/notify";
 import { usePolicyLocker } from "@/lib/policy/access";
 import { DATABASE_NODE_KEY, type FlatRow } from "@/lib/schema/flatTree";
@@ -209,7 +209,7 @@ export function SchemaHeaderRow({
             })
           }
         />
-        {supportsDdlEditing(driver) && (
+        {supportsViewEditing(driver) && (
           <ContextMenuAction
             icon={Eye}
             label={t("schema.context.newView")}

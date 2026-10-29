@@ -62,9 +62,8 @@ import {
   type ColumnTypeCategory,
 } from "@/lib/db/columnTypes";
 import {
-  ddlReadOnlyReason,
   supportsColumnReorder,
-  supportsDdlEditing,
+  supportsStructureEditing,
   supportsIndexManager,
   supportsNativeCreateDdl,
   supportsUnsignedIntegers,
@@ -140,12 +139,10 @@ export function StructureEditorTab({
   const driver = useConnectionDriver(connectionId);
   const typeCategories = useMemo(() => columnCategoriesFor(driver), [driver]);
 
-  // Read-only on the drivers whose DDL the backend can't build yet: MongoDB
-  // (no SQL DDL at all — the tab shows inferred fields + real indexes) and
-  // SQL Server (the catalog introspection is complete, only the T-SQL builder
-  // is missing). Both reject preview/apply, so the Apply action is replaced by
-  // a badge instead of failing on click.
-  const isReadOnly = !supportsDdlEditing(driver);
+  // Read-only on MongoDB, which has no SQL DDL at all — the tab shows inferred
+  // fields and real indexes, and the backend rejects preview/apply — so the
+  // Apply action is replaced by a badge instead of failing on click.
+  const isReadOnly = !supportsStructureEditing(driver);
   // Whether the managed policy lets the person change this table's structure
   // (or, for a new one, create tables here). The tab opens either way: reading
   // a structure is `select`, and only Apply needs `ddl`.
@@ -461,9 +458,7 @@ export function StructureEditorTab({
           )}
           {isReadOnly ? (
             <span className="rounded-sm bg-muted px-2 py-1 text-2xs text-muted-foreground">
-              {ddlReadOnlyReason(driver) === "mssql"
-                ? t("structure.readOnlySqlServer")
-                : t("structure.readOnlyMongo")}
+              {t("structure.readOnlyMongo")}
             </span>
           ) : ddlLock ? (
             <span className="flex items-center gap-1 rounded-sm bg-muted px-2 py-1 text-2xs text-muted-foreground">

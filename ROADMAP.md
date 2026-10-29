@@ -40,7 +40,7 @@ in a roadmap and now don't:
 | MCP connector (`huginndb-mcp`) | 1.7.0 (binary) → 1.9.0 (per-connection write policy) → view management → MongoDB index/DDL | Read-only by default; `read-only`/`data`/`full` policy per connection, audited writes. Views are readable, editable and droppable on all five drivers at the `full` tier — no separate permission axis. MongoDB index creation/removal is reachable too (its mongosh grammar had no DDL at all before 1.19.0); SQL index and table DDL stay with `run_query`, which is more expressive than any portable form. See `docs/MCP_CONNECTOR_ROADMAP.md` and `docs/MCP.md`. |
 | Canary pre-release channel | 1.11.0 | Side-by-side opt-in build for dogfooding against real profiles before a stable release. See `docs/CANARY.md`. |
 | Reconnect-on-launch + session-level workspace layout | 1.11.0 | Restores live connections, focus, and pane geometry at startup. |
-| Microsoft SQL Server driver | 1.13.0 | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). Structure/view editing and `.sql` export are deferred — see the CHANGELOG entry for the full list. Requires SQL Server 2012+. |
+| Microsoft SQL Server driver | 1.13.0 | Read + edit-data MVP via `tiberius` (`sqlx` has no MSSQL driver). The structure editor and table rename followed in a later release; view editing and `.sql` export are still deferred — see Open #2. Requires SQL Server 2012+. |
 | **HuginnDB Pulse** — live server health/performance monitoring | 1.20.0 | Vital signs, top time-consuming statements (with `EXPLAIN`), storage, sessions and index usage for **MySQL and MongoDB**, docked next to the workspace or expanded into its own window; an opt-in per-connection history sampler (`pulse.db`) answers "was this slow yesterday too"; reachable over MCP through seven read-only tools. Postgres/SQLite/SQL Server show an explicit "not supported yet" state. See `docs/PULSE.md`. |
 | **AI panel** — an in-app, local-first assistant | 1.22.0 | Docked beside Pulse, off by default. Two independently declared axes (where inference runs, whether rows may enter the context) gate everything; four assisted actions run on one model call each, agent mode drives the read-only tool catalogue and is gated on a measured tool-capable endpoint, and no write tool exists at all. Conversations are memory-only. See `docs/AI.md` for what exists, `docs/AI_ROADMAP.md` for the design rationale and the questions deferred past v1, and ADRs #71–#73 and gotcha #74 for the invariants. |
 | Open VSX theme browser | 1.26.0 | An **Extensions** panel in the right dock: search the registry, install a theme, apply it, and update the installed ones. Icon themes are filtered out by reading each candidate's manifest (1–11 KB) rather than its package, downloads are verified against the registry's published `sha256`, and the destination is read from preferences inside the backend so the kill-switch cannot be bypassed. An update never overwrites a palette the user has edited. See ADR #88. |
@@ -55,10 +55,12 @@ in a roadmap and now don't:
 1. **Schema diff & export** — DDL extraction and a side-by-side compare
    between two schemas or two points in time. No backend or UI work started.
 2. **More drivers** — ClickHouse, DuckDB. Recipe for adding a driver is in
-   `CONTRIBUTING.md`. Microsoft SQL Server shipped (see above); what is left
-   there is its DDL surface — the structure editor, table/view rename and
-   `.sql` export/import — which needs a T-SQL builder in `db/ddl.rs`,
-   `db/view_ddl.rs` and `db/dump.rs`.
+   `CONTRIBUTING.md`. Microsoft SQL Server shipped (see above), and its
+   structure editor and table rename now have a T-SQL builder in `db/ddl.rs`
+   (`IDENTITY` on an existing column is refused: it takes a table rebuild).
+   What is left there is the view editor and view rename (`db/view_ddl.rs` —
+   `sp_rename` would leave the old name inside the view's stored definition)
+   and `.sql` export/import (`db/dump.rs`).
 3. **Cloud/managed database support (Supabase, Neon, PlanetScale, ...)** — a
    Supabase project's Postgres endpoint already connects today through the
    existing PostgreSQL driver (it's plain Postgres on the wire), so this

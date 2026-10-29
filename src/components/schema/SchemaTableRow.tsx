@@ -41,7 +41,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { tableTabTitle } from "@/lib/connectionLabel";
-import { supportsDdlEditing, supportsRenameTable } from "@/lib/db/driver";
+import { supportsViewEditing } from "@/lib/db/driver";
 import { selectSnippet } from "@/lib/grid/copyFormats";
 import { cn, formatBytes, formatCount } from "@/lib/utils";
 import { usePolicyLocker } from "@/lib/policy/access";
@@ -147,13 +147,9 @@ export const TableRow = memo(function TableRow({
   };
 
   const isMongo = actions.driver === "mongodb";
-  /** Structure and view editing need a DDL builder for the driver; SQL Server
-   *  doesn't have one yet, so it gets the same read-only treatment MongoDB has
-   *  — except that its structure *view* is real (see below). */
-  const canEditDdl = supportsDdlEditing(actions.driver);
-  /** Rename is its own capability: it needs no DDL builder, so MongoDB has it
-   *  (`renameCollection`) even though everything above is unavailable there. */
-  const canRename = supportsRenameTable(actions.driver);
+  /** View editing needs a view-DDL builder for the driver, which SQL Server
+   *  does not have yet (its *table* DDL is written — see `driver.ts`). */
+  const canEditView = supportsViewEditing(actions.driver);
 
   return (
     <ContextMenu onOpenChange={setMenuOpen}>
@@ -366,14 +362,12 @@ export const TableRow = memo(function TableRow({
               }
             />
             <ContextMenuSeparator />
-            {canRename && (
-              <ContextMenuAction
-                icon={PencilLine}
-                label={ct("schema.context.rename")}
-                locked={ddlLock}
-                onSelect={() => actions.onRename(t)}
-              />
-            )}
+            <ContextMenuAction
+              icon={PencilLine}
+              label={ct("schema.context.rename")}
+              locked={ddlLock}
+              onSelect={() => actions.onRename(t)}
+            />
             <ContextMenuAction
               icon={Eraser}
               label={ct("schema.context.empty")}
@@ -389,7 +383,7 @@ export const TableRow = memo(function TableRow({
             />
           </>
         )}
-        {/* MongoDB views. Not covered by the `canEditDdl` block below: a Mongo
+        {/* MongoDB views. Not covered by the `canEditView` block below: a Mongo
             view has no `CREATE VIEW` body to edit, it has a *pipeline* — so
             "Edit view" opens the aggregation editor with that pipeline loaded,
             and saving runs `collMod` rather than DDL. Renaming is absent
@@ -434,9 +428,6 @@ export const TableRow = memo(function TableRow({
         {!isMongo && !isView && (
           <>
             <ContextMenuSeparator />
-            {/* Opens read-only on a driver without a DDL builder (SQL Server):
-                the catalog introspection is complete, only `apply` is missing,
-                and columns/PK/FK/index detail is worth showing regardless. */}
             <ContextMenuAction
               icon={SquarePen}
               label={ct("schema.context.editStructure")}
@@ -452,16 +443,12 @@ export const TableRow = memo(function TableRow({
                 })
               }
             />
-            {/* Its own capability, not `canEditDdl`: rename needs no DDL
-                builder, which is why MongoDB has it too (below). */}
-            {canRename && (
-              <ContextMenuAction
-                icon={PencilLine}
-                label={ct("schema.context.rename")}
-                locked={ddlLock}
-                onSelect={() => actions.onRename(t)}
-              />
-            )}
+            <ContextMenuAction
+              icon={PencilLine}
+              label={ct("schema.context.rename")}
+              locked={ddlLock}
+              onSelect={() => actions.onRename(t)}
+            />
             <ContextMenuSeparator />
             <ContextMenuAction
               icon={Eraser}
@@ -482,7 +469,7 @@ export const TableRow = memo(function TableRow({
             but the definition itself is editable — see issue #86. MongoDB
             views are read-only aggregation pipelines, so excluded here too
             (same reasoning as the table-DDL guard above). */}
-        {canEditDdl && isView && (
+        {canEditView && isView && (
           <>
             <ContextMenuSeparator />
             <ContextMenuAction

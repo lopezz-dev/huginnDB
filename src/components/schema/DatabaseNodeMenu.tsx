@@ -51,7 +51,8 @@ import {
 } from "@/components/ui/context-menu";
 import {
   supportsCreateCollection,
-  supportsDdlEditing,
+  supportsStructureEditing,
+  supportsViewEditing,
   supportsSqlDump,
 } from "@/lib/db/driver";
 import { notify } from "@/lib/notify";
@@ -206,7 +207,7 @@ export function DatabaseNodeMenu({
             onSelect={() => void onRefresh()}
           />
           <ContextMenuSeparator />
-          {supportsDdlEditing(driver) && (
+          {supportsStructureEditing(driver) && (
             <ContextMenuAction
               icon={Table2}
               label={t("schema.context.newTable")}
@@ -214,7 +215,7 @@ export function DatabaseNodeMenu({
               onSelect={() => void createTableHere()}
             />
           )}
-          {supportsDdlEditing(driver) && (
+          {supportsViewEditing(driver) && (
             <ContextMenuAction
               icon={Eye}
               label={t("schema.context.newView")}
