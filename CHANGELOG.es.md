@@ -90,6 +90,16 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **Los separadores entre grupos de las barras son un solo componente, con dos
+  alturas.** Las líneas finas que separan grupos de controles —en la barra de
+  título, la barra de herramientas del grid, su fila de chips y su pie, la
+  barra del editor de consultas y la consola— y la del título de una pestaña
+  eran doce copias escritas a mano con cuatro alturas distintas. Ahora son un
+  único `Separator`: 16 px entre controles, 12 px entre trozos de texto
+  pequeño y los mismos 8 px a cada lado entre grupos de una barra. Los de la
+  consola quedan algo más bajos y los de la fila de chips algo más altos y
+  ajustados que antes; nada más cambia de sitio.
+
 - **Conector MCP: el límite de filas por defecto es 200, antes 1000.** Mil
   filas de una tabla corriente son varias veces los 25 000 tokens que Claude
   Code acepta en un resultado de herramienta MCP, así que el valor anterior

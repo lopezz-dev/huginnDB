@@ -82,6 +82,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The dividers between toolbar groups are one component, in two heights.**
+  The hairlines separating groups of controls — the title bar, the grid's
+  toolbar, chip row and footer, the query editor's toolbar, the console — and
+  the one inside a tab title were twelve hand-written copies in four heights.
+  They are now a single `Separator`: 16px between controls, 12px between runs
+  of small text, and the same 8px either side between toolbar groups. The
+  console's dividers are slightly shorter and the chip row's slightly taller
+  and tighter than before; nothing else moves.
+
 - **MCP connector: the default row limit is 200, down from 1000.** A thousand
   rows of an ordinary table are several times the 25,000 tokens Claude Code
   accepts in one MCP tool result, so the old default produced a result the

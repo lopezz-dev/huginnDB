@@ -216,13 +216,18 @@ pushing a count down. Worth naming individually:
   — as a contract it would fail on the 79 remaining — so it stays a one-line
   change for the moment that budget empties. That ordering is the point: the
   budget is what makes the contract mergeable later.
-- **A `Separator` primitive is a candidate.** Nine hand-rolled group dividers
-  across the app in four spellings (`h-3`/`h-4`/`h-5`, with and without
-  `mx-0.5`/`mx-1`, `<div>` and `<span>`), all of them the same `w-px bg-border`
-  rule. Not extracted yet on the norm `styles.ts` records — created on first
-  adoption, never speculatively — and the honest reading is that it is now past
-  that bar. Worth doing with the heights reconciled rather than preserving four,
-  which is the decision the migration actually contains.
+- ~~**A `Separator` primitive is a candidate.**~~ — **closed.** By the time it
+  was done there were twelve, not nine, in four heights (`h-3`/`h-3.5`/`h-4`/
+  `h-5`). `ui/separator.tsx` reconciles them to two: `h-4` between groups of
+  controls, `size="sm"` (`h-3`) between runs of `text-2xs` text — the
+  console's `h-5` and the chip row's `h-3.5` were outliers, not sizes. It
+  carries no margin: spacing is the row's `gap`, and the three `gap-1` rows pass
+  `mx-1` to land on the same 8px the `gap-2` toolbars get (the `mx-0.5` ones
+  move by 2px, the chip row loses its extra `mx-1`). Graduated straight to a
+  contract — `uiContracts.test.ts` rule G now refuses a class string with a
+  height, `w-px` and `bg-border` outside `ui/`, with an empty allowlist; the
+  aggregation editor's two `PanelResizeHandle`s are `w-px bg-border` too but
+  have no height, which is how the rule tells a handle from a divider.
 - The heaviest single files were `DocumentListView.tsx` (6 raw buttons, 4 OS
   tooltips) and `ConnectionTreeRow.tsx` (8 OS tooltips). Both are row/list
   components, so one pass over each clears a visible share of both budgets.

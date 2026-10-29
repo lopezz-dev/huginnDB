@@ -33,6 +33,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useLogs, type LogKindFilter } from "@/stores/query/logs";
 import { useFeedbackDialog } from "@/stores/dialogs/feedbackDialog";
@@ -203,7 +204,7 @@ export function Console() {
             })
           }
         />
-        <div className="mx-1 h-5 w-px bg-border" />
+        <Separator className="mx-1" />
         <label className="flex items-center gap-1 text-2xs text-muted-foreground">
           <Checkbox
             size="xs"
@@ -228,7 +229,7 @@ export function Console() {
           />
           {t("console.kindAi")}
         </label>
-        <div className="mx-1 h-5 w-px bg-border" />
+        <Separator className="mx-1" />
         <SearchField
           size="sm"
           value={query}

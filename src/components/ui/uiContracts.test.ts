@@ -322,6 +322,20 @@ describe("G — the patterns that now have a primitive", () => {
     // which is not a spinner assembled by hand.
     expect(hits(OUTSIDE_UI, /<Loader2[\s/>]/)).toEqual([]);
   });
+
+  it("no hand-rolled divider outside ui/separator", () => {
+    // One class string carrying a height, `w-px` and `bg-border`, in any order:
+    // the shape all twelve hand-rolled dividers had, in four heights. The
+    // height is what tells a divider from the aggregation editor's
+    // `PanelResizeHandle`s, which are `w-px bg-border` too but stretch to their
+    // panel and are dragged, not read.
+    expect(
+      hits(
+        OUTSIDE_UI,
+        /"(?=[^"]*\bw-px\b)(?=[^"]*\bbg-border\b)(?=(?:[^"]*\s)?h-[\d.]+\b)[^"]*"/,
+      ),
+    ).toEqual([]);
+  });
 });
 
 describe("K — a DataGrid is given a box with a definite height", () => {
