@@ -51,7 +51,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   its transaction ended is closed, so the server rolls the transaction back.
   This came out of merging the batch, `run_script` and `run_writes` execution
   loops into one shared session type, which changes nothing else they do.
+- **SQL Server: editing a cell, pasting into the grid and inserting rows failed
+  with error 266.** Each of these runs inside a transaction, and the
+  transaction was opened and closed through `sp_executesql`. SQL Server
+  refuses an RPC call that changes the transaction count ("Transaction count
+  after EXECUTE indicates a mismatching number of BEGIN and COMMIT
+  statements"), but only after it has opened the transaction. So the edit was
+  reported as failed, and the session went back to the pool still inside the
+  transaction, holding its locks, until the pool closed it. `BEGIN`, `COMMIT`
+  and `ROLLBACK` now go as plain SQL batches. A session dropped with its
+  transaction still open, whether after a failed rollback or a cancelled call,
+  is now closed instead of returned to the pool.
 
+## [1.37.0] — 2026-10-30
 
 ### Added
 
