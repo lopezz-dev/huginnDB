@@ -622,27 +622,44 @@ fn mssql_null_clause(c: &ColumnDef) -> &'static str {
 /// a different default.
 fn mssql_drop_default(qt: &str, column: &str) -> String {
     use crate::db::sql::mssql_nstring;
-    format!(
-        "DECLARE @df sysname = (SELECT dc.name FROM sys.default_constraints dc \
+    let lookup = format!(
+        "SELECT dc.name FROM sys.default_constraints dc \
          JOIN sys.columns c ON c.object_id = dc.parent_object_id \
          AND c.column_id = dc.parent_column_id \
-         WHERE dc.parent_object_id = OBJECT_ID({obj}) AND c.name = {col});\n\
-         IF @df IS NOT NULL EXEC({alter} + QUOTENAME(@df))",
+         WHERE dc.parent_object_id = OBJECT_ID({obj}) AND c.name = {col}",
         obj = mssql_nstring(qt),
         col = mssql_nstring(column),
-        alter = mssql_nstring(&format!("ALTER TABLE {qt} DROP CONSTRAINT ")),
-    )
+    );
+    mssql_drop_named_constraint(qt, &lookup)
 }
 
 /// Drop the table's primary-key constraint, whatever it is called — the same
 /// lookup as [`mssql_drop_default`], through `sys.key_constraints`.
 fn mssql_drop_primary_key(qt: &str) -> String {
     use crate::db::sql::mssql_nstring;
-    format!(
-        "DECLARE @pk sysname = (SELECT name FROM sys.key_constraints \
-         WHERE parent_object_id = OBJECT_ID({obj}) AND type = 'PK');\n\
-         IF @pk IS NOT NULL EXEC({alter} + QUOTENAME(@pk))",
+    let lookup = format!(
+        "SELECT name FROM sys.key_constraints \
+         WHERE parent_object_id = OBJECT_ID({obj}) AND type = 'PK'",
         obj = mssql_nstring(qt),
+    );
+    mssql_drop_named_constraint(qt, &lookup)
+}
+
+/// One batch that drops the constraint `lookup` names, or does nothing when it
+/// names none.
+///
+/// The statement is assembled into a variable and run through `sp_executesql`.
+/// `EXEC(N'…' + QUOTENAME(@n))` reads naturally but is not T-SQL: `EXEC(…)`
+/// takes only literals and variables joined with `+`, never a function call, so
+/// SQL Server refuses the batch at parse time ("Incorrect syntax near
+/// 'QUOTENAME'"). Every structure change that dropped a default or the primary
+/// key failed that way until this ran against a real server. `QUOTENAME(NULL)`
+/// is `NULL`, so `@sql` stays `NULL` when the lookup found nothing.
+fn mssql_drop_named_constraint(qt: &str, lookup: &str) -> String {
+    use crate::db::sql::mssql_nstring;
+    format!(
+        "DECLARE @sql nvarchar(max) = {alter} + QUOTENAME(({lookup}));\n\
+         IF @sql IS NOT NULL EXEC sp_executesql @sql",
         alter = mssql_nstring(&format!("ALTER TABLE {qt} DROP CONSTRAINT ")),
     )
 }
@@ -1604,9 +1621,13 @@ mod tests {
         assert!(stmts[0].contains("FROM sys.default_constraints"));
         assert!(stmts[0].contains("OBJECT_ID(N'[dbo].[t]')"));
         assert!(stmts[0].contains("c.name = N'flag'"));
-        assert!(
-            stmts[0].contains("EXEC(N'ALTER TABLE [dbo].[t] DROP CONSTRAINT ' + QUOTENAME(@df))")
-        );
+        assert!(stmts[0].starts_with(
+            "DECLARE @sql nvarchar(max) = N'ALTER TABLE [dbo].[t] DROP CONSTRAINT ' + QUOTENAME(("
+        ));
+        assert!(stmts[0].ends_with("IF @sql IS NOT NULL EXEC sp_executesql @sql"));
+        // `EXEC(<literal> + <function call>)` is not T-SQL: SQL Server refuses
+        // the whole batch at parse time, which is how this first shipped.
+        assert!(!stmts[0].contains("EXEC("));
         assert_eq!(stmts[1], "ALTER TABLE [dbo].[t] DROP COLUMN [flag]");
     }
 
@@ -1624,7 +1645,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(stmts.len(), 3);
-        assert!(stmts[0].starts_with("DECLARE @df sysname"));
+        assert!(stmts[0].starts_with("DECLARE @sql nvarchar(max)"));
         assert_eq!(
             stmts[1],
             "ALTER TABLE [dbo].[t] ALTER COLUMN [qty] bigint NOT NULL"

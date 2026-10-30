@@ -1,8 +1,8 @@
 /**
  * View definition editor (issue #86). Unlike HeidiSQL's bare SQL box, this
  * pairs a full-size Monaco editor for the view's SELECT body with a live,
- * debounced "preview results" grid — running the draft body with a `LIMIT`
- * so the columns/rows a JOIN-heavy view produces are visible immediately,
+ * debounced "preview results" grid — running the draft body with a row cap
+ * (`viewPreviewSql`: `LIMIT`, or `TOP` on SQL Server) so the columns/rows a JOIN-heavy view produces are visible immediately,
  * instead of read from the SQL text alone. A read-only DDL pane at the
  * bottom (same pattern as `StructureEditorTab`) shows the exact
  * `CREATE OR REPLACE VIEW` / drop+recreate statements Apply will run.
@@ -34,6 +34,7 @@ import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
+import { viewPreviewSql } from "@/lib/schema/viewPreview";
 import {
   usePreferences,
   selectEditorPrefs,
@@ -58,14 +59,6 @@ interface Props {
   schema?: string;
   view?: string;
   mode: StructureMode;
-}
-
-/** Wraps the draft SELECT so a live preview can run against any driver
- *  without parsing/rewriting the user's SQL (no LIMIT-clause juggling
- *  around an existing ORDER BY, subqueries, etc.). */
-const PREVIEW_ALIAS = "__huginn_view_preview";
-function previewSql(query: string): string {
-  return `SELECT * FROM (${query.trim().replace(/;\s*$/, "")}) AS ${PREVIEW_ALIAS} LIMIT 100`;
 }
 
 export function ViewEditorTab({
@@ -200,7 +193,7 @@ export function ViewEditorTab({
     }
     setDataPreviewLoading(true);
     api
-      .executeQuery(connectionId, previewSql(q))
+      .executeQuery(connectionId, viewPreviewSql(q, driver))
       .then((r) => {
         setDataPreview(r);
         setDataPreviewError(null);
@@ -210,7 +203,7 @@ export function ViewEditorTab({
         setDataPreviewError(String(e));
       })
       .finally(() => setDataPreviewLoading(false));
-  }, [connectionId]);
+  }, [connectionId, driver]);
 
   const runBothPreviews = useCallback(() => {
     if (freeSqlLock) {
