@@ -873,11 +873,17 @@ pub async fn fetch_collection_data(conn: &MongoConn, q: &TableQuery) -> AppResul
     // change); `count_documents` over a filter is the slow part on big
     // collections, mirroring the SQL COUNT(*) skip in `fetch_table_data`.
     let total = if q.with_count {
-        let mut count = coll.count_documents(filter.clone());
-        if let Some(c) = collation.clone() {
-            count = count.collation(c);
-        }
-        Some(count.await?)
+        Some(
+            count_matching(
+                &coll,
+                &q.filter,
+                filter.clone(),
+                collation.clone(),
+                nonblank(&q.hint),
+                None,
+            )
+            .await?,
+        )
     } else {
         None
     };
@@ -941,11 +947,16 @@ fn seed_id_column(result: &mut QueryResult) {
 /// collection and is exactly what made opening a multi-million-document
 /// collection feel slow. With any predicate an exact `count_documents` over
 /// the filter is unavoidable, but it no longer blocks the first render.
+///
+/// `hint` is the query panel's index hint: it does not change how many
+/// documents match, but it decides which index the count walks, the same one
+/// the page itself is read through — see [`count_matching`].
 pub async fn count_collection(
     conn: &MongoConn,
     collection: &str,
     predicate: &TableFilter,
     collation: Option<&str>,
+    hint: Option<&str>,
     mode: CountMode,
 ) -> AppResult<CountResult> {
     let db = resolve_db(conn)?;
@@ -973,19 +984,115 @@ pub async fn count_collection(
         // A collation changes which documents match (`strength: 1` makes "a"
         // and "A" equal), so the count has to carry it or it would count a
         // different set than the page shows.
-        let mut count = coll.count_documents(filter);
-        if let Some(limit) = count_ceiling(mode) {
-            count = count.max_time(limit);
-        }
-        if let Some(c) = collation.map(parse_collation).transpose()? {
-            count = count.collation(c);
-        }
-        let total = count.await?;
+        let collation = collation.map(parse_collation).transpose()?;
+        let total = count_matching(
+            &coll,
+            predicate,
+            filter,
+            collation,
+            hint,
+            count_ceiling(mode),
+        )
+        .await?;
         Ok(CountResult {
             total,
             estimated: false,
         })
     }
+}
+
+/// Which index a `countDocuments` should walk.
+#[derive(Debug, PartialEq, Eq)]
+enum CountIndex<'a> {
+    /// The planner's choice: there is a predicate and no hint.
+    Planner,
+    /// The query panel's hint, which the page is read through as well.
+    User(&'a str),
+    /// The `_id` index, for an exact count of the whole collection.
+    Id,
+}
+
+impl<'a> CountIndex<'a> {
+    fn of(predicate: &TableFilter, hint: Option<&'a str>) -> Self {
+        match hint {
+            Some(h) => Self::User(h),
+            None if predicate.is_unfiltered() => Self::Id,
+            None => Self::Planner,
+        }
+    }
+}
+
+/// The `_id` index's name. Every collection has one, except views and
+/// time-series collections — see [`hint_unusable`].
+const ID_INDEX: &str = "_id_";
+
+/// `countDocuments` over `filter`, through the index [`CountIndex::of`] picks.
+///
+/// The driver runs `countDocuments` as `$match` + `$group`, and with an empty
+/// `$match` the planner has nothing to choose an index by, so it scans the
+/// documents themselves: on a collection of 75 million that is every document
+/// read off disk and decompressed to add one to a counter. Hinting `_id_`
+/// turns the same count into a walk of the `_id` index alone — the pipeline
+/// needs no field, so the plan is covered and never fetches a document. It is
+/// still linear, but in a structure a fraction of the collection's size.
+///
+/// The collation is dropped on that path: it changes which documents match a
+/// predicate, and there is none, so it cannot change the total — and leaving
+/// it off keeps the hint valid whatever collation the `_id` index was built
+/// with.
+///
+/// A user's hint is passed as given and fails the count the way it fails the
+/// page; only the hint chosen here falls back, because the collections that
+/// cannot take it (views, time-series) still count fine the slow way.
+async fn count_matching(
+    coll: &mongodb::Collection<Document>,
+    predicate: &TableFilter,
+    filter: Document,
+    collation: Option<mongodb::options::Collation>,
+    hint: Option<&str>,
+    max_time: Option<Duration>,
+) -> AppResult<u64> {
+    use mongodb::options::Hint;
+
+    let index = CountIndex::of(predicate, hint);
+    let mut count = coll.count_documents(filter.clone());
+    if let Some(limit) = max_time {
+        count = count.max_time(limit);
+    }
+    match index {
+        CountIndex::Id => {
+            match count.hint(Hint::Name(ID_INDEX.to_string())).await {
+                Err(e) if hint_unusable(&e) => {}
+                r => return Ok(r?),
+            }
+            let mut count = coll.count_documents(filter);
+            if let Some(limit) = max_time {
+                count = count.max_time(limit);
+            }
+            Ok(count.await?)
+        }
+        CountIndex::User(h) => {
+            count = count.hint(Hint::Name(h.to_string()));
+            if let Some(c) = collation {
+                count = count.collation(c);
+            }
+            Ok(count.await?)
+        }
+        CountIndex::Planner => {
+            if let Some(c) = collation {
+                count = count.collation(c);
+            }
+            Ok(count.await?)
+        }
+    }
+}
+
+/// True when the server refused the `_id_` hint itself rather than the count:
+/// `BadValue` (2) for a collection with no index of that name, and
+/// `OptionNotSupportedOnView` (167) for a view — which is also what a
+/// time-series collection is underneath.
+fn hint_unusable(e: &mongodb::error::Error) -> bool {
+    matches!(e.kind.as_ref(), mongodb::error::ErrorKind::Command(c) if c.code == 2 || c.code == 167)
 }
 
 /// Ceiling on a filtered document count.
@@ -1367,6 +1474,29 @@ mod tests {
             Some(Duration::from_millis(super::COUNT_TIMEOUT_MS))
         );
         assert_eq!(super::count_ceiling(CountMode::Exact), None);
+    }
+
+    /// The whole-collection count walks `_id_` unless the user named an
+    /// index; a predicate with no hint is left to the planner, which can use
+    /// an index for it — `_id_` would force a full index walk instead.
+    #[test]
+    fn a_count_walks_the_id_index_only_when_nothing_better_is_known() {
+        use super::CountIndex;
+        let whole = TableFilter::default();
+        let filtered = TableFilter {
+            raw: Some("{ qty: { $gt: 3 } }".into()),
+            ..TableFilter::default()
+        };
+        assert_eq!(CountIndex::of(&whole, None), CountIndex::Id);
+        assert_eq!(CountIndex::of(&filtered, None), CountIndex::Planner);
+        assert_eq!(
+            CountIndex::of(&whole, Some("ts_1")),
+            CountIndex::User("ts_1")
+        );
+        assert_eq!(
+            CountIndex::of(&filtered, Some("ts_1")),
+            CountIndex::User("ts_1")
+        );
     }
 
     /// A browse of `table` for the describe functions, which take a whole

@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **MongoDB: *Count exactly* on a whole collection reads the `_id` index
+  instead of every document.** `countDocuments({})` gives the planner no
+  predicate to choose an index by, so it scanned the collection itself, which
+  on tens of millions of documents meant reading all of them from disk. The
+  count now hints `_id_`. Because the count needs no field, the server answers
+  it from the index alone. It is still a full pass, but over a structure a
+  fraction of the collection's size. Views and time-series collections, which
+  have no `_id_` index, fall back to the previous count.
+- **MongoDB: the query panel's index hint now applies to *Count exactly* as
+  well.** Before, the count ignored the hint and could take a different, slower
+  plan from the page it was counting.
+
 ## [1.37.0] — 2026-10-30
 
 ### Added

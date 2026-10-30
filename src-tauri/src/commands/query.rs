@@ -2288,15 +2288,18 @@ pub(crate) async fn count_table_rows_inner(
     query: TableScan,
     mode: CountMode,
 ) -> AppResult<CountResult> {
-    // `order`, `projection` and `hint` do not change how many rows match. A
-    // collation does on MongoDB (it is part of the match there); on SQL it
-    // only ever reaches the ORDER BY, so the SQL count ignores it.
+    // `order` and `projection` do not change how many rows match. A collation
+    // does on MongoDB (it is part of the match there); on SQL it only ever
+    // reaches the ORDER BY, so the SQL count ignores it. `hint` changes no
+    // total either, but on MongoDB it picks the index the count walks — the
+    // one the page is read through.
     let TableScan {
         connection_id,
         schema,
         table,
         filter,
         collation,
+        hint,
         ..
     } = query;
     let pool = state.pool_for(&connection_id)?;
@@ -2317,6 +2320,7 @@ pub(crate) async fn count_table_rows_inner(
             &table,
             &filter,
             nonblank(&collation),
+            nonblank(&hint),
             mode,
         )
         .await;
