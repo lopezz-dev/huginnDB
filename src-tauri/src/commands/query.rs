@@ -1252,11 +1252,7 @@ async fn execute_adhoc(
                 driver,
                 sql,
                 start,
-                if read_only {
-                    fetch_in_read_only_tx(&p, "BEGIN READ ONLY", sql).await
-                } else {
-                    fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
-                }
+                fetch_capped_alone(&p, read_only.then_some("BEGIN READ ONLY"), sql).await
             );
             (pg_result(&rows), truncated)
         }
@@ -1267,11 +1263,8 @@ async fn execute_adhoc(
                 driver,
                 sql,
                 start,
-                if read_only {
-                    fetch_in_read_only_tx(&p, "START TRANSACTION READ ONLY", sql).await
-                } else {
-                    fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
-                }
+                fetch_capped_alone(&p, read_only.then_some("START TRANSACTION READ ONLY"), sql)
+                    .await
             );
             (mysql_result(&rows), truncated)
         }
@@ -1513,7 +1506,13 @@ pub(crate) async fn execute_batch_inner(
                 let start = Instant::now();
                 let outcome: AppResult<(u64, Vec<QueryResult>)> = if is_select {
                     $client
-                        .simple_query_sets_capped(sql, MAX_ADHOC_QUERY_ROWS)
+                        // Drained: the batch's next statement runs on this
+                        // same session (ADR #127).
+                        .simple_query_sets_capped(
+                            sql,
+                            MAX_ADHOC_QUERY_ROWS,
+                            crate::db::mssql::Overflow::Drain,
+                        )
                         .await
                         .map(|(sets, truncated)| {
                             // Every non-empty set, not just the first. A single
@@ -1671,11 +1670,14 @@ pub const MAX_IN_VALUES: usize = 1000;
 /// DOM — a non-selective query over a large table reliably took down the
 /// whole app with an out-of-memory crash (no timeout ever ran, because the
 /// "Run" button's clock is cosmetic and never cancels the driver call). Rows
-/// past the cap are still drained off the wire (SQL: to leave the pooled
-/// session/connection at a clean protocol boundary instead of mid-response;
-/// Mongo: the cursor is simply dropped early, which is a supported operation)
-/// — they're discarded, not merely deferred, so backend memory stays bounded
-/// regardless of how many rows the query actually matches.
+/// past the cap are never kept, so backend memory stays bounded regardless of
+/// how many rows the query matches — and since ADR #127 they are not read
+/// either when nothing else needs the connection: a lone ad-hoc read closes
+/// its connection (SQL Server: its session) at the first row past the cap
+/// instead of draining the rest, and a Mongo cursor is simply dropped early,
+/// which is a supported operation. A batch or script, whose session carries
+/// state into its next statement, still has the rest drained so the session
+/// survives.
 pub const MAX_ADHOC_QUERY_ROWS: usize = 50_000;
 
 /// Upper bound on how many rows **one batch run** keeps in total, across every
@@ -1724,10 +1726,16 @@ pub(crate) fn shed_to_batch_budget<T>(rows: &mut Vec<T>, kept: &mut usize) -> bo
     over
 }
 
-/// Stream `sql` and keep only the first `cap` rows, still draining (and
-/// discarding) anything past that so the connection is left at a clean
-/// protocol boundary rather than mid-response — see [`MAX_ADHOC_QUERY_ROWS`].
-/// Returns `(rows, truncated)`.
+/// Stream `sql` and keep only the first `cap` rows, **stopping** at the first
+/// row past them — see [`MAX_ADHOC_QUERY_ROWS`] and ADR #127. Returns
+/// `(rows, truncated)`.
+///
+/// What the server still has to send is not read here. A connection the
+/// caller goes on using (a batch's or a script's session) is drained by sqlx
+/// itself before its next statement, so session state survives and the cost
+/// is what draining here used to be. A caller with no further use for the
+/// connection closes it instead and never pays for the rest at all —
+/// [`fetch_capped_alone`].
 pub(crate) async fn fetch_capped<'q, 'c, DB, E>(
     executor: E,
     sql: &'q str,
@@ -1741,26 +1749,34 @@ where
     use futures_util::TryStreamExt;
     let mut stream = sqlx::query(sql).fetch(executor);
     let mut rows = Vec::new();
-    let mut truncated = false;
     while let Some(row) = stream.try_next().await? {
-        if rows.len() < cap {
-            rows.push(row);
-        } else {
-            truncated = true;
+        if rows.len() == cap {
+            return Ok((rows, true));
         }
+        rows.push(row);
     }
-    Ok((rows, truncated))
+    Ok((rows, false))
 }
 
-/// [`fetch_capped`] inside a transaction opened with `begin` (`BEGIN READ
-/// ONLY` / `START TRANSACTION READ ONLY`), always rolled back — see
-/// [`execute_read_with_state`]. The rollback runs whether or not the read
-/// failed, so the connection goes back to the pool outside any transaction;
-/// the read's own error wins over a failed rollback, being the one that says
-/// what went wrong.
-async fn fetch_in_read_only_tx<DB>(
+/// [`fetch_capped`] for one ad-hoc read, on a connection of its own that is
+/// **closed** rather than drained when the result overflows the cap.
+///
+/// Closing is what makes stopping early worth anything over the network
+/// drivers: handed back to the pool, the connection would read every row past
+/// the cap before its next use anyway. Dropping the socket stops the server
+/// sending them instead. Nothing is lost by it — the read was this
+/// connection's only job, and it is detached from the pool so the pool's size
+/// stays honest.
+///
+/// With `begin` (`BEGIN READ ONLY` / `START TRANSACTION READ ONLY` — see
+/// [`execute_read_with_state`]) the read runs inside a transaction that is
+/// always rolled back: explicitly when the connection is kept, by the server
+/// when it is closed. A failed rollback closes the connection too, so it never
+/// goes back to the pool inside a transaction; the read's own outcome is what
+/// is returned either way, being the one that says what happened.
+async fn fetch_capped_alone<DB>(
     pool: &sqlx::Pool<DB>,
-    begin: &'static str,
+    begin: Option<&'static str>,
     sql: &str,
 ) -> Result<(Vec<DB::Row>, bool), sqlx::Error>
 where
@@ -1768,15 +1784,26 @@ where
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
 {
-    let mut tx = pool.begin_with(begin).await?;
-    let fetched = fetch_capped(&mut *tx, sql, MAX_ADHOC_QUERY_ROWS).await;
-    let rolled_back = tx.rollback().await;
-    let rows = fetched?;
-    rolled_back?;
-    Ok(rows)
+    use sqlx::Executor;
+    let mut conn = pool.acquire().await?;
+    if let Some(begin) = begin {
+        // A bare `&str` goes through the unprepared protocol, which MySQL
+        // needs for transaction control — see `execute_adhoc`'s write path.
+        conn.execute(begin).await?;
+    }
+    let fetched = fetch_capped(&mut *conn, sql, MAX_ADHOC_QUERY_ROWS).await;
+    if matches!(fetched, Ok((_, true))) {
+        drop(conn.detach());
+        return fetched;
+    }
+    if begin.is_some() && conn.execute("ROLLBACK").await.is_err() {
+        conn.close_on_drop();
+    }
+    fetched
 }
 
-/// SQLite's counterpart of [`fetch_in_read_only_tx`]: `PRAGMA query_only`
+/// SQLite's counterpart of [`fetch_capped_alone`]'s read-only transaction:
+/// `PRAGMA query_only`
 /// refuses every write, DDL included, on the connection it is set on.
 ///
 /// It is a per-connection setting, so the one thing that must not happen is
@@ -4265,6 +4292,62 @@ mod read_barrier_tests {
             .execute(&pool)
             .await
             .expect("the user's own write must not inherit query_only");
+    }
+
+    /// `n` rows, without a table.
+    fn series(n: usize) -> String {
+        format!(
+            "WITH RECURSIVE s(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM s WHERE i < {n}) \
+             SELECT i FROM s"
+        )
+    }
+
+    /// ADR #127: the read stops at the first row past the cap, and the
+    /// connection it stopped on still serves the next statement — the batch
+    /// and script runners keep using it.
+    #[tokio::test]
+    async fn fetch_capped_stops_at_the_cap_and_leaves_the_connection_usable() {
+        let pool = sqlite_pool("capped").await;
+        let mut conn = pool.acquire().await.unwrap();
+
+        let (rows, truncated) = fetch_capped(&mut *conn, &series(10), 3).await.unwrap();
+        assert_eq!((rows.len(), truncated), (3, true));
+
+        let (rows, truncated) = fetch_capped(&mut *conn, &series(3), 3).await.unwrap();
+        assert_eq!(
+            (rows.len(), truncated),
+            (3, false),
+            "exactly the cap is whole"
+        );
+
+        // A spent batch budget: nothing kept, and the flag still tells.
+        let (rows, truncated) = fetch_capped(&mut *conn, &series(2), 0).await.unwrap();
+        assert_eq!((rows.len(), truncated), (0, true));
+
+        sqlx::query("INSERT INTO t (id) VALUES (2)")
+            .execute(&mut *conn)
+            .await
+            .expect("a write after an early stop must not find the read still open");
+    }
+
+    /// An overflowing lone read closes its connection instead of returning
+    /// it: on a one-connection pool, the next acquire must still succeed,
+    /// which it only does if the connection was detached rather than leaked.
+    #[tokio::test]
+    async fn an_overflowing_lone_read_gives_its_slot_back() {
+        let pool = sqlite_pool("alone").await;
+        let (rows, truncated) = fetch_capped_alone(&pool, None, &series(MAX_ADHOC_QUERY_ROWS + 1))
+            .await
+            .unwrap();
+        assert_eq!((rows.len(), truncated), (MAX_ADHOC_QUERY_ROWS, true));
+        let (n,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM t")
+            .fetch_one(&pool)
+            .await
+            .expect("the pool must open a new connection in the closed one's place");
+        assert_eq!(n, 1);
+
+        let (rows, truncated) = fetch_capped_alone(&pool, None, &series(5)).await.unwrap();
+        assert_eq!((rows.len(), truncated), (5, false));
     }
 }
 

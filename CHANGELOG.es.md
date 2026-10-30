@@ -33,6 +33,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   además a serializar todas las filas para calcular su clave. Ahora esas
   acciones mantienen una sola identidad, la selección se lee al abrir el menú
   y la clave de cada fila se calcula una vez por página.
+- **Una consulta que devuelve más de 50 000 filas deja de leer al llegar al
+  tope en lugar de seguir recibiendo el resto de la tabla.** El editor siempre
+  ha mostrado solo las primeras 50 000 filas, pero todas las demás se seguían
+  leyendo de la red y se descartaban, así que un `SELECT * FROM tabla_grande`
+  tardaba lo mismo que leer la tabla entera y no había forma de cancelarlo. En
+  PostgreSQL, MySQL y SQL Server, una consulta suelta cierra ahora su conexión
+  en la primera fila que pasa del tope. En SQLite deja de leer ahí. Los lotes y
+  los scripts siguen leyendo más allá del tope, porque sus sentencias
+  siguientes necesitan la misma sesión (transacción, tablas `#temp`, `SET`). Un
+  `SELECT` con efectos secundarios que supera el tope ahora se aborta en vez de
+  ejecutarse hasta el final. Ver ADR #127.
 
 ## [1.37.0] — 2026-10-30
 
