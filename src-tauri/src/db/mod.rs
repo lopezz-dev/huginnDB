@@ -16,6 +16,8 @@
 //!   classifier that drives the MCP connector's write policy.
 //! * [`exec`] — the counterpart of [`sql`] for *running* a statement on any
 //!   pool, so a command never has to enumerate the drivers itself.
+//! * [`session`] — one borrowed session on any SQL pool, for the batch,
+//!   script and write-batch paths whose statements must share it.
 //! * [`ddl`] — pure builder that diffs two table structures into ordered DDL,
 //!   shared by structure-editor preview and apply so they cannot drift.
 //! * [`view_ddl`] — the same idea for views.
@@ -35,6 +37,7 @@ pub mod mssql;
 pub mod mysql;
 pub mod pool;
 pub mod postgres;
+pub mod session;
 pub mod sql;
 pub mod sqlite;
 pub mod ssh;

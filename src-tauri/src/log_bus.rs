@@ -208,6 +208,72 @@ pub(crate) fn log_sql_sink(
     sink.log(entry);
 }
 
+/// [`log_sql_sink`] with the three arguments that never change within one
+/// command — where entries go, which connection, which driver — said once.
+///
+/// What it removes is the shape most call sites had: a `match &res` whose two
+/// arms were the same seven-argument call, differing only in whether they
+/// passed the row count or the error. [`Self::outcome`] is that match, and it
+/// hands the result back, so the call site stays one expression.
+#[derive(Clone, Copy)]
+pub(crate) struct SqlLog<'a> {
+    sink: &'a dyn LogSink,
+    connection_id: &'a str,
+    driver: &'a str,
+}
+
+impl<'a> SqlLog<'a> {
+    pub(crate) fn new(sink: &'a dyn LogSink, connection_id: &'a str, driver: &'a str) -> Self {
+        Self {
+            sink,
+            connection_id,
+            driver,
+        }
+    }
+
+    /// `sql` finished and produced or affected `rows`.
+    pub(crate) fn ok(&self, sql: &str, start: std::time::Instant, rows: u64) {
+        log_sql_sink(
+            self.sink,
+            self.connection_id,
+            self.driver,
+            sql,
+            start,
+            Some(rows),
+            None,
+        );
+    }
+
+    /// `sql` failed with `error`.
+    pub(crate) fn err(&self, sql: &str, start: std::time::Instant, error: &str) {
+        log_sql_sink(
+            self.sink,
+            self.connection_id,
+            self.driver,
+            sql,
+            start,
+            None,
+            Some(error),
+        );
+    }
+
+    /// Log `result` — the count `rows` reads from it on success, its error's
+    /// text on failure — and return it untouched.
+    pub(crate) fn outcome<T, E: std::fmt::Display>(
+        &self,
+        sql: &str,
+        start: std::time::Instant,
+        result: Result<T, E>,
+        rows: impl FnOnce(&T) -> u64,
+    ) -> Result<T, E> {
+        match &result {
+            Ok(v) => self.ok(sql, start, rows(v)),
+            Err(e) => self.err(sql, start, &e.to_string()),
+        }
+        result
+    }
+}
+
 /// [`LogSink`] that discards every entry. Used by the headless MCP binary,
 /// which has no Console panel to feed — hence gated to the `mcp` feature.
 #[cfg(feature = "mcp")]

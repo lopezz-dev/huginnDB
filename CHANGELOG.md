@@ -40,7 +40,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   (transaction, `#temp` tables, `SET`). A `SELECT` with side effects that
   overflows the cap is now aborted rather than run to the end. See ADR #127.
 
-## [1.37.0] — 2026-10-30
+### Fixed
+
+- **MCP `run_writes` on SQL Server could hand a connection with an open
+  transaction back to the pool.** If the call was cancelled between two writes,
+  or its `ROLLBACK` failed, the session went back to the pool with the
+  transaction still open and its locks still held, and the next borrower ran
+  inside it. On PostgreSQL, MySQL and SQLite, `sqlx`'s transaction already
+  prevented this. All four drivers now share one rule: a session dropped before
+  its transaction ended is closed, so the server rolls the transaction back.
+  This came out of merging the batch, `run_script` and `run_writes` execution
+  loops into one shared session type, which changes nothing else they do.
+
 
 ### Added
 

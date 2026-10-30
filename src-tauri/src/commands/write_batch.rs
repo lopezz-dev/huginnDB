@@ -13,10 +13,14 @@
 //!
 //! # The promise, and what keeps it
 //!
-//! * **One session, one transaction.** PostgreSQL, MySQL and SQLite through a
-//!   `sqlx::Transaction`, which rolls back when dropped, so every early return
-//!   unwinds. SQL Server through `BEGIN`/`COMMIT TRANSACTION` statements on one
-//!   held session, the shape `db::exec` already uses for it (ADR #31).
+//! * **One session, one transaction.** A [`Session`] held for the whole list,
+//!   with the transaction opened by [`Session::begin`]. A session dropped
+//!   before its transaction ended — any early return, a failed `ROLLBACK`, the
+//!   caller's future cancelled between two writes — is closed rather than
+//!   pooled, so the server rolls back and every path unwinds. The same on all
+//!   four drivers: `sqlx::Transaction` gave PostgreSQL, MySQL and SQLite that
+//!   guarantee, and SQL Server's `BEGIN`/`COMMIT TRANSACTION` statements on a
+//!   held session (ADR #31) did not have it between two writes.
 //! * **Row writes only.** DDL is refused: MySQL commits implicitly around every
 //!   schema change, so a list carrying one could not be atomic there whatever
 //!   this code did. A schema change goes through `run_write`, on its own.
@@ -39,12 +43,12 @@
 //! On MySQL the atomicity is only as real as the table's storage engine: InnoDB
 //! honours it, MyISAM commits every statement.
 
+use crate::db::session::{failure_text, Session};
 use crate::db::sql::{StmtClass, Verbs};
 use crate::error::{AppError, AppResult};
-use crate::log_bus::{log_sql_sink, LogSink};
+use crate::log_bus::{log_sql_sink, LogSink, SqlLog};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
-use sqlx::Executor as _;
 use std::time::Instant;
 
 /// Most writes one call may carry.
@@ -203,92 +207,59 @@ pub(crate) async fn execute_write_batch_inner(
         log_sql_sink(sink, connection_id, driver, sql, batch_start, None, error);
     };
 
-    // Each driver runs the same loop; only the way it holds the transaction
-    // differs. A failed statement or a missed `expect_rows` hands back the
-    // reason, and the arm rolls back before returning it. `$sql` is the name
-    // `$run` reads the statement through.
-    macro_rules! drive {
-        (|$sql:ident| $run:expr, $rollback:block) => {{
-            let mut affected = Vec::with_capacity(writes.len());
-            for (i, write) in writes.iter().enumerate() {
-                let $sql = write.sql.trim();
-                let sql = $sql;
-                let start = Instant::now();
-                let failure = match $run {
-                    Ok(n) => {
-                        log_sql_sink(sink, connection_id, driver, sql, start, Some(n), None);
-                        affected.push(n);
-                        missed_expectation(i, write, n)
-                    }
-                    Err(e) => {
-                        let msg = e.to_string();
-                        log_sql_sink(sink, connection_id, driver, sql, start, None, Some(&msg));
-                        Some(format!("writes[{i}] failed: {msg}"))
-                    }
-                };
-                if let Some(reason) = failure {
-                    $rollback;
-                    closing("ROLLBACK", Some(&reason));
-                    return Err(AppError::InvalidInput(format!("{reason}. {ROLLED_BACK}")));
-                }
-            }
-            affected
-        }};
+    if let DbPool::Mongo(conn) = &pool {
+        return execute_mongo(sink, conn, connection_id, driver, writes).await;
     }
-
-    macro_rules! sqlx_batch {
-        ($p:expr) => {{
-            let mut tx = $p.begin().await?;
-            let affected = drive!(
-                |stmt| (&mut *tx).execute(stmt).await.map(|r| r.rows_affected()),
-                // The rollback's own failure is not worth reporting over the
-                // reason it was issued for, and `Transaction`'s drop rolls back
-                // regardless.
-                {
-                    let _ = tx.rollback().await;
-                }
-            );
-            if let Err(e) = tx.commit().await {
-                let msg = format!("COMMIT failed: {e}");
-                closing("COMMIT", Some(&msg));
-                return Err(AppError::InvalidInput(format!(
-                    "{msg}. The server did not keep the writes."
-                )));
-            }
-            affected
-        }};
-    }
-
-    let affected = match &pool {
-        DbPool::Postgres(p) => sqlx_batch!(p),
-        DbPool::Mysql(p) => sqlx_batch!(p),
-        DbPool::Sqlite(p) => sqlx_batch!(p),
-        DbPool::MsSql(p) => {
-            let mut c = p.acquire().await?;
-            c.simple_execute("BEGIN TRANSACTION").await?;
-            let affected = drive!(
-                |stmt| c.simple_execute(stmt).await,
-                // Best effort: a rollback that fails for a transport reason has
-                // already poisoned the session, which `PooledClient` then
-                // closes instead of returning to the pool.
-                {
-                    let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
-                }
-            );
-            if let Err(e) = c.simple_execute("COMMIT TRANSACTION").await {
-                let msg = format!("COMMIT failed: {e}");
-                closing("COMMIT", Some(&msg));
-                let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
-                return Err(AppError::InvalidInput(format!(
-                    "{msg}. The server did not keep the writes."
-                )));
-            }
-            affected
-        }
-        DbPool::Mongo(conn) => {
-            return execute_mongo(sink, conn, connection_id, driver, writes).await;
-        }
+    // The statements `sqlx::Transaction` sent for the three `sqlx` drivers,
+    // and the ones this path always sent for SQL Server.
+    let (begin, commit, rollback) = match pool {
+        DbPool::MsSql(_) => (
+            "BEGIN TRANSACTION",
+            "COMMIT TRANSACTION",
+            "ROLLBACK TRANSACTION",
+        ),
+        _ => ("BEGIN", "COMMIT", "ROLLBACK"),
     };
+
+    let mut session = Session::acquire(&pool).await?;
+    session.begin(begin).await?;
+    let log = SqlLog::new(sink, connection_id, driver);
+    let mut affected = Vec::with_capacity(writes.len());
+    for (i, write) in writes.iter().enumerate() {
+        let sql = write.sql.trim();
+        let start = Instant::now();
+        let failure = match session.exec(sql).await {
+            Ok(n) => {
+                log.ok(sql, start, n);
+                affected.push(n);
+                missed_expectation(i, write, n)
+            }
+            Err(e) => {
+                let msg = failure_text(&e);
+                log.err(sql, start, &msg);
+                Some(format!("writes[{i}] failed: {msg}"))
+            }
+        };
+        if let Some(reason) = failure {
+            // The rollback's own failure is not worth reporting over the
+            // reason it was issued for: the session is then dropped with its
+            // transaction still open, which closes it, and the server rolls
+            // back regardless.
+            let _ = session.end(rollback).await;
+            closing("ROLLBACK", Some(&reason));
+            return Err(AppError::InvalidInput(format!("{reason}. {ROLLED_BACK}")));
+        }
+    }
+    if let Err(e) = session.end(commit).await {
+        let msg = format!("COMMIT failed: {}", failure_text(&e));
+        closing("COMMIT", Some(&msg));
+        // Best effort, as before on SQL Server; on the others a failed COMMIT
+        // has already ended the transaction, and this is a harmless no-op.
+        let _ = session.end(rollback).await;
+        return Err(AppError::InvalidInput(format!(
+            "{msg}. The server did not keep the writes."
+        )));
+    }
     closing("COMMIT", None);
     Ok(WriteBatchResult {
         atomic: true,
@@ -306,6 +277,7 @@ async fn execute_mongo(
     driver: &str,
     writes: &[BatchWrite],
 ) -> AppResult<WriteBatchResult> {
+    let log = SqlLog::new(sink, connection_id, driver);
     let mut affected = Vec::with_capacity(writes.len());
     for (i, write) in writes.iter().enumerate() {
         let sql = write.sql.trim();
@@ -313,14 +285,14 @@ async fn execute_mongo(
         let (applied, reason) = match crate::db::mongo::query::execute(conn, sql).await {
             Ok(r) => {
                 let n = r.rows_affected;
-                log_sql_sink(sink, connection_id, driver, sql, start, Some(n), None);
+                log.ok(sql, start, n);
                 affected.push(n);
                 // This write ran: it is among the ones left in place.
                 (i + 1, missed_expectation(i, write, n))
             }
             Err(e) => {
                 let msg = e.to_string();
-                log_sql_sink(sink, connection_id, driver, sql, start, None, Some(&msg));
+                log.err(sql, start, &msg);
                 (i, Some(format!("writes[{i}] failed: {msg}")))
             }
         };

@@ -45,6 +45,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `SELECT` con efectos secundarios que supera el tope ahora se aborta en vez de
   ejecutarse hasta el final. Ver ADR #127.
 
+### Corregido
+
+- **`run_writes` del MCP en SQL Server podía devolver al pool una conexión con
+  una transacción abierta.** Si la llamada se cancelaba entre dos escrituras, o
+  su `ROLLBACK` fallaba, la sesión volvía al pool con la transacción abierta y
+  sus bloqueos aún retenidos, y el siguiente que la tomaba trabajaba dentro de
+  ella. En PostgreSQL, MySQL y SQLite, la transacción de `sqlx` ya lo impedía.
+  Ahora los cuatro drivers comparten una misma regla: una sesión que se suelta
+  antes de terminar su transacción se cierra, y el servidor revierte la
+  transacción. Salió al unificar en un solo tipo de sesión los bucles de
+  ejecución del lote, de `run_script` y de `run_writes`, sin cambiar nada más
+  de lo que hacen.
+
 ## [1.37.0] — 2026-10-30
 
 ### Añadido
