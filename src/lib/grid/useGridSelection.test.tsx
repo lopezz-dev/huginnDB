@@ -31,6 +31,25 @@ function setup(
 }
 
 describe("useGridSelection", () => {
+  it("keyOf answers a visible row from the keys already computed", () => {
+    const getRowKey = vi.fn(byFirstColumn);
+    const { result } = setup(rows, getRowKey);
+    const calls = getRowKey.mock.calls.length;
+    // One key per visible row, once — not again for each render that asks.
+    expect(calls).toBe(rows.length);
+    expect(rows.map((r) => result.current.keyOf(r))).toEqual(["1", "2", "3", "4"]);
+    expect(getRowKey.mock.calls.length).toBe(calls);
+    // A row outside the visible set still gets an answer.
+    expect(result.current.keyOf([9, "zeta"])).toBe("9");
+  });
+
+  it("keyOf is null for every row when the grid has no row identity", () => {
+    // Not `setup(rows, undefined)`: that would take its default key.
+    const { result } = renderHook(() =>
+      useGridSelection({ visibleRows: rows, getRowKey: undefined }),
+    );
+    expect(result.current.keyOf(rows[0])).toBeNull();
+  });
   it("toggles a single row and reports it by value, not index", () => {
     const { result } = setup();
     act(() => result.current.toggleRowKey("2"));

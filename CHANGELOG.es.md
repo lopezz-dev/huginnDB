@@ -22,6 +22,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **MongoDB: el hint de índice del panel de consulta también se aplica ahora a
   *Contar exactamente*.** Antes el conteo lo ignoraba y podía seguir un plan
   distinto y más lento que la página que estaba contando.
+- **La rejilla de datos ya no vuelve a pintar todas las filas visibles por
+  cambios que no afectan a ninguna.** Las filas están memoizadas, pero varias
+  acciones de fila (*filtrar por*, insertar, duplicar, eliminar, eliminar en
+  bloque) les llegaban con una identidad nueva en cada render de la pestaña,
+  así que escribir en el buscador de la barra o terminar de cargar una página
+  repintaba la página entera. Seleccionar una fila hacía lo mismo, porque la
+  selección era prop de todas las filas aunque solo la lee un menú contextual
+  abierto. En una tabla sin clave primaria, cada uno de esos renders volvía
+  además a serializar todas las filas para calcular su clave. Ahora esas
+  acciones mantienen una sola identidad, la selección se lee al abrir el menú
+  y la clave de cada fila se calcula una vez por página.
 
 ## [1.37.0] — 2026-10-30
 

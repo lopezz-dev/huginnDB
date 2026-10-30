@@ -26,7 +26,7 @@
  *   would otherwise be undercounted.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { formatValue } from "@/lib/grid/formatValue";
 import type { CellValue } from "@/types";
@@ -40,6 +40,9 @@ export interface GridSelection {
   hasSelection: boolean;
   /** Every selectable visible row is selected. */
   allSelected: boolean;
+  /** `row`'s key — the one already computed for the visible set, so a render
+   *  never pays `getRowKey` twice for the same row. */
+  keyOf: (row: CellValue[]) => string | null;
   /** Some but not all — drives the checkbox's indeterminate dash. */
   someSelected: boolean;
   toggleRowKey: (key: string) => void;
@@ -79,6 +82,26 @@ export function useGridSelection({
     if (!getRowKey) return [] as { key: string | null; row: CellValue[] }[];
     return visibleRows.map((row) => ({ key: getRowKey(row), row }));
   }, [visibleRows, getRowKey]);
+
+  /**
+   * The keys above, looked up by row identity. `DataGrid` needs a row's key
+   * for every visible row on every render, and calling `getRowKey` there again
+   * cost a `JSON.stringify` of the whole row per row per render on a table with
+   * no primary key — the keystrokes in the toolbar search included. A row the
+   * map has never seen (none today: the grid's rows *are* `visibleRows`) still
+   * gets an answer from `getRowKey`.
+   */
+  const keyByRow = useMemo(
+    () => new Map(keyedVisibleRows.map((r) => [r.row, r.key])),
+    [keyedVisibleRows],
+  );
+  const keyOf = useCallback(
+    (row: CellValue[]): string | null => {
+      const key = keyByRow.get(row);
+      return key !== undefined ? key : (getRowKey?.(row) ?? null);
+    },
+    [keyByRow, getRowKey],
+  );
 
   /**
    * The currently-selected rows, as values arrays, in visible order. Drives
@@ -243,6 +266,7 @@ export function useGridSelection({
     hasSelection,
     allSelected,
     someSelected,
+    keyOf,
     toggleRowKey,
     applyRowSelectionClick,
     toggleSelectAll,

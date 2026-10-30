@@ -19,6 +19,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **MongoDB: the query panel's index hint now applies to *Count exactly* as
   well.** Before, the count ignored the hint and could take a different, slower
   plan from the page it was counting.
+- **The data grid no longer repaints every visible row for changes that
+  concern none of them.** Rows are memoised, but several row actions (*filter
+  by*, insert, duplicate, delete, bulk delete) reached them with a new identity
+  on each render of the tab, so typing in the toolbar search or a page
+  finishing loading redrew the whole page. Selecting a row did the same,
+  because the selection was a prop of every row, though only an open context
+  menu reads it. On a table without a primary key, each of those renders also
+  serialised every row again to work out its key. Now those actions keep one
+  identity, the selection is read when a menu opens, and each row's key is
+  computed once per page.
 
 ## [1.37.0] — 2026-10-30
 

@@ -106,6 +106,7 @@ import { useGridColumns } from "@/lib/grid/useGridColumns";
 import { useGridKeyboardNav, type GridPaste } from "@/lib/grid/useGridKeyboardNav";
 import { rowNumber } from "@/lib/grid/pagination";
 import { useGridSelection } from "@/lib/grid/useGridSelection";
+import { useStableCallback } from "@/lib/useStableCallback";
 import { useSavedCellFlash } from "@/lib/grid/useSavedCellFlash";
 import { removeSortLevel, toggleSortLevel } from "@/lib/grid/sortSpec";
 import { useCellEditing } from "@/lib/grid/useCellEditing";
@@ -563,11 +564,22 @@ export function DataGrid({
     hasSelection,
     allSelected,
     someSelected,
+    keyOf,
     toggleRowKey,
     applyRowSelectionClick,
     toggleSelectAll,
     selectedColumnValues,
   } = useGridSelection({ visibleRows, getRowKey, onSelectionChange });
+
+  // The row actions `GridRow` receives as props. The parent tab declares them
+  // as plain functions over a wide closure, so each of its renders — every
+  // keystroke in the toolbar search among them — handed every visible row a
+  // new identity and repainted the whole page through `GridRow`'s memo.
+  const rowOnAddFilter = useStableCallback(onAddFilter);
+  const rowOnInsertRow = useStableCallback(onInsertRow);
+  const rowOnDuplicateRow = useStableCallback(onDuplicateRow);
+  const rowOnDeleteRow = useStableCallback(onDeleteRow);
+  const rowOnBulkDelete = useStableCallback(onBulkDelete);
 
   /**
    * Success feedback for a write, decided once here rather than at each of the
@@ -592,9 +604,9 @@ export function DataGrid({
    *  the page between the save and its refetch. */
   const flashedRowIndex = useMemo(() => {
     if (!flashed || !getRowKey) return null;
-    const i = visibleRows.findIndex((r) => getRowKey(r) === flashed.rowKey);
+    const i = visibleRows.findIndex((r) => keyOf(r) === flashed.rowKey);
     return i === -1 ? null : i;
-  }, [flashed, getRowKey, visibleRows]);
+  }, [flashed, getRowKey, keyOf, visibleRows]);
 
   /**
    * Reporting a rejected save belongs at this seam for the same reason the
@@ -1077,6 +1089,7 @@ export function DataGrid({
     bulkCopy,
     copyRows,
     selectedColumnValues,
+    selectedRows: () => selectedRows,
     applyRowSelectionClick,
     toggleRowKey,
   });
@@ -1087,6 +1100,7 @@ export function DataGrid({
     bulkCopy,
     copyRows,
     selectedColumnValues,
+    selectedRows: () => selectedRows,
     applyRowSelectionClick,
     toggleRowKey,
   };
@@ -1606,7 +1620,7 @@ export function DataGrid({
                           // `i`, which is the *filtered display index*.
                           const rowValues = row.original as CellValue[];
                           const rowKey = selectionEnabled
-                            ? (getRowKey?.(rowValues) ?? null)
+                            ? keyOf(rowValues)
                             : null;
                           // Every prop below is narrowed to "does this concern THIS
                           // row" (isSelected/isMultiSelected/activeColIdx/
@@ -1652,7 +1666,6 @@ export function DataGrid({
                               }
                               selectionEnabled={selectionEnabled}
                               hasSelection={hasSelection}
-                              selectedRows={selectedRows}
                               zebraStripes={zebraStripes}
                               cellStyle={cellStyle}
                               pinnedColumnSet={pinnedColumnSet}
@@ -1666,11 +1679,11 @@ export function DataGrid({
                               columnLock={columnLock}
                               onCellSave={onCellSave}
                               onNavigateFk={onNavigateFk}
-                              onAddFilter={onAddFilter}
-                              onInsertRow={onInsertRow}
-                              onDuplicateRow={onDuplicateRow}
-                              onDeleteRow={onDeleteRow}
-                              onBulkDelete={onBulkDelete}
+                              onAddFilter={rowOnAddFilter}
+                              onInsertRow={rowOnInsertRow}
+                              onDuplicateRow={rowOnDuplicateRow}
+                              onDeleteRow={rowOnDeleteRow}
+                              onBulkDelete={rowOnBulkDelete}
                               scrollRef={scrollRef}
                               setSelectedRowIndex={setSelectedRowIndex}
                               setActiveCell={setActiveCell}
