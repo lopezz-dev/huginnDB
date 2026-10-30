@@ -262,10 +262,15 @@ impl MsSqlPool {
         self.acquire().await?.simple_execute(sql).await
     }
 
-    /// Unparameterised read returning every result set the batch produced,
+    /// Unparameterised read returning the result sets the batch produced,
     /// keeping only the first `cap` rows of each — see
-    /// [`crate::commands::query::MAX_ADHOC_QUERY_ROWS`]. Returns whether any
+    /// [`crate::commands::query::MAX_ADHOC_QUERY_ROWS`]. Returns whether a
     /// result set was truncated.
+    ///
+    /// The session is borrowed for this one read, so the first row past the
+    /// cap ends it: the session is closed rather than drained
+    /// ([`Overflow::Close`], ADR #127), and the result sets after the one that
+    /// overflowed are not read.
     pub async fn query_sets_capped(
         &self,
         sql: &str,
@@ -273,7 +278,7 @@ impl MsSqlPool {
     ) -> AppResult<(Vec<Vec<Row>>, bool)> {
         self.acquire()
             .await?
-            .simple_query_sets_capped(sql, cap)
+            .simple_query_sets_capped(sql, cap, Overflow::Close)
             .await
     }
 
@@ -290,6 +295,16 @@ impl MsSqlPool {
 /// session once it leaves the vector.
 fn drop_expired(idle: &mut Vec<(MsSqlClient, Instant)>) {
     idle.retain(|(_, since)| since.elapsed() < crate::db::pool::IDLE_TIMEOUT);
+}
+
+/// What [`PooledClient::simple_query_sets_capped`] does with the rows past its
+/// cap — see ADR #127.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Overflow {
+    /// Read and discard them, keeping the session usable for what follows.
+    Drain,
+    /// Stop reading and close the session.
+    Close,
 }
 
 /// A checked-out session. Derefs to nothing on purpose: callers go through the
@@ -375,15 +390,18 @@ impl PooledClient {
     /// own `into_results()` would otherwise buffer — see
     /// [`crate::commands::query::MAX_ADHOC_QUERY_ROWS`].
     ///
-    /// Rows past the cap are still read off the stream (just not stored):
-    /// unlike dropping the stream early, this leaves the TDS session at the
-    /// clean protocol boundary [`Self::classify`] requires to consider it
-    /// reusable, rather than mid-response with unread bytes still in flight.
-    /// Returns whether any result set was truncated.
+    /// `overflow` says what the rows past the cap cost. [`Overflow::Drain`]
+    /// reads them off the stream without storing them, which leaves the TDS
+    /// session at the clean protocol boundary [`Self::classify`] requires to
+    /// consider it reusable — what a batch or script needs, since its later
+    /// statements run on this same session. [`Overflow::Close`] stops at the
+    /// first one and closes the session with this guard, for a caller that has
+    /// no later statement. Returns whether any result set was truncated.
     pub async fn simple_query_sets_capped(
         &mut self,
         sql: &str,
         cap: usize,
+        overflow: Overflow,
     ) -> AppResult<(Vec<Vec<Row>>, bool)> {
         let client = self.client_mut()?;
         let result = async {
@@ -399,6 +417,9 @@ impl PooledClient {
                             rows.push(row);
                         } else {
                             truncated = true;
+                            if overflow == Overflow::Close {
+                                break;
+                            }
                         }
                     }
                     tiberius::QueryItem::Metadata(_) => {
@@ -412,6 +433,11 @@ impl PooledClient {
             Ok((results, truncated))
         }
         .await;
+        // Stopped mid-response: the stream is not at a boundary, so this
+        // session must not reach the pool however `classify` judges the `Ok`.
+        if matches!(result, Ok((_, true))) && overflow == Overflow::Close {
+            self.close_on_drop();
+        }
         self.classify(result)
     }
 

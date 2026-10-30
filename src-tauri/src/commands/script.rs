@@ -46,6 +46,7 @@
 //! MongoDB writes in order.
 
 use crate::commands::query::{ColumnMeta, QueryResult};
+use crate::db::mssql::Overflow;
 use crate::db::sql::{skip_leading_noise, Verbs};
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink};
@@ -509,7 +510,9 @@ pub(crate) async fn execute_script_inner(
             let mut c = p.acquire().await?;
             c.close_on_drop();
             drive!(|stmt, cap| exec: c.simple_execute(stmt).await,
-            fetch: c.simple_query_sets_capped(stmt, cap).await.map(|(sets, truncated)| {
+            // Drained, not closed: the script's later statements need this
+            // session and whatever it holds (ADR #127).
+            fetch: c.simple_query_sets_capped(stmt, cap, Overflow::Drain).await.map(|(sets, truncated)| {
                 sets.into_iter()
                     .filter(|rows| !rows.is_empty())
                     .map(|rows| {

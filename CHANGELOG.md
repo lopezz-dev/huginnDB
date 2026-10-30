@@ -29,6 +29,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   serialised every row again to work out its key. Now those actions keep one
   identity, the selection is read when a menu opens, and each row's key is
   computed once per page.
+- **A query that returns more than 50 000 rows now stops reading at the cap
+  instead of streaming the rest of the table.** The editor has always shown
+  only the first 50 000 rows, but every row after them was still read off the
+  network and thrown away, so a `SELECT * FROM big_table` took as long as
+  reading the whole table, with no way to cancel it. On PostgreSQL, MySQL and
+  SQL Server, a single query now closes its connection at the first row past
+  the cap. On SQLite it stops reading there. Batches and scripts still read
+  past the cap, because their later statements need the same session
+  (transaction, `#temp` tables, `SET`). A `SELECT` with side effects that
+  overflows the cap is now aborted rather than run to the end. See ADR #127.
 
 ## [1.37.0] — 2026-10-30
 
