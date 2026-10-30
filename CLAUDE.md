@@ -188,6 +188,14 @@ Muninn is Alex's task board, reached through its MCP server (`list_tasks`, `move
 - **Hecho** only once Alex has merged it — he merges by hand, so an open PR is not done.
 - A child session gets the task's id in its brief; whichever session receives the outcome updates the card, so it never lags behind the PRs.
 
+**Structuring the board: one card per topic, the steps are its checklist.** Before creating a card, look for an open one on the same topic and add a checklist item (`add_checklist_item`) instead. A topic is what would be one ROADMAP entry, one subsystem roadmap section or one bug: a driver pair, Linux distribution, the open Fit and finish entries, what is left of the managed policy, the deferred MongoDB items. Each umbrella card carries the context of every step in its description (one `###` section per step) so nothing is lost by not having a card of its own.
+
+- Split a step out into its own card only when it gets its own branch/PR and is about to start, when it has a deadline (e.g. the ubuntu-24.04 move), or when it is a bug with user impact. When you split one out, link it from the umbrella.
+- Checklist items are concrete, verifiable steps — and include the bookkeeping the repo demands (CHANGELOG en + es, ROADMAP, `guard::HUMAN_POLICY`, "Fixes #N" on the PR). A step waiting on Alex starts with "Por aclarar con Alex:"; a finding he has not approved yet, with "Por aprobar:".
+- Planning: the label `1.NN` marks what is planned for that minor; Pendiente is ordered by it (planned release first, then ROADMAP order). Keep two Fit and finish items tagged for every minor.
+- The **Backlog** column only accepts cards that come from GitHub (it feeds Muninn's agent): new cards from an agent go to Pendiente, and do not move a GitHub-sourced card into Backlog without Alex asking — it hands it to that agent.
+- A GitHub issue is imported as a card with its raw English text. Documenting it means rewriting it in Spanish with what the code says (file and line, confirmed by reading vs. reproduced), the proposed fix and a checklist — keep the issue link and author.
+
 ## When the user asks for "the next thing"
 
 - Default to the **top open item in `ROADMAP.md`'s numbered "Open" list** unless
