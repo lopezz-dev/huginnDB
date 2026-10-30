@@ -108,13 +108,28 @@ impl Session {
     /// prepared protocol refuses a whole family of statements a CLI client
     /// runs without complaint. Passing a bare `&str` to `Executor::execute` is
     /// what selects it on `sqlx`.
+    ///
+    /// On SQL Server that means a plain SQL batch, not `sp_executesql`: what a
+    /// statement here leaves behind — a transaction, a `#temp` table, a `SET`
+    /// — is the reason these statements share a session at all, and none of it
+    /// outlives an RPC call (gotcha #128). The row count comes from
+    /// `@@ROWCOUNT` instead ([`PooledClient::batch_execute`]).
     pub async fn exec(&mut self, sql: &str) -> AppResult<u64> {
         use sqlx::Executor;
         on_conn!(
             &mut self.conn,
             |c| Ok((&mut **c).execute(sql).await?.rows_affected()),
-            |m| m.simple_execute(sql).await
+            |m| m.batch_execute(sql).await
         )
+    }
+
+    /// Run transaction control: [`Self::exec`] without the row count, which on
+    /// SQL Server saves the `@@ROWCOUNT` round trip.
+    async fn control(&mut self, sql: &str) -> AppResult<()> {
+        match &mut self.conn {
+            Conn::MsSql(m) => m.batch(sql).await,
+            _ => self.exec(sql).await.map(|_| ()),
+        }
     }
 
     /// Run a read and return its result sets, keeping at most `cap` rows of
@@ -163,14 +178,13 @@ impl Session {
         // Marked before running: a `BEGIN` cut off mid-flight leaves the
         // server's state unknown, and unknown is treated as open.
         self.in_tx = true;
-        self.exec(sql).await?;
-        Ok(())
+        self.control(sql).await
     }
 
     /// Close the transaction with `sql` (`COMMIT` or `ROLLBACK`). Only when it
     /// succeeds is the session trusted to go back to the pool again.
     pub async fn end(&mut self, sql: &str) -> AppResult<()> {
-        self.exec(sql).await?;
+        self.control(sql).await?;
         self.in_tx = false;
         Ok(())
     }

@@ -486,11 +486,44 @@ impl PooledClient {
         Ok(())
     }
 
+    /// Run `sql` as a plain SQL batch and throw away whatever it returns.
+    ///
+    /// For statements whose effect must outlive the call — transaction
+    /// control, a `#temp` table, a `SET`, a `USE` — none of which survive
+    /// [`Self::simple_execute`]'s `sp_executesql` (gotcha #128).
+    pub async fn batch(&mut self, sql: &str) -> AppResult<()> {
+        self.simple_query_sets(sql).await.map(|_| ())
+    }
+
+    /// [`Self::batch`], then the rows its **last** statement affected, read as
+    /// `@@ROWCOUNT` in a second batch on the same session.
+    ///
+    /// tiberius reports row counts only for `sp_executesql` calls; a plain
+    /// batch's `DONE` counts never leave its stream. `@@ROWCOUNT` survives from
+    /// one batch to the next on a session, so asking right after is exact for
+    /// the one-statement texts the session paths send (the editor batch and
+    /// `run_script` split on `;`, `run_writes` takes one statement per entry).
+    /// A text holding several statements reports its last one, where
+    /// [`Self::simple_execute`] summed them all.
+    pub async fn batch_execute(&mut self, sql: &str) -> AppResult<u64> {
+        self.batch(sql).await?;
+        let sets = self
+            .simple_query_sets("SELECT CAST(@@ROWCOUNT AS bigint)")
+            .await?;
+        let n = sets
+            .first()
+            .and_then(|rows| rows.first())
+            .and_then(|row| row.try_get::<i64, _>(0).ok().flatten())
+            .unwrap_or(0);
+        Ok(n.max(0) as u64)
+    }
+
     /// Run SQL with no parameters for its side effect (row count only).
     ///
     /// Through `sp_executesql`, which is what gives back row counts — and why
     /// transaction control must not come through here (see
-    /// [`Self::begin_tran`]).
+    /// [`Self::begin_tran`]), nor anything that has to outlive the call
+    /// ([`Self::batch_execute`]).
     pub async fn simple_execute(&mut self, sql: &str) -> AppResult<u64> {
         let client = self.client_mut()?;
         let result = client

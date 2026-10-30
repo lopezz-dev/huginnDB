@@ -69,6 +69,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   lotes SQL planos. Una sesión que se suelta con su transacción todavía
   abierta, ya sea tras un rollback fallido o una llamada cancelada, se cierra
   en lugar de volver al pool.
+- **SQL Server: ejecutar un lote en el editor, y `run_script` y `run_writes`
+  del MCP, fallaban con el mismo error 266, y las tablas `#temp` y los `SET`
+  no llegaban a la sentencia siguiente.** Estas operaciones ejecutan sus
+  sentencias en una misma sesión precisamente para que lo que deja una
+  sentencia lo encuentre la siguiente. En SQL Server, cada sentencia seguía
+  pasando por `sp_executesql`, que limita a esa única llamada la transacción,
+  la tabla `#temp` o el `SET`. Ahora se ejecutan como lotes SQL planos, y el
+  número de filas que informa cada sentencia se lee después de `@@ROWCOUNT`.
 
 ## [1.37.0] — 2026-10-30
 
