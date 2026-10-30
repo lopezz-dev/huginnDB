@@ -91,10 +91,10 @@ export function supportsNativeCreateDdl(driver: Driver | undefined): boolean {
 }
 
 /** Whole-database / per-table `.sql` export and import. Needs a per-driver
- *  literal encoder (`db/dump.rs`), which SQL Server doesn't have yet;
- *  MongoDB uses the per-collection JSON path instead. */
+ *  literal encoder (`db/dump.rs`), which every SQL engine has; MongoDB uses
+ *  the per-collection JSON path instead. */
 export function supportsSqlDump(driver: Driver | undefined): boolean {
-  return driver !== "mongodb" && driver !== "sqlserver";
+  return driver !== "mongodb";
 }
 
 /** The dedicated index manager (list / create / hide / recreate / drop).

@@ -15,12 +15,23 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 
 import { splitSql } from "@/lib/sql/sqlSplit";
+import { splitGoBatches } from "@/lib/sql/tsqlBatches";
 import { api } from "@/lib/tauri";
+import type { Driver } from "@/types";
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string;
 
+/** Statement texts for `driver`. A SQL Server script with `GO` lines runs as
+ *  its batches (a procedure body must not be cut at its semicolons); anything
+ *  else is split on `;`. */
+export function splitForImport(text: string, driver: Driver | undefined): string[] {
+  const batches = driver === "sqlserver" ? splitGoBatches(text) : null;
+  return batches ?? splitSql(text).map((s) => s.text);
+}
+
 export async function pickAndSplitSqlFile(
   t: Translate,
+  driver: Driver | undefined,
 ): Promise<string[] | null> {
   const picked = await openFileDialog({
     multiple: false,
@@ -30,6 +41,6 @@ export async function pickAndSplitSqlFile(
   });
   if (typeof picked !== "string" || !picked) return null;
   const text = await api.readTextFile(picked);
-  const statements = splitSql(text).map((s) => s.text);
+  const statements = splitForImport(text, driver);
   return statements.length > 0 ? statements : null;
 }

@@ -248,7 +248,7 @@ export function ConnectionActionsMenu({
                     // A .sql file runs as a batch of free statements.
                     locked={lock("freeSql")}
                     onSelect={() =>
-                      void pickAndSplitSqlFile(t).then((statements) => {
+                      void pickAndSplitSqlFile(t, driver).then((statements) => {
                         if (statements) setImportStatements(statements);
                       })
                     }
