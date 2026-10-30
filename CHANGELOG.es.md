@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.37.1] — 2026-10-30
+
 ### Cambiado
 
 - **MongoDB: *Contar exactamente* sobre una colección entera recorre el índice

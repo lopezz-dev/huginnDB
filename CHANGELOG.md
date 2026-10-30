@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.37.1] — 2026-10-30
+
 ### Changed
 
 - **MongoDB: *Count exactly* on a whole collection reads the `_id` index
