@@ -45,14 +45,13 @@
 //! multi-statement script to pin, and `run_writes` already runs a list of
 //! MongoDB writes in order.
 
-use crate::commands::query::{ColumnMeta, QueryResult};
-use crate::db::mssql::Overflow;
+use crate::commands::query::{column_meta, QueryResult};
+use crate::db::session::Session;
 use crate::db::sql::{skip_leading_noise, Verbs};
 use crate::error::{AppError, AppResult};
-use crate::log_bus::{log_sql_sink, LogSink};
+use crate::log_bus::{log_sql_sink, LogSink, SqlLog};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
-use sqlx::Executor as _;
 use std::borrow::Cow;
 use std::time::Instant;
 
@@ -376,157 +375,96 @@ pub(crate) async fn execute_script_inner(
         log_sql_sink(sink, connection_id, driver, sql, script_start, None, error);
     };
 
-    // One loop, two ways to hold a session. `$exec` runs a statement for its
-    // row count, `$fetch` runs a read and yields its non-empty result sets as
-    // `(columns, rows, truncated)`; both read the statement through `$sql` and
-    // `$fetch` the remaining row budget through `$cap`.
-    macro_rules! drive {
-        (|$sql:ident, $cap:ident| exec: $exec:expr, fetch: $fetch:expr) => {{
-            if transaction {
-                let $sql = begin;
-                $exec?;
-                closing(begin, None);
-            }
-            let mut left = max_rows;
-            let mut ran = 0usize;
-            let mut total_affected = 0u64;
-            let mut results = Vec::new();
-            for (i, st) in statements.iter().enumerate() {
-                if is_blank(&unwrap_executable_comments(st.sql)) {
-                    continue;
-                }
-                let $sql = st.sql;
-                let $cap = left;
-                let start = Instant::now();
-                let outcome: AppResult<u64> = if crate::db::sql::is_read_only($sql) {
-                    let fetched: AppResult<
-                        Vec<(Vec<ColumnMeta>, Vec<Vec<serde_json::Value>>, bool)>,
-                    > = $fetch;
-                    fetched.map(|sets| {
-                        let mut produced = 0u64;
-                        for (columns, mut rows, truncated) in sets {
-                            produced += rows.len() as u64;
-                            let over = rows.len() > left;
-                            rows.truncate(left);
-                            left -= rows.len();
-                            results.push(ScriptRows {
-                                statement: i,
-                                line: st.line,
-                                result: QueryResult::rows(
-                                    columns,
-                                    rows,
-                                    start.elapsed().as_millis() as u64,
-                                )
-                                .with_truncated(truncated || over),
-                            });
-                        }
-                        produced
-                    })
-                } else {
-                    $exec.map(|n| {
-                        total_affected += n;
-                        n
-                    })
-                };
-                match outcome {
-                    Ok(n) => {
-                        log_sql_sink(sink, connection_id, driver, $sql, start, Some(n), None);
-                        ran += 1;
-                    }
-                    Err(e) => {
-                        let msg = e.to_string();
-                        log_sql_sink(sink, connection_id, driver, $sql, start, None, Some(&msg));
-                        let reason = format!("{} failed: {msg}", name(i, st));
-                        if transaction {
-                            // Best effort: the session is closed right after,
-                            // which rolls back whatever this did not.
-                            let $sql = rollback;
-                            let _ = $exec;
-                            closing(rollback, Some(&reason));
-                            return Err(AppError::InvalidInput(format!("{reason}. {ROLLED_BACK}")));
-                        }
-                        let left_in_place = match ran {
-                            0 => "nothing ran before it".to_string(),
-                            1 => "the 1 statement before it ran and stays applied".to_string(),
-                            n => format!("the {n} statements before it ran and stay applied"),
-                        };
-                        return Err(AppError::InvalidInput(format!(
-                            "{reason}. No transaction was requested: {left_in_place}; the rest \
-                             did not run."
-                        )));
-                    }
-                }
-            }
-            if transaction {
-                let $sql = commit;
-                if let Err(e) = $exec {
-                    let msg = format!("COMMIT failed: {e}");
-                    closing(commit, Some(&msg));
-                    return Err(AppError::InvalidInput(format!(
-                        "{msg}. The server did not keep the script's changes."
-                    )));
-                }
-                closing(commit, None);
-            }
-            ScriptResult {
-                transaction,
-                statements: ran,
-                total_affected,
-                results,
-            }
-        }};
+    // The session is closed when it drops, on every path out of here — see
+    // the module docs for why it never goes back to the pool.
+    let log = SqlLog::new(sink, connection_id, driver);
+    let mut session = Session::acquire(&pool).await?;
+    session.close_on_drop();
+    if transaction {
+        session.begin(begin).await?;
+        closing(begin, None);
     }
-
-    // The session is closed when its guard drops, on every path out of here —
-    // see the module docs for why it never goes back to the pool.
-    macro_rules! sqlx_script {
-        ($p:expr, $decode:path) => {{
-            let mut conn = $p.acquire().await?;
-            conn.close_on_drop();
-            drive!(|stmt, cap| exec: (&mut *conn)
-                .execute(stmt)
-                .await
-                .map(|r| r.rows_affected())
-                .map_err(AppError::from),
-            fetch: crate::commands::query::fetch_capped(&mut *conn, stmt, cap)
-                .await
-                .map(|(rows, truncated)| {
-                    let (columns, data) = $decode(&rows);
-                    if columns.is_empty() {
-                        Vec::new()
-                    } else {
-                        vec![(columns, data, truncated)]
-                    }
-                })
-                .map_err(AppError::from))
-        }};
-    }
-
-    Ok(match &pool {
-        DbPool::Postgres(p) => sqlx_script!(p, crate::commands::query::pg_result),
-        DbPool::Mysql(p) => sqlx_script!(p, crate::commands::query::mysql_result),
-        DbPool::Sqlite(p) => sqlx_script!(p, crate::commands::query::sqlite_result),
-        DbPool::MsSql(p) => {
-            let mut c = p.acquire().await?;
-            c.close_on_drop();
-            drive!(|stmt, cap| exec: c.simple_execute(stmt).await,
-            // Drained, not closed: the script's later statements need this
-            // session and whatever it holds (ADR #127).
-            fetch: c.simple_query_sets_capped(stmt, cap, Overflow::Drain).await.map(|(sets, truncated)| {
-                sets.into_iter()
-                    .filter(|rows| !rows.is_empty())
-                    .map(|rows| {
-                        let (columns, data) = crate::db::mssql::schema::decode_rows(&rows);
-                        let columns = columns
-                            .into_iter()
-                            .map(|(name, data_type)| ColumnMeta { name, data_type })
-                            .collect();
-                        (columns, data, truncated)
-                    })
-                    .collect()
-            }))
+    let mut left = max_rows;
+    let mut ran = 0usize;
+    let mut total_affected = 0u64;
+    let mut results = Vec::new();
+    for (i, st) in statements.iter().enumerate() {
+        if is_blank(&unwrap_executable_comments(st.sql)) {
+            continue;
         }
-        DbPool::Mongo(_) => unreachable!("refused above"),
+        let sql = st.sql;
+        let start = Instant::now();
+        let outcome: AppResult<u64> = if crate::db::sql::is_read_only(sql) {
+            // Capped at what is left of the script's budget, not the
+            // per-statement ceiling: the rows past it would only be shed.
+            session.fetch(sql, left).await.map(|sets| {
+                let mut produced = 0u64;
+                // A read that matched nothing decodes no columns, and has no
+                // panel to show.
+                for set in sets.into_iter().filter(|s| !s.columns.is_empty()) {
+                    let mut rows = set.rows;
+                    produced += rows.len() as u64;
+                    let over = rows.len() > left;
+                    rows.truncate(left);
+                    left -= rows.len();
+                    results.push(ScriptRows {
+                        statement: i,
+                        line: st.line,
+                        result: QueryResult::rows(
+                            column_meta(set.columns),
+                            rows,
+                            start.elapsed().as_millis() as u64,
+                        )
+                        .with_truncated(set.truncated || over),
+                    });
+                }
+                produced
+            })
+        } else {
+            session.exec(sql).await.inspect(|n| total_affected += n)
+        };
+        match outcome {
+            Ok(n) => {
+                log.ok(sql, start, n);
+                ran += 1;
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                log.err(sql, start, &msg);
+                let reason = format!("{} failed: {msg}", name(i, st));
+                if transaction {
+                    // Best effort: the session is closed right after, which
+                    // rolls back whatever this did not.
+                    let _ = session.end(rollback).await;
+                    closing(rollback, Some(&reason));
+                    return Err(AppError::InvalidInput(format!("{reason}. {ROLLED_BACK}")));
+                }
+                let left_in_place = match ran {
+                    0 => "nothing ran before it".to_string(),
+                    1 => "the 1 statement before it ran and stays applied".to_string(),
+                    n => format!("the {n} statements before it ran and stay applied"),
+                };
+                return Err(AppError::InvalidInput(format!(
+                    "{reason}. No transaction was requested: {left_in_place}; the rest                      did not run."
+                )));
+            }
+        }
+    }
+    if transaction {
+        if let Err(e) = session.end(commit).await {
+            let msg = format!("COMMIT failed: {e}");
+            closing(commit, Some(&msg));
+            return Err(AppError::InvalidInput(format!(
+                "{msg}. The server did not keep the script's changes."
+            )));
+        }
+        closing(commit, None);
+    }
+    Ok(ScriptResult {
+        transaction,
+        statements: ran,
+        total_affected,
+        results,
     })
 }
 

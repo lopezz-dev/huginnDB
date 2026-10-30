@@ -16,12 +16,11 @@
 use crate::commands::insert::{build_insert_statement, InsertClauses, InsertColumn};
 use crate::commands::schema::list_columns_inner;
 use crate::db::mysql;
+use crate::db::session::{failure_text, fetch_capped, Session};
 use crate::db::sql::{is_read_only, Dialect};
-use crate::db::values::{
-    mysql_columns, mysql_value, pg_columns, pg_value, sqlite_columns, sqlite_value,
-};
+use crate::db::values::pg_value;
 use crate::error::{AppError, AppResult};
-use crate::log_bus::{log_sql_sink, LogSink};
+use crate::log_bus::{log_sql_sink, LogSink, SqlLog};
 use crate::state::{AppState, DbPool};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1012,75 +1011,26 @@ pub(crate) fn stmt_preview(sql: &str) -> String {
     }
 }
 
-/// Decode a Postgres result set into `(columns, rows)`. Shared by
-/// [`execute_with_state`] and [`execute_batch`] so the two paths can never
-/// drift in how they map driver rows to JSON values.
 /// Map `db::exec::query_rows`'s untyped `(name, type_name)` pairs into the
 /// serialisable DTO. The pairs stop at the `db/` boundary (see `query_rows`);
 /// this is the one place that crosses them over.
-fn column_meta(pairs: Vec<(String, String)>) -> Vec<ColumnMeta> {
+pub(crate) fn column_meta(pairs: Vec<(String, String)>) -> Vec<ColumnMeta> {
     pairs
         .into_iter()
         .map(|(name, data_type)| ColumnMeta { name, data_type })
         .collect()
 }
 
-pub(crate) fn pg_result(rows: &[sqlx::postgres::PgRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
-    use sqlx::Row;
-    let columns = rows
-        .first()
-        .map(|r| {
-            pg_columns(r)
-                .into_iter()
-                .map(|(name, data_type)| ColumnMeta { name, data_type })
-                .collect()
-        })
-        .unwrap_or_default();
-    let data = rows
-        .iter()
-        .map(|r| (0..r.columns().len()).map(|i| pg_value(r, i)).collect())
-        .collect();
-    (columns, data)
-}
-
-/// Decode a MySQL result set into `(columns, rows)`. See [`pg_result`].
-pub(crate) fn mysql_result(rows: &[sqlx::mysql::MySqlRow]) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
-    use sqlx::Row;
-    let columns = rows
-        .first()
-        .map(|r| {
-            mysql_columns(r)
-                .into_iter()
-                .map(|(name, data_type)| ColumnMeta { name, data_type })
-                .collect()
-        })
-        .unwrap_or_default();
-    let data = rows
-        .iter()
-        .map(|r| (0..r.columns().len()).map(|i| mysql_value(r, i)).collect())
-        .collect();
-    (columns, data)
-}
-
-/// Decode a SQLite result set into `(columns, rows)`. See [`pg_result`].
-pub(crate) fn sqlite_result(
-    rows: &[sqlx::sqlite::SqliteRow],
+/// A `db::values::*_result` (or `db::mssql::schema::decode_rows`) decode, with
+/// its column pairs crossed over by [`column_meta`].
+///
+/// This module used to carry its own `pg_result` / `mysql_result` /
+/// `sqlite_result`, word for word the `db::values` ones plus that mapping, so
+/// the two decoders could drift without anything noticing.
+pub(crate) fn with_meta(
+    (columns, rows): (Vec<(String, String)>, Vec<Vec<Value>>),
 ) -> (Vec<ColumnMeta>, Vec<Vec<Value>>) {
-    use sqlx::Row;
-    let columns = rows
-        .first()
-        .map(|r| {
-            sqlite_columns(r)
-                .into_iter()
-                .map(|(name, data_type)| ColumnMeta { name, data_type })
-                .collect()
-        })
-        .unwrap_or_default();
-    let data = rows
-        .iter()
-        .map(|r| (0..r.columns().len()).map(|i| sqlite_value(r, i)).collect())
-        .collect();
-    (columns, data)
+    (column_meta(columns), rows)
 }
 
 /// Execute an arbitrary SQL statement on the connection identified by
@@ -1157,27 +1107,8 @@ async fn execute_adhoc(
     // which classifies read vs write itself and shapes the result.
     if let DbPool::Mongo(conn) = &pool {
         let result = crate::db::mongo::query::execute(conn, sql).await;
-        match &result {
-            Ok(r) => log_sql_sink(
-                sink,
-                connection_id,
-                driver,
-                sql,
-                start,
-                Some(r.rows_affected),
-                None,
-            ),
-            Err(e) => log_sql_sink(
-                sink,
-                connection_id,
-                driver,
-                sql,
-                start,
-                None,
-                Some(&e.to_string()),
-            ),
-        }
-        return result;
+        return SqlLog::new(sink, connection_id, driver)
+            .outcome(sql, start, result, |r| r.rows_affected);
     }
 
     if !is_read_only(sql) {
@@ -1254,7 +1185,7 @@ async fn execute_adhoc(
                 start,
                 fetch_capped_alone(&p, read_only.then_some("BEGIN READ ONLY"), sql).await
             );
-            (pg_result(&rows), truncated)
+            (with_meta(crate::db::values::pg_result(&rows)), truncated)
         }
         DbPool::Mysql(p) => {
             let (rows, truncated) = try_sql_sink!(
@@ -1266,7 +1197,7 @@ async fn execute_adhoc(
                 fetch_capped_alone(&p, read_only.then_some("START TRANSACTION READ ONLY"), sql)
                     .await
             );
-            (mysql_result(&rows), truncated)
+            (with_meta(crate::db::values::mysql_result(&rows)), truncated)
         }
         DbPool::Sqlite(p) => {
             let (rows, truncated) = try_sql_sink!(
@@ -1281,7 +1212,10 @@ async fn execute_adhoc(
                     fetch_capped(&p, sql, MAX_ADHOC_QUERY_ROWS).await
                 }
             );
-            (sqlite_result(&rows), truncated)
+            (
+                with_meta(crate::db::values::sqlite_result(&rows)),
+                truncated,
+            )
         }
         DbPool::MsSql(p) => {
             // A T-SQL batch can return several result sets; the grid shows one,
@@ -1296,14 +1230,8 @@ async fn execute_adhoc(
                 p.query_sets_capped(sql, MAX_ADHOC_QUERY_ROWS).await
             );
             let rows = sets.into_iter().find(|s| !s.is_empty()).unwrap_or_default();
-            let (cols, data) = crate::db::mssql::schema::decode_rows(&rows);
             (
-                (
-                    cols.into_iter()
-                        .map(|(name, data_type)| ColumnMeta { name, data_type })
-                        .collect::<Vec<_>>(),
-                    data,
-                ),
+                with_meta(crate::db::mssql::schema::decode_rows(&rows)),
                 truncated,
             )
         }
@@ -1381,247 +1309,89 @@ pub(crate) async fn execute_batch_inner(
     // per statement.
     let mut rows_kept: usize = 0;
 
-    // Drive every statement over a single borrowed connection `$conn`,
-    // decoding SELECT result sets with the driver-specific `$decode`. Pushes
-    // one `StmtOutcome` per statement and breaks on the first error.
-    macro_rules! drive {
-        ($conn:expr, $decode:path) => {{
-            for (index, raw) in statements.iter().enumerate() {
-                let sql = raw.trim();
-                if sql.is_empty() {
-                    continue;
-                }
-                let is_select = is_read_only(sql);
-                let start = Instant::now();
-                if is_select {
-                    match fetch_capped(&mut *$conn, sql, MAX_ADHOC_QUERY_ROWS).await {
-                        Ok((rows, truncated)) => {
-                            let (columns, mut data) = $decode(&rows);
-                            // `rows_affected` counts what the statement
-                            // produced, before the batch budget sheds any of
-                            // it — the summary would otherwise report a
-                            // SELECT that returned nothing.
-                            let ra = data.len() as u64;
-                            total_affected += ra;
-                            log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
-                            let over_budget = shed_to_batch_budget(&mut data, &mut rows_kept);
-                            outcomes.push(StmtOutcome {
-                                index,
-                                preview: stmt_preview(sql),
-                                rows_affected: ra,
-                                is_select: true,
-                                error: None,
-                                results: vec![QueryResult::rows(
-                                    columns,
-                                    data,
-                                    start.elapsed().as_millis() as u64,
-                                )
-                                .with_truncated(truncated || over_budget)],
-                            });
-                        }
-                        Err(e) => {
-                            let msg = e.to_string();
-                            log_sql_sink(
-                                sink,
-                                &connection_id,
-                                driver,
-                                sql,
-                                start,
-                                None,
-                                Some(&msg),
-                            );
-                            outcomes.push(StmtOutcome {
-                                index,
-                                preview: stmt_preview(sql),
-                                rows_affected: 0,
-                                is_select: true,
-                                error: Some(msg),
-                                results: Vec::new(),
-                            });
-                            break;
-                        }
-                    }
-                } else {
-                    // Non-SELECT statements run through the unprepared simple-query
-                    // protocol — see the rationale in `execute_with_state`. The
-                    // prepared/binary protocol rejects or mishandles statements a
-                    // CLI client accepts (notably MySQL BIT / integer-literal DML),
-                    // and an ad-hoc editor binds no parameters, so there's nothing
-                    // to prepare. Passing the bare `&str` to `Executor::execute`
-                    // (no bound arguments) is what selects the text protocol. Only
-                    // `rows_affected` is consumed here.
-                    match (&mut *$conn).execute(sql).await {
-                        Ok(r) => {
-                            let ra = r.rows_affected();
-                            total_affected += ra;
-                            log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
-                            outcomes.push(StmtOutcome {
-                                index,
-                                preview: stmt_preview(sql),
-                                rows_affected: ra,
-                                is_select: false,
-                                error: None,
-                                results: Vec::new(),
-                            });
-                        }
-                        Err(e) => {
-                            let msg = e.to_string();
-                            log_sql_sink(
-                                sink,
-                                &connection_id,
-                                driver,
-                                sql,
-                                start,
-                                None,
-                                Some(&msg),
-                            );
-                            outcomes.push(StmtOutcome {
-                                index,
-                                preview: stmt_preview(sql),
-                                rows_affected: 0,
-                                is_select: false,
-                                error: Some(msg),
-                                results: Vec::new(),
-                            });
-                            break;
-                        }
-                    }
-                }
-            }
-        }};
-    }
-
-    // Same loop for SQL Server, over one pooled TDS session. It cannot share
-    // `drive!` because that macro is written against `sqlx::query` and an
-    // `Executor`; everything else about the shape (per-statement outcome, break
-    // on first error, remember the last SELECT) is identical.
-    macro_rules! drive_mssql {
-        ($client:expr) => {{
-            for (index, raw) in statements.iter().enumerate() {
-                let sql = raw.trim();
-                if sql.is_empty() {
-                    continue;
-                }
-                let is_select = is_read_only(sql);
-                let start = Instant::now();
-                let outcome: AppResult<(u64, Vec<QueryResult>)> = if is_select {
-                    $client
-                        // Drained: the batch's next statement runs on this
-                        // same session (ADR #127).
-                        .simple_query_sets_capped(
-                            sql,
-                            MAX_ADHOC_QUERY_ROWS,
-                            crate::db::mssql::Overflow::Drain,
-                        )
-                        .await
-                        .map(|(sets, truncated)| {
-                            // Every non-empty set, not just the first. A single
-                            // T-SQL statement can return several, and keeping
-                            // one of them was a silent discard back when there
-                            // was only ever one grid to put it in.
-                            let mut results = Vec::new();
-                            let mut ra = 0u64;
-                            for rows in sets.into_iter().filter(|s| !s.is_empty()) {
-                                let (cols, mut data) = crate::db::mssql::schema::decode_rows(&rows);
-                                ra += data.len() as u64;
-                                let over_budget = shed_to_batch_budget(&mut data, &mut rows_kept);
-                                // No `row_types`: SQL, so the catalog column type is
-                                // the hint the editor needs, and per-cell BSON type
-                                // trees are MongoDB's alone (ADR #29).
-                                results.push(
-                                    QueryResult::rows(
-                                        cols.into_iter()
-                                            .map(|(name, data_type)| ColumnMeta { name, data_type })
-                                            .collect(),
-                                        data,
-                                        start.elapsed().as_millis() as u64,
-                                    )
-                                    .with_truncated(truncated || over_budget),
-                                );
-                            }
-                            (ra, results)
-                        })
-                } else {
-                    $client.simple_execute(sql).await.map(|ra| (ra, Vec::new()))
-                };
-                match outcome {
-                    Ok((ra, results)) => {
-                        total_affected += ra;
-                        log_sql_sink(sink, &connection_id, driver, sql, start, Some(ra), None);
-                        outcomes.push(StmtOutcome {
-                            index,
-                            preview: stmt_preview(sql),
-                            rows_affected: ra,
-                            is_select,
-                            error: None,
-                            results,
-                        });
-                    }
-                    Err(e) => {
-                        let msg = e.to_string();
-                        log_sql_sink(sink, &connection_id, driver, sql, start, None, Some(&msg));
-                        outcomes.push(StmtOutcome {
-                            index,
-                            preview: stmt_preview(sql),
-                            rows_affected: 0,
-                            is_select,
-                            error: Some(msg),
-                            results: Vec::new(),
-                        });
-                        break;
-                    }
-                }
-            }
-        }};
-    }
-
+    // One session for the whole batch: the user's own `BEGIN`/`COMMIT`, a
+    // MySQL `USE`, temp tables and `SET`s carry from one statement to the
+    // next. Returned to the pool afterwards, like any other borrow — unless the
+    // user left a transaction open, which `Session` cannot see (it only tracks
+    // the ones it opened) and which is the user's to close, as in a CLI.
     let acquire_start = Instant::now();
-    match &pool {
-        DbPool::Postgres(p) => {
-            let mut conn = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                "(batch)",
-                acquire_start,
-                p.acquire().await
-            );
-            drive!(conn, pg_result);
+    let mut session = try_sql_sink!(
+        sink,
+        &connection_id,
+        driver,
+        "(batch)",
+        acquire_start,
+        Session::acquire(&pool).await
+    );
+
+    let log = SqlLog::new(sink, &connection_id, driver);
+    for (index, raw) in statements.iter().enumerate() {
+        let sql = raw.trim();
+        if sql.is_empty() {
+            continue;
         }
-        DbPool::Mysql(p) => {
-            let mut conn = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                "(batch)",
-                acquire_start,
-                p.acquire().await
-            );
-            drive!(conn, mysql_result);
+        let is_select = is_read_only(sql);
+        let start = Instant::now();
+        let outcome: AppResult<(u64, Vec<QueryResult>)> = if is_select {
+            session.fetch(sql, MAX_ADHOC_QUERY_ROWS).await.map(|sets| {
+                // Every set the statement returned, not just the first: one
+                // T-SQL statement can return several, and keeping one of them
+                // was a silent discard back when there was only ever one grid
+                // to put it in.
+                let mut results = Vec::with_capacity(sets.len());
+                let mut ra = 0u64;
+                for set in sets {
+                    let mut rows = set.rows;
+                    // `rows_affected` counts what the statement produced,
+                    // before the batch budget sheds any of it — the summary
+                    // would otherwise report a SELECT that returned nothing.
+                    ra += rows.len() as u64;
+                    let over_budget = shed_to_batch_budget(&mut rows, &mut rows_kept);
+                    // No `row_types`: SQL, so the catalog column type is the
+                    // hint the editor needs, and per-cell BSON type trees are
+                    // MongoDB's alone (ADR #29).
+                    results.push(
+                        QueryResult::rows(
+                            column_meta(set.columns),
+                            rows,
+                            start.elapsed().as_millis() as u64,
+                        )
+                        .with_truncated(set.truncated || over_budget),
+                    );
+                }
+                (ra, results)
+            })
+        } else {
+            // Through the unprepared protocol — see `Session::exec`.
+            session.exec(sql).await.map(|ra| (ra, Vec::new()))
+        };
+        match outcome {
+            Ok((ra, results)) => {
+                total_affected += ra;
+                log.ok(sql, start, ra);
+                outcomes.push(StmtOutcome {
+                    index,
+                    preview: stmt_preview(sql),
+                    rows_affected: ra,
+                    is_select,
+                    error: None,
+                    results,
+                });
+            }
+            Err(e) => {
+                let msg = failure_text(&e);
+                log.err(sql, start, &msg);
+                outcomes.push(StmtOutcome {
+                    index,
+                    preview: stmt_preview(sql),
+                    rows_affected: 0,
+                    is_select,
+                    error: Some(msg),
+                    results: Vec::new(),
+                });
+                break;
+            }
         }
-        DbPool::Sqlite(p) => {
-            let mut conn = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                "(batch)",
-                acquire_start,
-                p.acquire().await
-            );
-            drive!(conn, sqlite_result);
-        }
-        DbPool::MsSql(p) => {
-            let mut client = try_sql_sink!(
-                sink,
-                &connection_id,
-                driver,
-                "(batch)",
-                acquire_start,
-                p.acquire().await
-            );
-            drive_mssql!(client);
-        }
-        DbPool::Mongo(_) => unreachable!("mongo dispatched above"),
     }
 
     Ok(BatchResult {
@@ -1724,38 +1494,6 @@ pub(crate) fn shed_to_batch_budget<T>(rows: &mut Vec<T>, kept: &mut usize) -> bo
     }
     *kept += rows.len();
     over
-}
-
-/// Stream `sql` and keep only the first `cap` rows, **stopping** at the first
-/// row past them — see [`MAX_ADHOC_QUERY_ROWS`] and ADR #127. Returns
-/// `(rows, truncated)`.
-///
-/// What the server still has to send is not read here. A connection the
-/// caller goes on using (a batch's or a script's session) is drained by sqlx
-/// itself before its next statement, so session state survives and the cost
-/// is what draining here used to be. A caller with no further use for the
-/// connection closes it instead and never pays for the rest at all —
-/// [`fetch_capped_alone`].
-pub(crate) async fn fetch_capped<'q, 'c, DB, E>(
-    executor: E,
-    sql: &'q str,
-    cap: usize,
-) -> Result<(Vec<DB::Row>, bool), sqlx::Error>
-where
-    DB: sqlx::Database,
-    E: sqlx::Executor<'c, Database = DB>,
-    for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
-{
-    use futures_util::TryStreamExt;
-    let mut stream = sqlx::query(sql).fetch(executor);
-    let mut rows = Vec::new();
-    while let Some(row) = stream.try_next().await? {
-        if rows.len() == cap {
-            return Ok((rows, true));
-        }
-        rows.push(row);
-    }
-    Ok((rows, false))
 }
 
 /// [`fetch_capped`] for one ad-hoc read, on a connection of its own that is
@@ -2133,27 +1871,12 @@ pub(crate) async fn fetch_table_data_inner(
         let result = crate::db::mongo::query::fetch_collection_data(conn, &query).await;
         let sql_text = crate::db::mongo::query::describe_find(&query);
         let connection_id = &query.connection_id;
-        match &result {
-            Ok(r) => log_sql_sink(
-                sink,
-                connection_id,
-                "mongodb",
-                &sql_text,
-                start,
-                Some(r.rows.len() as u64),
-                None,
-            ),
-            Err(e) => log_sql_sink(
-                sink,
-                connection_id,
-                "mongodb",
-                &sql_text,
-                start,
-                None,
-                Some(&e.to_string()),
-            ),
-        }
-        return result;
+        return SqlLog::new(sink, connection_id, "mongodb").outcome(
+            &sql_text,
+            start,
+            result,
+            |r| r.rows.len() as u64,
+        );
     }
 
     let driver = pool.driver_name();
@@ -2356,27 +2079,7 @@ pub(crate) async fn count_table_rows_inner(
         } else {
             "(mongo countDocuments)"
         };
-        match &res {
-            Ok(c) => log_sql_sink(
-                sink,
-                &connection_id,
-                driver,
-                label,
-                start,
-                Some(c.total),
-                None,
-            ),
-            Err(e) => log_sql_sink(
-                sink,
-                &connection_id,
-                driver,
-                label,
-                start,
-                None,
-                Some(&e.to_string()),
-            ),
-        }
-        return res;
+        return SqlLog::new(sink, &connection_id, driver).outcome(label, start, res, |c| c.total);
     }
 
     let dialect = Dialect::try_of(&pool)?;
@@ -2689,27 +2392,12 @@ pub(crate) async fn update_cell_inner(
             column_type.as_deref(),
         )
         .await;
-        match &res {
-            Ok(n) => log_sql_sink(
-                sink,
-                &connection_id,
-                driver,
-                "(mongo update)",
-                start,
-                Some(*n),
-                None,
-            ),
-            Err(e) => log_sql_sink(
-                sink,
-                &connection_id,
-                driver,
-                "(mongo update)",
-                start,
-                None,
-                Some(&e.to_string()),
-            ),
-        }
-        return res;
+        return SqlLog::new(sink, &connection_id, driver).outcome(
+            "(mongo update)",
+            start,
+            res,
+            |n| *n,
+        );
     }
 
     let dialect = Dialect::try_of(&pool)?;
@@ -2825,27 +2513,7 @@ pub async fn unset_field(
     };
     let start = Instant::now();
     let res = crate::db::mongo::query::unset_field(conn, &collection, &id_value, &field).await;
-    match &res {
-        Ok(n) => log_sql_sink(
-            &sink,
-            &connection_id,
-            driver,
-            "(mongo unset)",
-            start,
-            Some(*n),
-            None,
-        ),
-        Err(e) => log_sql_sink(
-            &sink,
-            &connection_id,
-            driver,
-            "(mongo unset)",
-            start,
-            None,
-            Some(&e.to_string()),
-        ),
-    }
-    res
+    SqlLog::new(&sink, &connection_id, driver).outcome("(mongo unset)", start, res, |n| *n)
 }
 
 /// Coerce a JSON scalar to its textual SQL bind form. `null` becomes `None`
@@ -2952,27 +2620,12 @@ pub(crate) async fn delete_rows_inner(
             .map(|r| r.first().cloned().unwrap_or(Value::Null))
             .collect();
         let res = crate::db::mongo::query::delete_rows(conn, &table, &ids).await;
-        match &res {
-            Ok(n) => log_sql_sink(
-                sink,
-                &connection_id,
-                driver,
-                "(mongo delete)",
-                start,
-                Some(*n),
-                None,
-            ),
-            Err(e) => log_sql_sink(
-                sink,
-                &connection_id,
-                driver,
-                "(mongo delete)",
-                start,
-                None,
-                Some(&e.to_string()),
-            ),
-        }
-        return res;
+        return SqlLog::new(sink, &connection_id, driver).outcome(
+            "(mongo delete)",
+            start,
+            res,
+            |n| *n,
+        );
     }
 
     let dialect = Dialect::try_of(&pool)?;
@@ -3142,27 +2795,7 @@ pub async fn insert_documents(
 
     let start = Instant::now();
     let res = crate::db::mongo::query::insert_documents(conn, &collection, documents).await;
-    match &res {
-        Ok(_) => log_sql_sink(
-            &sink,
-            &connection_id,
-            driver,
-            "(mongo insert)",
-            start,
-            Some(count),
-            None,
-        ),
-        Err(e) => log_sql_sink(
-            &sink,
-            &connection_id,
-            driver,
-            "(mongo insert)",
-            start,
-            None,
-            Some(&e.to_string()),
-        ),
-    }
-    res
+    SqlLog::new(&sink, &connection_id, driver).outcome("(mongo insert)", start, res, |_| count)
 }
 
 /// Tauri-independent core of [`insert_row`], shared with the headless MCP
@@ -3190,27 +2823,12 @@ pub(crate) async fn insert_row_inner(
     if let DbPool::Mongo(conn) = &pool {
         let start = Instant::now();
         let res = crate::db::mongo::query::insert_row(conn, &table, &values).await;
-        match &res {
-            Ok(_) => log_sql_sink(
-                sink,
-                &connection_id,
-                driver,
-                "(mongo insert)",
-                start,
-                Some(1),
-                None,
-            ),
-            Err(e) => log_sql_sink(
-                sink,
-                &connection_id,
-                driver,
-                "(mongo insert)",
-                start,
-                None,
-                Some(&e.to_string()),
-            ),
-        }
-        return res;
+        return SqlLog::new(sink, &connection_id, driver).outcome(
+            "(mongo insert)",
+            start,
+            res,
+            |_| 1,
+        );
     }
 
     let dialect = Dialect::try_of(&pool)?;
