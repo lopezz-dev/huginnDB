@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.37.0] — 2026-10-30
+
 ### Added
 
 - **SQL Server: tables and views can be edited and renamed, and databases

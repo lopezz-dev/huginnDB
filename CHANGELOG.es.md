@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.37.0] — 2026-10-30
+
 ### Añadido
 
 - **SQL Server: las tablas y las vistas ya se pueden editar y renombrar, y
