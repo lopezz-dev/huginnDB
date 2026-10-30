@@ -773,6 +773,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           searchColumns: appliedFilter ? searchColumnsRef.current : undefined,
           raw,
           collation,
+          // Changes no total, but on MongoDB it is the index the count walks
+          // — the page's own. Only here: in the background count it would
+          // re-key a recount on every hint edit for no different answer.
+          hint,
         },
         true,
       );
@@ -794,6 +798,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     appliedFilter,
     raw,
     collation,
+    hint,
     t,
   ]);
 

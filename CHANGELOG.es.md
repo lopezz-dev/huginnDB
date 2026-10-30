@@ -8,6 +8,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **MongoDB: *Contar exactamente* sobre una colección entera recorre el índice
+  `_id` en lugar de todos los documentos.** `countDocuments({})` no da al
+  planificador ningún predicado con el que elegir un índice, así que recorría
+  la colección misma, y con decenas de millones de documentos eso suponía
+  leerlos todos del disco. Ahora el conteo indica `_id_` como hint. Como el
+  conteo no necesita ningún campo, el servidor lo responde solo con el índice.
+  Sigue siendo una pasada completa, pero sobre una estructura que ocupa una
+  fracción de lo que ocupa la colección. Las vistas y las colecciones de series
+  temporales, que no tienen índice `_id_`, vuelven al conteo anterior.
+- **MongoDB: el hint de índice del panel de consulta también se aplica ahora a
+  *Contar exactamente*.** Antes el conteo lo ignoraba y podía seguir un plan
+  distinto y más lento que la página que estaba contando.
+
 ## [1.37.0] — 2026-10-30
 
 ### Añadido
