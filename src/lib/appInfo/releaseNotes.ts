@@ -40,6 +40,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  FileCode,
   FileInput,
   FilePen,
   FolderTree,
@@ -63,15 +64,18 @@ import {
   Power,
   RefreshCw,
   Scissors,
+  ScrollText,
   Search,
   Server,
   Settings2,
   Share2,
   ShieldAlert,
   ShieldCheck,
+  Sigma,
   SlidersHorizontal,
   SquareTerminal,
   Table2,
+  TableProperties,
   Tags,
   Target,
   Timer,
@@ -107,6 +111,43 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.37.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_37_0.tagline",
+    highlights: [
+      {
+        icon: TableProperties,
+        titleKey: "whatsNew.releases.1_37_0.items.mssqlStructure.title",
+        bodyKey: "whatsNew.releases.1_37_0.items.mssqlStructure.body",
+      },
+      {
+        icon: FileCode,
+        titleKey: "whatsNew.releases.1_37_0.items.mssqlDump.title",
+        bodyKey: "whatsNew.releases.1_37_0.items.mssqlDump.body",
+      },
+      {
+        icon: ScrollText,
+        titleKey: "whatsNew.releases.1_37_0.items.runScript.title",
+        bodyKey: "whatsNew.releases.1_37_0.items.runScript.body",
+      },
+      {
+        icon: SlidersHorizontal,
+        titleKey: "whatsNew.releases.1_37_0.items.rowLimit.title",
+        bodyKey: "whatsNew.releases.1_37_0.items.rowLimit.body",
+      },
+      {
+        icon: Sigma,
+        titleKey: "whatsNew.releases.1_37_0.items.exactCount.title",
+        bodyKey: "whatsNew.releases.1_37_0.items.exactCount.body",
+      },
+      {
+        icon: KeyRound,
+        titleKey: "whatsNew.releases.1_37_0.items.mongoPassword.title",
+        bodyKey: "whatsNew.releases.1_37_0.items.mongoPassword.body",
+      },
+    ],
+  },
   {
     version: "1.36.0",
     major: true,

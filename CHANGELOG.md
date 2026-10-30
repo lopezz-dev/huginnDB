@@ -6,11 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.37.0] — 2026-10-30
+
 ### Added
 
-- **SQL Server: tables and views can be edited and renamed.** Until now the
-  structure tab only showed a SQL Server table's columns, keys and indexes,
-  read-only, and views could not be edited at all.
+- **SQL Server: tables and views can be edited and renamed, and databases
+  exported and imported as `.sql`.** Until now the structure tab only showed
+  a SQL Server table's columns, keys and indexes, read-only, views could not
+  be edited at all, and `.sql` export/import was unavailable.
   - **Create and alter tables** from the structure editor: add, drop, rename
     and retype columns, change nullability and defaults, change the primary
     key, and add or drop indexes and foreign keys. The preview shows the T-SQL
@@ -28,9 +31,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     rename also rewrites the view's stored definition: SQL Server's own rename
     leaves the old name inside it.
   - The MCP connector's `save_view` now works on SQL Server too.
+  - **Export to `.sql`** works for a whole database, a single table and the
+    rows a filter selects. The file is a T-SQL script with a `GO` after every
+    statement, so SSMS and `sqlcmd` run it as-is:
+    - `IDENTITY` values keep their numbers (`SET IDENTITY_INSERT`);
+    - `rowversion` columns are left for the server to fill;
+    - dates are written in a form that does not depend on the login's
+      language, and `datetimeoffset` keeps its offset;
+    - text keeps every Unicode character.
+  - **Import from `.sql`** runs a SQL Server script by its `GO` batches, so a
+    script from SSMS loads with its procedure and trigger bodies whole. A file
+    without `GO` lines is split on `;` as before.
   - Not yet: switching `IDENTITY` on or off for a column that already exists
     (SQL Server can only do that by rebuilding the table, so the editor
-    explains this instead), and `.sql` export/import.
+    explains this instead). An export recreates computed columns as plain
+    columns and `IDENTITY` columns with seed 1 (the rows keep their values).
 
 - **`run_script` in the MCP connector: a whole SQL script on one session —
   temporary tables and migrations included.**

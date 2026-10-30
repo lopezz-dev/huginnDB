@@ -8,12 +8,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.37.0] — 2026-10-30
+
 ### Añadido
 
-- **SQL Server: las tablas y las vistas ya se pueden editar y renombrar.**
-  Hasta ahora la pestaña de estructura solo mostraba, en modo lectura, las
-  columnas, claves e índices de una tabla de SQL Server, y las vistas no se
-  podían editar.
+- **SQL Server: las tablas y las vistas ya se pueden editar y renombrar, y
+  las bases de datos exportar e importar como `.sql`.** Hasta ahora la
+  pestaña de estructura solo mostraba, en modo lectura, las columnas, claves e
+  índices de una tabla de SQL Server, las vistas no se podían editar y no
+  había exportación ni importación `.sql`.
   - **Crear y modificar tablas** desde el editor de estructura: añadir,
     eliminar, renombrar y cambiar el tipo de columnas, cambiar la nulabilidad
     y los valores por defecto, cambiar la clave primaria y añadir o eliminar
@@ -33,9 +36,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     definición guardada: el renombrado propio de SQL Server deja dentro el
     nombre antiguo.
   - `save_view` del conector MCP ya funciona también en SQL Server.
+  - **Exportar a `.sql`** funciona para una base de datos entera, una sola
+    tabla y las filas que selecciona un filtro. El fichero es un script T-SQL
+    con un `GO` tras cada sentencia, así que SSMS y `sqlcmd` lo ejecutan tal
+    cual:
+    - los valores `IDENTITY` conservan su número (`SET IDENTITY_INSERT`);
+    - las columnas `rowversion` se dejan para que las rellene el servidor;
+    - las fechas se escriben de forma que no dependen del idioma del login, y
+      `datetimeoffset` conserva su desfase;
+    - el texto conserva todos sus caracteres Unicode.
+  - **Importar un `.sql`** ejecuta un script de SQL Server por sus lotes
+    `GO`, así que un script de SSMS se carga con los cuerpos de sus
+    procedimientos y triggers enteros. Un fichero sin líneas `GO` se sigue
+    dividiendo por `;`.
   - Todavía no: activar o quitar `IDENTITY` en una columna que ya existe (SQL
     Server solo puede hacerlo reconstruyendo la tabla, así que el editor lo
-    explica) y exportar/importar `.sql`.
+    explica). Una exportación recrea las columnas calculadas como columnas
+    normales y las columnas `IDENTITY` con semilla 1 (las filas conservan sus
+    valores).
 
 - **`run_script` en el conector MCP: un script SQL entero en una sola sesión,
   tablas temporales y migraciones incluidas.**

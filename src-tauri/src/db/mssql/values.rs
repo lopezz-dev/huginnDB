@@ -196,7 +196,7 @@ pub fn first_string(row: &Row) -> Option<String> {
 /// zero) and split it `scale` digits from the right. No `f64` anywhere — the
 /// whole reason these columns travel as text is that they hold values an
 /// `f64` cannot represent.
-fn numeric_to_string(n: tiberius::numeric::Numeric) -> String {
+pub(crate) fn numeric_to_string(n: tiberius::numeric::Numeric) -> String {
     let sign = if n.value() < 0 { "-" } else { "" };
     // `unsigned_abs` so `i128::MIN` doesn't overflow on negation.
     let digits = n.value().unsigned_abs().to_string();

@@ -2740,6 +2740,35 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_37_0": {
+        "tagline": "Las tablas y vistas de SQL Server ya se pueden editar, renombrar y volcar a .sql, y una IA conectada por el conector MCP puede ejecutar un script entero en una sola sesión.",
+        "items": {
+          "mssqlStructure": {
+            "title": "Edita tablas y vistas de SQL Server",
+            "body": "El editor de estructura ya crea y modifica tablas de SQL Server —columnas, valores por defecto, clave primaria, índices y claves foráneas— en una sola transacción, y quita y repone por ti las restricciones de valor por defecto que SQL Server ata a cada columna. Las vistas se crean y redefinen con ALTER VIEW, así que conservan sus permisos, y tablas y vistas se renombran desde el árbol."
+          },
+          "mssqlDump": {
+            "title": "Exporta e importa .sql en SQL Server",
+            "body": "Una base de datos, una tabla o las filas que selecciona un filtro se exportan a un script T-SQL con GO entre sentencias, listo para SSMS o sqlcmd: los valores IDENTITY conservan su número y las fechas no dependen del idioma del login. Al importar, el script se ejecuta por sus lotes GO, así que procedimientos y triggers entran enteros."
+          },
+          "runScript": {
+            "title": "Un script SQL entero en una sola sesión",
+            "body": "El nuevo run_script del conector MCP ejecuta un script en orden sobre una única sesión, así que las tablas temporales, los SET y las variables pasan de una sentencia a la siguiente, y cada SELECT devuelve sus filas. Por defecto es una sola transacción, y puede leer directamente un .sql local, de modo que una migración grande nunca pasa por la conversación."
+          },
+          "rowLimit": {
+            "title": "Cuántas filas recibe una IA, por conexión",
+            "body": "Las filas que una llamada MCP entrega a un cliente de IA son ahora un ajuste en Ajustes → MCP → Límites, con un número opcional por conexión. El valor por defecto baja a 200, y un resultado recortado ahora lo dice con palabras, para que el modelo no tome una respuesta parcial por completa. Una política gestionada puede ponerle tope."
+          },
+          "exactCount": {
+            "title": "Recuento exacto, cuando lo pidas",
+            "body": "Cuando el total del pie es una estimación (~N), el botón Σ a su lado cuenta de verdad todas las filas, respetando los filtros activos y el panel de consulta. Además, los números de fila siguen contando entre páginas en lugar de volver a empezar en 1."
+          },
+          "mongoPassword": {
+            "title": "Contraseñas de MongoDB fuera de la cadena de conexión",
+            "body": "Una contraseña escrita en la cadena de conexión de MongoDB se guardaba en claro y viajaba dentro de las exportaciones y los orígenes compartidos. Ahora pasa al llavero del sistema, o a la bóveda del bloqueo de la app, y las conexiones guardadas por una versión anterior se corrigen en el primer arranque."
+          }
+        }
+      },
       "1_36_0": {
         "tagline": "Una contraseña maestra puede guardar ya bajo llave todo lo que tiene HuginnDB, un bloque de celdas se pega en la tabla de una vez y una política gestionada puede limitar qué columnas escribe un rol.",
         "items": {

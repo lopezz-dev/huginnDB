@@ -2740,6 +2740,35 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_37_0": {
+        "tagline": "SQL Server tables and views can now be edited, renamed and dumped to .sql, and an AI connected through the MCP connector can run a whole script on one session.",
+        "items": {
+          "mssqlStructure": {
+            "title": "Edit SQL Server tables and views",
+            "body": "The structure editor now creates and alters SQL Server tables — columns, defaults, primary key, indexes and foreign keys — in one transaction, dropping and restoring the default constraints SQL Server ties to a column for you. Views are created and redefined with ALTER VIEW, so they keep their permissions, and tables and views can be renamed from the tree."
+          },
+          "mssqlDump": {
+            "title": "Export and import .sql on SQL Server",
+            "body": "A database, a table or the rows a filter selects export to a T-SQL script with GO between statements, ready for SSMS or sqlcmd: IDENTITY values keep their numbers and dates do not depend on the login's language. Importing runs a script by its GO batches, so procedures and triggers load whole."
+          },
+          "runScript": {
+            "title": "A whole SQL script on one session",
+            "body": "The MCP connector's new run_script runs a script in order on a single session, so temporary tables, SETs and variables carry from one statement to the next, and every SELECT returns its rows. It is one transaction by default, and it can read a local .sql file directly, so a large migration never passes through the conversation."
+          },
+          "rowLimit": {
+            "title": "How many rows an AI gets, per connection",
+            "body": "The rows one MCP call hands an AI client is now a setting in Settings → MCP → Limits, with an optional number per connection. The default drops to 200, and a cut result now says so in words, so the model stops treating a partial answer as complete. A managed policy can cap it."
+          },
+          "exactCount": {
+            "title": "Exact count, on demand",
+            "body": "When the footer's total is an estimate (~N), the Σ button beside it counts every row for real, honouring the active filters and query panel. Row numbers also keep counting across pages instead of restarting at 1."
+          },
+          "mongoPassword": {
+            "title": "MongoDB passwords out of the connection string",
+            "body": "A password typed into a MongoDB connection string was saved in clear and travelled inside exports and shared origins. It now moves to the system keychain, or the app lock's vault, and connections saved by an earlier version are fixed on the first start."
+          }
+        }
+      },
       "1_36_0": {
         "tagline": "A master password can now keep everything HuginnDB holds behind a lock, a block of cells pastes into the grid in one go, and a managed policy can limit which columns a role writes.",
         "items": {

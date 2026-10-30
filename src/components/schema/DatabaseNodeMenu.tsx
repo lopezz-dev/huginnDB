@@ -182,7 +182,7 @@ export function DatabaseNodeMenu({
   const importSqlHere = async () => {
     const id = await resolveTargetId();
     if (!id) return;
-    const statements = await pickAndSplitSqlFile(t);
+    const statements = await pickAndSplitSqlFile(t, driver);
     if (!statements) return;
     setImportTargetId(id);
     setImportStatements(statements);

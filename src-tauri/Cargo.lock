@@ -2776,7 +2776,7 @@ checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
 
 [[package]]
 name = "huginndb"
-version = "1.36.0"
+version = "1.37.0"
 dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
@@ -2827,7 +2827,7 @@ dependencies = [
 
 [[package]]
 name = "huginndb-mcp"
-version = "1.36.0"
+version = "1.37.0"
 dependencies = [
  "anyhow",
  "huginndb",

@@ -262,6 +262,128 @@ pub fn sqlite_literal(row: &sqlx::sqlite::SqliteRow, idx: usize) -> String {
     "NULL".into()
 }
 
+/// A T-SQL Unicode string literal. `N` matters: without it the text is
+/// converted through the database's code page on the way in, and anything
+/// outside it (most of Unicode, on a Latin1 collation) becomes `?`.
+fn mssql_text(s: &str) -> String {
+    crate::db::sql::mssql_nstring(s)
+}
+
+/// `datetime2` / `time` fractional seconds: SQL Server keeps 100 ns ticks, so
+/// seven digits are exact and the most it will parse.
+fn ticks7(nanos: u32) -> String {
+    format!("{:07}", nanos / 100)
+}
+
+/// One cell → T-SQL literal text.
+///
+/// Dispatches on the TDS value, not on a type name, the same way
+/// `db::mssql::values::mssql_value` does. The temporal forms are what need
+/// care:
+///
+/// * **ISO 8601 with a `T`** (`2024-01-02T03:04:05`). The space-separated form
+///   chrono prints by default is read through the session's `DATEFORMAT` for
+///   `datetime` and `smalldatetime`, so under `dmy` the same file would load
+///   different dates — or fail — depending on the login's language.
+/// * **Fraction width by type.** `datetime` parses at most three fractional
+///   digits and refuses seven, while `datetime2` keeps seven; each gets its own.
+/// * `datetimeoffset` keeps the offset it was stored with.
+///
+/// Binary as `0x…`, `bit` as `0`/`1`, `uniqueidentifier` and XML as strings,
+/// non-finite floats as `NULL` (the gap the other dialects already accept).
+pub fn mssql_literal(row: &tiberius::Row, idx: usize) -> String {
+    use tiberius::ColumnData;
+    let Some((_, data)) = row.cells().nth(idx) else {
+        return "NULL".into();
+    };
+    let null = || "NULL".to_string();
+    match data {
+        ColumnData::Bit(v) => v.map(|b| if b { "1" } else { "0" }.to_string()),
+        ColumnData::U8(v) => v.map(|n| n.to_string()),
+        ColumnData::I16(v) => v.map(|n| n.to_string()),
+        ColumnData::I32(v) => v.map(|n| n.to_string()),
+        ColumnData::I64(v) => v.map(|n| n.to_string()),
+        ColumnData::F32(v) => v.map(|f| fmt_f64(f as f64)),
+        ColumnData::F64(v) => v.map(fmt_f64),
+        ColumnData::Numeric(v) => v.map(crate::db::mssql::values::numeric_to_string),
+        ColumnData::String(v) => v.as_ref().map(|s| mssql_text(s)),
+        ColumnData::Xml(v) => v.as_ref().map(|x| mssql_text(x.as_ref().as_ref())),
+        ColumnData::Guid(v) => v.map(|g| format!("'{g}'")),
+        ColumnData::Binary(v) => v.as_ref().map(|b| format!("0x{}", hex(b))),
+        ColumnData::DateTime(_) | ColumnData::SmallDateTime(_) => row
+            .try_get::<chrono::NaiveDateTime, _>(idx)
+            .ok()
+            .flatten()
+            .map(|d| format!("'{}'", d.format("%Y-%m-%dT%H:%M:%S%.3f"))),
+        ColumnData::DateTime2(_) => row
+            .try_get::<chrono::NaiveDateTime, _>(idx)
+            .ok()
+            .flatten()
+            .map(|d| {
+                use chrono::Timelike;
+                format!(
+                    "'{}.{}'",
+                    d.format("%Y-%m-%dT%H:%M:%S"),
+                    ticks7(d.nanosecond())
+                )
+            }),
+        ColumnData::Date(_) => row
+            .try_get::<chrono::NaiveDate, _>(idx)
+            .ok()
+            .flatten()
+            .map(|d| format!("'{}'", d.format("%Y-%m-%d"))),
+        ColumnData::Time(_) => row
+            .try_get::<chrono::NaiveTime, _>(idx)
+            .ok()
+            .flatten()
+            .map(|t| {
+                use chrono::Timelike;
+                format!("'{}.{}'", t.format("%H:%M:%S"), ticks7(t.nanosecond()))
+            }),
+        // `FixedOffset`, not `Utc`: a `datetimeoffset` stores the offset it was
+        // written with, and reading it as UTC would export `+02:00` as
+        // `+00:00` — the same instant, but not the same value.
+        ColumnData::DateTimeOffset(_) => row
+            .try_get::<chrono::DateTime<chrono::FixedOffset>, _>(idx)
+            .ok()
+            .flatten()
+            .map(|d| {
+                use chrono::Timelike;
+                format!(
+                    "'{}.{}{}'",
+                    d.format("%Y-%m-%dT%H:%M:%S"),
+                    ticks7(d.nanosecond()),
+                    d.format("%:z")
+                )
+            }),
+    }
+    .unwrap_or_else(null)
+}
+
+/// Columns a T-SQL `INSERT` must not name: `timestamp` / `rowversion`, which
+/// the server stamps itself and refuses an explicit value for.
+pub fn mssql_insertable(data_type: &str) -> bool {
+    let t = data_type.trim().to_ascii_lowercase();
+    t != "timestamp" && t != "rowversion"
+}
+
+/// Wrap one `INSERT` for a table with an `IDENTITY` column so it may carry the
+/// column's values.
+///
+/// One statement, not three: `SET IDENTITY_INSERT` is session state, and the
+/// import path runs every statement as its own call (`sp_executesql`), where
+/// a `SET` made inside one does not outlive it. Inside a single batch the
+/// three always share a scope — in HuginnDB's importer, in SSMS and in
+/// `sqlcmd`. T-SQL needs no `;` between them, which is also what keeps the
+/// importer's `;` splitter from cutting them apart. No reseed afterwards:
+/// SQL Server raises the identity to the highest value an `IDENTITY_INSERT`
+/// wrote on its own.
+pub fn mssql_identity_insert(qualified_table: &str, insert: &str) -> String {
+    format!(
+        "SET IDENTITY_INSERT {qualified_table} ON\n{insert}\nSET IDENTITY_INSERT {qualified_table} OFF"
+    )
+}
+
 /// Assemble one or more multi-row `INSERT INTO ... VALUES (...), (...);`
 /// statements from pre-rendered per-cell literals, chunked at `batch_size`
 /// rows per statement (mysqldump-style multi-row insert). `quoted_columns`
@@ -310,4 +432,41 @@ pub fn mysql_auto_increment_resync_stmt(qualified_table: &str, max_value: i64) -
         "ALTER TABLE {qualified_table} AUTO_INCREMENT = {}",
         max_value + 1
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identity_insert_wraps_the_insert_in_one_batch() {
+        let insert = "INSERT INTO [dbo].[t] ([id]) VALUES\n  (1)";
+        assert_eq!(
+            mssql_identity_insert("[dbo].[t]", insert),
+            "SET IDENTITY_INSERT [dbo].[t] ON\nINSERT INTO [dbo].[t] ([id]) VALUES\n  (1)\n\
+             SET IDENTITY_INSERT [dbo].[t] OFF"
+        );
+        // No `;` inside: the importer's splitter must see one statement.
+        assert!(!mssql_identity_insert("[dbo].[t]", insert).contains(';'));
+    }
+
+    #[test]
+    fn rowversion_is_never_inserted() {
+        assert!(!mssql_insertable("timestamp"));
+        assert!(!mssql_insertable(" ROWVERSION "));
+        assert!(mssql_insertable("datetime2(7)"));
+        assert!(mssql_insertable("binary(8)"));
+    }
+
+    #[test]
+    fn fractions_are_seven_digit_ticks() {
+        assert_eq!(ticks7(0), "0000000");
+        assert_eq!(ticks7(123_456_700), "1234567");
+        assert_eq!(ticks7(5_000_000), "0050000");
+    }
+
+    #[test]
+    fn unicode_text_keeps_its_n_prefix() {
+        assert_eq!(mssql_text("O'Brien — ñ"), "N'O''Brien — ñ'");
+    }
 }

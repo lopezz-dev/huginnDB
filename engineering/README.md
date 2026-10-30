@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-125 entries: 100 ADRs, 16 gotchas, 9 conventions.
+126 entries: 101 ADRs, 16 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -165,4 +165,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 123 | ADR | [The T-SQL structure builder looks up constraint names at run time, and refuses an IDENTITY change instead of rebuilding the table](adr/adr-123-t-sql-ddl-finds-constraint-names-at-run-time.md) | accepted | 2026-10-29 |
 | 124 | ADR | [A SQL Server view is changed in place with ALTER VIEW, its header options re-read from the catalog, and renamed with sp_rename plus ALTER VIEW](adr/adr-124-a-sql-server-view-is-altered-in-place-with-its-header-reread.md) | accepted | 2026-10-29 |
 | 125 | Gotcha | [T-SQL's `EXEC(…)` concatenates only literals and variables — `EXEC(N'…' + QUOTENAME(@n))` does not parse](gotchas/gotcha-125-tsql-exec-concatenation-takes-no-function-calls.md) | active | 2026-10-29 |
+| 126 | ADR | [A SQL Server dump is a `GO`-separated T-SQL script, and a SQL Server import runs by `GO` batch](adr/adr-126-a-sql-server-dump-is-a-go-script-and-imports-by-batch.md) | accepted | 2026-10-29 |
 <!-- index:end -->
