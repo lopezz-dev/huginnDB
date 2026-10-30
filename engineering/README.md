@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-127 entries: 102 ADRs, 16 gotchas, 9 conventions.
+128 entries: 102 ADRs, 17 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -167,4 +167,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 125 | Gotcha | [T-SQL's `EXEC(…)` concatenates only literals and variables — `EXEC(N'…' + QUOTENAME(@n))` does not parse](gotchas/gotcha-125-tsql-exec-concatenation-takes-no-function-calls.md) | active | 2026-10-29 |
 | 126 | ADR | [A SQL Server dump is a `GO`-separated T-SQL script, and a SQL Server import runs by `GO` batch](adr/adr-126-a-sql-server-dump-is-a-go-script-and-imports-by-batch.md) | accepted | 2026-10-29 |
 | 127 | ADR | [A lone ad-hoc read stops at the row cap and closes its connection instead of draining it](adr/adr-127-a-lone-adhoc-read-stops-at-the-row-cap-and-closes-its-connection.md) | accepted | 2026-10-30 |
+| 128 | Gotcha | [tiberius's `execute` is an `sp_executesql` call, and SQL Server scopes what runs inside it](gotchas/gotcha-128-tiberius-execute-is-an-rpc-and-scopes-what-it-runs.md) | active | 2026-10-30 |
 <!-- index:end -->

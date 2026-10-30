@@ -179,6 +179,7 @@ impl MsSqlPool {
             _permit: permit,
             healthy: false,
             close_on_drop: false,
+            in_tran: false,
         })
     }
 
@@ -324,6 +325,13 @@ pub struct PooledClient {
     /// Set by [`Self::close_on_drop`]: the session is closed with this guard
     /// even when it is healthy.
     close_on_drop: bool,
+    /// Set by [`Self::begin_tran`] and cleared by a successful
+    /// [`Self::commit_tran`] / [`Self::rollback_tran`]. A guard dropped while
+    /// it is set is closed rather than pooled: a failed `ROLLBACK`, an early
+    /// `?`, or a future cancelled between two statements must never hand the
+    /// next borrower a session inside someone else's transaction, holding its
+    /// locks.
+    in_tran: bool,
 }
 
 impl PooledClient {
@@ -441,7 +449,48 @@ impl PooledClient {
         self.classify(result)
     }
 
+    /// Open a transaction on this session.
+    ///
+    /// Sent as a plain SQL batch, never through [`Self::simple_execute`]: that
+    /// runs the text through `sp_executesql`, and SQL Server checks that an RPC
+    /// call leaves `@@TRANCOUNT` as it found it. A `BEGIN TRANSACTION` inside
+    /// one fails that check with error 266 — *after* opening the transaction,
+    /// so the caller saw a failure and the session was left inside it. That is
+    /// how editing a cell, inserting rows and pasting all failed on SQL Server.
+    /// The statements in between still go through `sp_executesql` with their
+    /// parameters; an RPC that leaves `@@TRANCOUNT` alone is fine inside a
+    /// transaction opened outside it.
+    pub async fn begin_tran(&mut self) -> AppResult<()> {
+        // Marked before running: a `BEGIN` that fails mid-flight leaves the
+        // server's state unknown, and unknown is treated as open.
+        self.in_tran = true;
+        self.simple_query_sets("BEGIN TRANSACTION").await?;
+        Ok(())
+    }
+
+    /// Commit the transaction [`Self::begin_tran`] opened. Only success makes
+    /// the session poolable again.
+    pub async fn commit_tran(&mut self) -> AppResult<()> {
+        self.simple_query_sets("COMMIT TRANSACTION").await?;
+        self.in_tran = false;
+        Ok(())
+    }
+
+    /// Roll back the transaction [`Self::begin_tran`] opened — if there is
+    /// still one: an error with `XACT_ABORT` on, or a severe one, may already
+    /// have rolled it back, and a bare `ROLLBACK` would then fail with 3903.
+    pub async fn rollback_tran(&mut self) -> AppResult<()> {
+        self.simple_query_sets("IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION")
+            .await?;
+        self.in_tran = false;
+        Ok(())
+    }
+
     /// Run SQL with no parameters for its side effect (row count only).
+    ///
+    /// Through `sp_executesql`, which is what gives back row counts — and why
+    /// transaction control must not come through here (see
+    /// [`Self::begin_tran`]).
     pub async fn simple_execute(&mut self, sql: &str) -> AppResult<u64> {
         let client = self.client_mut()?;
         let result = client
@@ -509,7 +558,7 @@ impl Drop for PooledClient {
         // Only a session `classify` has proven is at a clean stream boundary
         // goes back to `idle` — anything else (including "never classified at
         // all", the cancelled-future case) is left to close with this guard.
-        if self.healthy && !self.close_on_drop {
+        if self.healthy && !self.close_on_drop && !self.in_tran {
             if let Some(client) = self.client.take() {
                 // `try_lock` cannot fail in practice (the lock is only ever held
                 // for a push/pop), and dropping the session on contention is

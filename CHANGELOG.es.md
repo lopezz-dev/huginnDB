@@ -57,6 +57,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   transacción. Salió al unificar en un solo tipo de sesión los bucles de
   ejecución del lote, de `run_script` y de `run_writes`, sin cambiar nada más
   de lo que hacen.
+- **SQL Server: editar una celda, pegar en la rejilla e insertar filas fallaba
+  con el error 266.** Las tres operaciones se ejecutan dentro de una
+  transacción, y esa transacción se abría y se cerraba a través de
+  `sp_executesql`. SQL Server rechaza una llamada RPC que cambia el número de
+  transacciones ("Transaction count after EXECUTE indicates a mismatching
+  number of BEGIN and COMMIT statements"), pero lo hace después de haber
+  abierto la transacción. Así, la edición se daba por fallida y la sesión
+  volvía al pool todavía dentro de la transacción, con sus bloqueos, hasta que
+  el pool la cerraba. Ahora `BEGIN`, `COMMIT` y `ROLLBACK` se envían como
+  lotes SQL planos. Una sesión que se suelta con su transacción todavía
+  abierta, ya sea tras un rollback fallido o una llamada cancelada, se cierra
+  en lugar de volver al pool.
 
 ## [1.37.0] — 2026-10-30
 

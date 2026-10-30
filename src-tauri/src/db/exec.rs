@@ -223,7 +223,7 @@ async fn execute_params_in_tx_checked(
         DbPool::Sqlite(p) => sqlx_tx_all!(p),
         DbPool::MsSql(p) => {
             let mut c = p.acquire().await?;
-            c.simple_execute("BEGIN TRANSACTION").await?;
+            c.begin_tran().await?;
             let mut affected = Vec::with_capacity(batches.len());
             for (i, (sql, binds)) in batches.iter().enumerate() {
                 let refusal = match c.execute(sql, binds).await {
@@ -236,13 +236,12 @@ async fn execute_params_in_tx_checked(
                     },
                     Err(e) => e,
                 };
-                // Best-effort unwind: if the rollback also fails the session
-                // is already poisoned and `classify` will not return it to
-                // the pool.
-                let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
+                // Best-effort unwind: if the rollback also fails, the guard
+                // still holds the transaction open and is closed, not pooled.
+                let _ = c.rollback_tran().await;
                 return Err(refusal);
             }
-            c.simple_execute("COMMIT TRANSACTION").await?;
+            c.commit_tran().await?;
             Ok(affected)
         }
         DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
@@ -301,21 +300,21 @@ pub async fn in_tx_expect_at_most_one(
         DbPool::Sqlite(p) => sqlx_tx!(p),
         DbPool::MsSql(p) => {
             let mut c = p.acquire().await?;
-            c.simple_execute("BEGIN TRANSACTION").await?;
+            c.begin_tran().await?;
             let affected = match c.execute(sql, binds).await {
                 Ok(n) => n,
                 Err(e) => {
-                    // Best-effort unwind: if the rollback also fails the session
-                    // is already poisoned and `classify` will not return it.
-                    let _ = c.simple_execute("ROLLBACK TRANSACTION").await;
+                    // Best-effort unwind: if the rollback also fails, the guard
+                    // still holds the transaction open and is closed, not pooled.
+                    let _ = c.rollback_tran().await;
                     return Err(e);
                 }
             };
             if affected > 1 {
-                c.simple_execute("ROLLBACK TRANSACTION").await?;
+                c.rollback_tran().await?;
                 return Err(too_many(affected));
             }
-            c.simple_execute("COMMIT TRANSACTION").await?;
+            c.commit_tran().await?;
             Ok(affected)
         }
         DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),

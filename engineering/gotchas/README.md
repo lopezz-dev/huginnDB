@@ -66,6 +66,7 @@ Template: [`../templates/gotcha.md`](../templates/gotcha.md).
 | 37 | ADR: [SQL Server accepts SSMS's HOST\INSTANCE in either field, split centrally](../adr/adr-037-mssql-host-instance-splitting.md) | Users type SSMS's single-box HOST\INSTANCE; unsplit, a backslash in the host breaks DNS and the whole string as an instance name never matches SQL Browser, which reports only the bare name. | accepted |
 | 89 | ADR: [A blank port means the driver's default, and `tiberius` aims its SQL Browser lookup at whatever port the `Config` carries](../adr/adr-089-a-blank-port-means-the-drivers-default.md) | tiberius' connect_named sends the SQL Browser datagram to Config::get_addr(), so a config carrying the login port aims the lookup at the instance's TCP port where no UDP listener exists; until 1.27.0 the Browser path never worked. | accepted |
 | 125 | Gotcha: [T-SQL's `EXEC(…)` concatenates only literals and variables — `EXEC(N'…' + QUOTENAME(@n))` does not parse](gotcha-125-tsql-exec-concatenation-takes-no-function-calls.md) | a dynamic `EXEC(… + QUOTENAME(@x))` fails with "Incorrect syntax near 'QUOTENAME'", and string-comparing unit tests cannot see it. | active |
+| 128 | Gotcha: [tiberius's `execute` is an `sp_executesql` call, and SQL Server scopes what runs inside it](gotcha-128-tiberius-execute-is-an-rpc-and-scopes-what-it-runs.md) | `BEGIN TRANSACTION` sent through `execute` fails with error 266 *after* opening the transaction, so the caller sees a failure while the session is left inside a live transaction. | active |
 
 ### mysql
 
