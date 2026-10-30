@@ -216,7 +216,9 @@ pub(crate) async fn execute_write_batch_inner(
         DbPool::MsSql(_) => (
             "BEGIN TRANSACTION",
             "COMMIT TRANSACTION",
-            "ROLLBACK TRANSACTION",
+            // Guarded: an error may already have rolled it back, and a bare
+            // ROLLBACK would then fail with 3903 and close the session.
+            "IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION",
         ),
         _ => ("BEGIN", "COMMIT", "ROLLBACK"),
     };

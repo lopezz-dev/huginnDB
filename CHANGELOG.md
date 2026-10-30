@@ -62,6 +62,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   and `ROLLBACK` now go as plain SQL batches. A session dropped with its
   transaction still open, whether after a failed rollback or a cancelled call,
   is now closed instead of returned to the pool.
+- **SQL Server: the editor's batch run, and MCP `run_script` and `run_writes`,
+  failed on the same error 266, and `#temp` tables and `SET`s did not carry
+  over to the next statement.** These run their statements on one session
+  precisely so that what one statement leaves behind is there for the next.
+  On SQL Server each statement still went through `sp_executesql`, which
+  scopes a transaction, a `#temp` table or a `SET` to that single call. They
+  now run as plain SQL batches, and the row count each statement reports is
+  read from `@@ROWCOUNT` afterwards.
 
 ## [1.37.0] — 2026-10-30
 
