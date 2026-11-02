@@ -39,7 +39,7 @@ use std::time::Instant;
 use tauri::{AppHandle, State};
 
 use crate::commands::schema::{list_columns_inner, ColumnInfo};
-use crate::db::sql::Dialect;
+use crate::db::sql::{BindTypes, Dialect};
 use crate::db::{exec, mssql, mysql};
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink};
@@ -119,12 +119,17 @@ pub(crate) struct InsertStatement {
 /// restarting per tuple, because Postgres's `$n` and SQL Server's `@Pn` number
 /// the whole statement's bind list. (SQL Server's is a capital `P`; a lowercase
 /// one is not an alias, and `PooledClient` requires the documented spelling.)
+///
+/// `types` is [`exec::bind_types`]'s answer for `qt`, and only Postgres reads
+/// it. It is kept apart from [`InsertColumn::data_type`] on purpose: that one
+/// may be a frontend hint, and this is spliced into the SQL text.
 pub(crate) fn build_insert_statement(
     dialect: Dialect,
     qt: &str,
     columns: &[InsertColumn],
     rows: &[Vec<Option<String>>],
     clauses: InsertClauses<'_>,
+    types: &BindTypes,
 ) -> InsertStatement {
     let quoted_cols: Vec<String> = columns
         .iter()
@@ -152,7 +157,13 @@ pub(crate) fn build_insert_statement(
                     binds.push(value.clone());
                     cells.push(mssql::binary_convert(col.data_type.as_deref(), &ph));
                 }
-                Dialect::Postgres | Dialect::Mysql | Dialect::Sqlite => {
+                // `text` is not assignable to a non-text column on Postgres,
+                // so each value is cast to its column's type (ADR #129).
+                Dialect::Postgres => {
+                    binds.push(value.clone());
+                    cells.push(dialect.typed_placeholder(next - 1, types.of(&col.name)));
+                }
+                Dialect::Mysql | Dialect::Sqlite => {
                     binds.push(value.clone());
                     cells.push(ph);
                 }
@@ -528,12 +539,19 @@ pub(crate) async fn insert_rows_inner(
         .collect();
 
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
+    let types = exec::bind_types(&pool, &qt).await?;
     let per = rows_per_statement(dialect, columns.len())?;
     let batches: Vec<(String, Vec<Option<String>>)> = values
         .chunks(per)
         .map(|chunk| {
-            let built =
-                build_insert_statement(dialect, &qt, &columns, chunk, InsertClauses::default());
+            let built = build_insert_statement(
+                dialect,
+                &qt,
+                &columns,
+                chunk,
+                InsertClauses::default(),
+                &types,
+            );
             (built.sql, built.binds)
         })
         .collect();
@@ -631,6 +649,7 @@ mod tests {
             &cols,
             &rows,
             InsertClauses::default(),
+            &BindTypes::default(),
         );
         assert_eq!(
             built.sql,
@@ -657,7 +676,14 @@ mod tests {
                 "INSERT INTO \"t\" (\"a\", \"b\") VALUES (?, ?), (?, ?)",
             ),
         ] {
-            let built = build_insert_statement(dialect, qt, &cols, &rows, InsertClauses::default());
+            let built = build_insert_statement(
+                dialect,
+                qt,
+                &cols,
+                &rows,
+                InsertClauses::default(),
+                &BindTypes::default(),
+            );
             assert_eq!(built.sql, expected, "{dialect:?}");
             assert_eq!(built.binds.len(), 4, "{dialect:?}");
         }
@@ -675,6 +701,7 @@ mod tests {
             &cols,
             &rows,
             InsertClauses::default(),
+            &BindTypes::default(),
         );
         assert_eq!(
             built.sql,
@@ -695,6 +722,7 @@ mod tests {
             &cols,
             &rows,
             InsertClauses::default(),
+            &BindTypes::default(),
         );
         assert_eq!(
             built.sql,
@@ -717,6 +745,7 @@ mod tests {
             &cols,
             &rows,
             InsertClauses::default(),
+            &BindTypes::default(),
         );
         assert_eq!(
             built.sql,
@@ -738,6 +767,7 @@ mod tests {
             &cols,
             &rows,
             InsertClauses::default(),
+            &BindTypes::default(),
         );
         assert!(built.sql.contains("CAST(? AS UNSIGNED)"), "{}", built.sql);
         assert_eq!(built.binds, vec![None]);
@@ -753,6 +783,7 @@ mod tests {
             &cols,
             &rows,
             InsertClauses::default(),
+            &BindTypes::default(),
         );
         assert_eq!(
             built.sql,
@@ -770,7 +801,14 @@ mod tests {
             (Dialect::Mysql, "`t`", "`we\"ird`"),
             (Dialect::MsSql, "[t]", "[we\"ird]"),
         ] {
-            let built = build_insert_statement(dialect, qt, &cols, &rows, InsertClauses::default());
+            let built = build_insert_statement(
+                dialect,
+                qt,
+                &cols,
+                &rows,
+                InsertClauses::default(),
+                &BindTypes::default(),
+            );
             assert!(
                 built.sql.contains(expected_col),
                 "{dialect:?}: {}",
@@ -794,6 +832,7 @@ mod tests {
                 returning: Some("\"id\""),
                 ..Default::default()
             },
+            &BindTypes::default(),
         );
         assert_eq!(
             built.sql,
@@ -816,6 +855,7 @@ mod tests {
                 output_inserted: Some("[id]"),
                 ..Default::default()
             },
+            &BindTypes::default(),
         );
         assert_eq!(
             built.sql,
@@ -863,6 +903,7 @@ mod tests {
                         &cols,
                         chunk,
                         InsertClauses::default(),
+                        &BindTypes::default(),
                     );
                     assert_eq!(
                         built.binds.len() % n_columns,
@@ -981,6 +1022,7 @@ mod tests {
             &cols,
             &values,
             InsertClauses::default(),
+            &BindTypes::default(),
         );
         assert!(built.sql.contains("(\"id\")"), "{}", built.sql);
     }
@@ -1063,5 +1105,52 @@ mod tests {
         assert_eq!(coerce_value(&parsed["f"], &col("f", "numeric")), v("1.5"));
         // A string passes through unquoted — the bind carries it, not the SQL.
         assert_eq!(coerce_value(&parsed["s"], &col("s", "text")), v("x"));
+    }
+
+    #[test]
+    fn postgres_casts_each_value_to_its_column_type_in_every_tuple() {
+        let types = BindTypes::new([
+            ("id".to_string(), "smallint".to_string()),
+            ("flag".to_string(), "boolean".to_string()),
+        ]);
+        let cols = vec![col("id", "int2"), col("flag", "bool"), col("note", "text")];
+        let rows = vec![vec![v("1"), v("1"), v("a")], vec![v("2"), None, v("b")]];
+        let built = build_insert_statement(
+            Dialect::Postgres,
+            "\"public\".\"t\"",
+            &cols,
+            &rows,
+            InsertClauses {
+                returning: Some("\"id\""),
+                ..Default::default()
+            },
+            &types,
+        );
+        // `note` is not in the map, so it keeps its bare placeholder; the
+        // `data_type` hint (`int2`, `bool`) is never what gets cast to.
+        assert_eq!(
+            built.sql,
+            "INSERT INTO \"public\".\"t\" (\"id\", \"flag\", \"note\") VALUES \
+             (CAST($1 AS smallint), CAST($2 AS boolean), $3), \
+             (CAST($4 AS smallint), CAST($5 AS boolean), $6) RETURNING \"id\""
+        );
+    }
+
+    #[test]
+    fn other_dialects_ignore_the_type_map() {
+        let types = BindTypes::new([("id".to_string(), "smallint".to_string())]);
+        let cols = vec![col("id", "int")];
+        let rows = vec![vec![v("1")]];
+        for (dialect, qt) in [
+            (Dialect::Mysql, "`t`"),
+            (Dialect::Sqlite, "\"t\""),
+            (Dialect::MsSql, "[t]"),
+        ] {
+            let build = |types: &BindTypes| {
+                build_insert_statement(dialect, qt, &cols, &rows, InsertClauses::default(), types)
+                    .sql
+            };
+            assert_eq!(build(&types), build(&BindTypes::default()), "{dialect:?}");
+        }
     }
 }
