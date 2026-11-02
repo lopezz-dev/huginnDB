@@ -8,6 +8,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Postgres: editar, filtrar, borrar e insertar sobre una columna que no es
+  de texto vuelve a funcionar (#268).** En una tabla cuya clave es un
+  `smallint` (o un `integer`, un `uuid`, un enum…), guardar una celda, borrar
+  una fila, filtrar por la clave e insertar una fila fallaban con
+  `operator does not exist: smallint = text` o
+  `column "id" is of type smallint but expression is of type text`. Todo valor
+  que enlaza la app viaja como texto, y el driver de Postgres lo declara como
+  `text`. MySQL, SQLite y SQL Server lo convierten solos al tipo de la
+  columna, pero Postgres se niega. En Postgres cada valor se convierte ahora
+  al tipo de su columna, leído del catálogo del servidor: los filtros y el
+  panel de consulta del grid (y su *Resultado*, *Explain*, conteo y
+  exportación), la edición de celdas, el borrado, la inserción, el pegado de
+  filas, la inserción de filas en JSON y la actualización en bloque. Las
+  búsquedas de texto no cambian, y un valor demasiado largo para un
+  `varchar(n)` se sigue rechazando en vez de truncarse. Los demás motores
+  ejecutan exactamente el mismo SQL que antes (ADR #129).
+
 ## [1.37.1] — 2026-10-30
 
 ### Cambiado

@@ -107,6 +107,7 @@ Template: [`../templates/gotcha.md`](../templates/gotcha.md).
 | 5 | ADR: [update_cell's value is Option<String> end-to-end](../adr/adr-005-update-cell-option-string.md) | sqlx's postgres driver will not encode a serde_json::Value to arbitrary column types. | accepted |
 | 11 | Gotcha: [sqlx rejects Vec<u8> reads on a MySQL BIT column](gotcha-011-mysql-bit-vecu8-rejected.md) | sqlx rejects try_get::<Vec<u8>> on a MySQL BIT column because its blob compatibility check accepts only BLOB/STRING/VARBINARY. | superseded → #15 |
 | 66 | ADR: [sqlx's eager `connect()` discards why it failed, so an unreachable host was reported as "too many connections"](../adr/adr-066-sqlx-eager-connect-masks-the-real-cause.md) | sqlx's eager PoolOptions::connect_with retries what it deems transient (ConnectionRefused, Postgres 53300/57P03) until acquire_timeout and then returns PoolTimedOut, discarding the real error. | accepted |
+| 129 | ADR: [On Postgres, every bound value is cast to its column's type, read from the catalogue](../adr/adr-129-postgres-binds-are-cast-to-the-column-type-from-the-catalogue.md) | `sqlx-postgres` 0.8 declares every `String` / `&str` bind as `text` (OID 25, `types/str.rs`) and always sends parameters in the *binary* format (`connection/executor.rs`, `formats: &[PgValueFormat::Binary]`). Postgres has no implicit cast from `text` to integer, numeric, boolean, uuid, date/time, enum, jsonb, bytea or array types. | accepted |
 
 ### ssh
 

@@ -25,7 +25,7 @@ use crate::commands::query::{
 };
 use crate::commands::schema::list_columns_inner;
 use crate::db::mysql;
-use crate::db::sql::Dialect;
+use crate::db::sql::{BindTypes, Dialect};
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{self, log_sql_sink, LogSink};
 use crate::state::{AppState, DbPool};
@@ -141,6 +141,16 @@ async fn build_update_statement(
             std::collections::HashSet::new()
         };
 
+    // Postgres's casts (ADR #129), for both the SET values and the WHERE. A
+    // failed read degrades to no casts, like the BIT fallback above: this
+    // function also builds the preview, which must not fail on it.
+    let types = match state.pool_for(connection_id) {
+        Ok(pool) if dialect == Dialect::Postgres => crate::db::exec::bind_types(&pool, qt)
+            .await
+            .unwrap_or_default(),
+        _ => BindTypes::default(),
+    };
+
     let mut next = 1usize;
     let mut binds: Vec<Option<String>> = Vec::with_capacity(set_values.len());
     let set_parts: Vec<String> = set_values
@@ -163,13 +173,17 @@ async fn build_update_statement(
                     rv.value.clone(),
                 )
             } else {
-                (ph, rv.value.clone())
+                (
+                    dialect.typed_placeholder(next - 1, types.of(&rv.column)),
+                    rv.value.clone(),
+                )
             };
             binds.push(value);
             format!("{col} = {placeholder}")
         })
         .collect();
-    let (where_clause, where_binds, _) = build_filter_clause_at(next, dialect, filters, None, &[]);
+    let (where_clause, where_binds, _) =
+        build_filter_clause_at(next, dialect, filters, None, &[], &types);
     binds.extend(where_binds);
     (
         format!("UPDATE {qt} SET {}{where_clause}", set_parts.join(", ")),

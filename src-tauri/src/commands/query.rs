@@ -17,7 +17,7 @@ use crate::commands::insert::{build_insert_statement, InsertClauses, InsertColum
 use crate::commands::schema::list_columns_inner;
 use crate::db::mysql;
 use crate::db::session::{failure_text, fetch_capped, Session};
-use crate::db::sql::{is_read_only, Dialect};
+use crate::db::sql::{is_read_only, BindTypes, Dialect};
 use crate::db::values::pg_value;
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink, SqlLog};
@@ -64,8 +64,9 @@ macro_rules! try_sql_sink {
 /// SQL fragment without going through user-supplied strings. All variants
 /// except `IsNull` / `IsNotNull` consume the filter's bound `value`; the
 /// frontend advanced-filter builder (#66) only *offers* the type-appropriate
-/// subset per column, but the backend accepts any op on any column and lets
-/// the driver coerce the textual literal.
+/// subset per column, but the backend accepts any op on any column: the
+/// textual value is coerced by the engine (MySQL, SQLite, SQL Server) or cast
+/// to the column's type in the SQL (Postgres, ADR #129).
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FilterOp {
@@ -152,6 +153,40 @@ impl TableFilter {
         validate_filters(&self.filters)
     }
 
+    /// Whether some filter binds a value compared against its column, so the
+    /// clause needs the column types on Postgres. The pattern matches, the
+    /// search box and `IS [NOT] NULL` compare text or nothing.
+    fn compares_values(&self) -> bool {
+        self.filters.iter().any(|f| match f.op {
+            FilterOp::Eq
+            | FilterOp::Ne
+            | FilterOp::Gt
+            | FilterOp::Gte
+            | FilterOp::Lt
+            | FilterOp::Lte
+            | FilterOp::Between
+            | FilterOp::In
+            | FilterOp::NotIn => true,
+            FilterOp::Contains
+            | FilterOp::NotContains
+            | FilterOp::StartsWith
+            | FilterOp::EndsWith
+            | FilterOp::IsNull
+            | FilterOp::IsNotNull => false,
+        })
+    }
+
+    /// The column types [`Self::clause`] needs on `qt`: a catalogue read on
+    /// Postgres when some filter compares a value, and nothing — no round
+    /// trip — otherwise, so an unfiltered browse costs what it always did.
+    pub(crate) async fn bind_types(&self, pool: &DbPool, qt: &str) -> AppResult<BindTypes> {
+        if self.compares_values() {
+            crate::db::exec::bind_types(pool, qt).await
+        } else {
+            Ok(BindTypes::default())
+        }
+    }
+
     /// The `WHERE` clause and its binds for `dialect`, placeholders from 1,
     /// with the expression (validated) ANDed on the end.
     ///
@@ -159,9 +194,22 @@ impl TableFilter {
     /// the parentheses keep an `OR` in it from escaping the `AND` that binds it
     /// to the chips, and the line breaks keep a trailing `-- comment` from
     /// commenting out the `ORDER BY` / `LIMIT` that follow it.
-    pub(crate) fn clause(&self, dialect: Dialect) -> AppResult<(String, Vec<Option<String>>)> {
-        let (built, binds) =
-            build_filter_clause(dialect, &self.filters, self.needle(), &self.search_columns);
+    ///
+    /// `types` casts the compared values on Postgres (ADR #129); see
+    /// [`Self::bind_types`] for where it comes from.
+    pub(crate) fn clause(
+        &self,
+        dialect: Dialect,
+        types: &BindTypes,
+    ) -> AppResult<(String, Vec<Option<String>>)> {
+        let (built, binds, _) = build_filter_clause_at(
+            1,
+            dialect,
+            &self.filters,
+            self.needle(),
+            &self.search_columns,
+            types,
+        );
         let Some(raw) = self.raw_text() else {
             return Ok((built, binds));
         };
@@ -348,13 +396,17 @@ pub(crate) fn inline_binds(dialect: Dialect, sql: &str, binds: &[Option<String>]
 /// [`fetch_table_data_inner`] and [`describe_table_query`], so the query
 /// panel's *Result* line is built by the code that builds what executes and
 /// cannot drift from it.
+///
+/// `types` comes from [`page_bind_types`]; it is a separate step because this
+/// one stays pure.
 fn sql_page_statement(
     dialect: Dialect,
     q: &TableQuery,
+    types: &BindTypes,
 ) -> AppResult<(String, Vec<Option<String>>)> {
     let order_clause = order_by_clause(dialect, &q.order, nonblank(&q.collation))?;
     let select = select_list(dialect, q.projection.as_ref())?;
-    let (where_clause, binds) = q.filter.clause(dialect)?;
+    let (where_clause, binds) = q.filter.clause(dialect, types)?;
     let qt = dialect.qualify_defaulted(q.schema.as_deref(), &q.table);
     let from = from_clause(dialect, &qt, nonblank(&q.hint))?;
     // LIMIT/OFFSET stay inline (they are integers we already parsed), so the
@@ -366,6 +418,13 @@ fn sql_page_statement(
         format!("SELECT {select} FROM {from}{where_clause}{order_clause}{page}"),
         binds,
     ))
+}
+
+/// The column types [`sql_page_statement`] casts its filter values to — on the
+/// relation exactly as that statement names it.
+async fn page_bind_types(pool: &DbPool, dialect: Dialect, q: &TableQuery) -> AppResult<BindTypes> {
+    let qt = dialect.qualify_defaulted(q.schema.as_deref(), &q.table);
+    q.filter.bind_types(pool, &qt).await
 }
 
 /// The `EXPLAIN` form each SQL engine reads a plan with **without running the
@@ -451,7 +510,8 @@ pub async fn explain_table_query(
     }
     let dialect = Dialect::try_of(&pool)?;
     let prefix = explain_prefix(dialect)?;
-    let (sql, binds) = sql_page_statement(dialect, &query)?;
+    let types = page_bind_types(&pool, dialect, &query).await?;
+    let (sql, binds) = sql_page_statement(dialect, &query, &types)?;
     let (columns, rows) =
         crate::db::exec::query_rows(&pool, &format!("{prefix}{sql}"), &binds).await?;
     Ok(crate::pulse::ExplainPlan {
@@ -501,7 +561,8 @@ pub async fn describe_table_query(
         });
     }
     let dialect = Dialect::try_of(&pool)?;
-    let (sql, binds) = sql_page_statement(dialect, &query)?;
+    let types = page_bind_types(&pool, dialect, &query).await?;
+    let (sql, binds) = sql_page_statement(dialect, &query, &types)?;
     Ok(QueryPreview {
         text: inline_binds(dialect, &sql, &binds),
         language: "sql",
@@ -771,7 +832,8 @@ pub struct SortSpec {
 pub struct RowValue {
     pub column: String,
     /// Always a string or `null`. The cell editor and `RowEditor` dialog
-    /// produce text only; drivers cast textual literals to the target type.
+    /// produce text only; the engine coerces it, or on Postgres the SQL
+    /// casts it to the column's type (ADR #129).
     pub value: Option<String>,
     /// Raw `data_type` string from `ColumnMeta` (e.g. `"BIT"` for MySQL BIT
     /// columns). Used to detect columns that need special binding (see
@@ -1600,13 +1662,24 @@ pub(crate) fn validate_filters(filters: &[ColumnFilter]) -> AppResult<()> {
 /// single OR group AND-composed with the column filters. Search values
 /// are escaped against LIKE metacharacters and case-folded by the SQL
 /// engine (`ILIKE` on Postgres, default `LIKE` on MySQL/SQLite).
+///
+/// Untyped: the tests' shorthand for [`build_filter_clause_at`] from 1. The
+/// browse goes through [`TableFilter::clause`], which carries the types.
+#[cfg(test)]
 fn build_filter_clause(
     dialect: Dialect,
     filters: &[ColumnFilter],
     search: Option<&str>,
     search_columns: &[String],
 ) -> (String, Vec<Option<String>>) {
-    let (clause, binds, _) = build_filter_clause_at(1, dialect, filters, search, search_columns);
+    let (clause, binds, _) = build_filter_clause_at(
+        1,
+        dialect,
+        filters,
+        search,
+        search_columns,
+        &BindTypes::default(),
+    );
     (clause, binds)
 }
 
@@ -1620,12 +1693,17 @@ fn build_filter_clause(
 /// statement, so the `WHERE` must continue the `SET`'s counter rather than
 /// restart at `$1`. MySQL/SQLite's `?` doesn't care about the number, so the
 /// threading is harmless there too.
+///
+/// `types` casts each value compared against a column to that column's type on
+/// Postgres (ADR #129); the pattern matches compare text with text and take no
+/// cast. Pass [`BindTypes::default`] on every other dialect.
 pub(crate) fn build_filter_clause_at(
     start_at: usize,
     dialect: Dialect,
     filters: &[ColumnFilter],
     search: Option<&str>,
     search_columns: &[String],
+    types: &BindTypes,
 ) -> (String, Vec<Option<String>>, usize) {
     let mut binds: Vec<Option<String>> = Vec::new();
     let mut parts: Vec<String> = Vec::new();
@@ -1634,6 +1712,12 @@ pub(crate) fn build_filter_clause_at(
     // Next positional placeholder for this dialect, advancing the counter.
     let placeholder = |next: &mut usize| -> String {
         let ph = dialect.placeholder(*next);
+        *next += 1;
+        ph
+    };
+    // The same, for a value compared against `column` itself.
+    let typed = |next: &mut usize, column: &str| -> String {
+        let ph = dialect.typed_placeholder(*next, types.of(column));
         *next += 1;
         ph
     };
@@ -1674,13 +1758,13 @@ pub(crate) fn build_filter_clause_at(
                         unreachable!("non-comparison op in the comparison arm")
                     }
                 };
-                let ph = placeholder(&mut next_placeholder);
+                let ph = typed(&mut next_placeholder, &f.column);
                 parts.push(format!("{col} {sym} {ph}"));
                 binds.push(json_to_string(&f.value));
             }
             FilterOp::Between => {
-                let ph1 = placeholder(&mut next_placeholder);
-                let ph2 = placeholder(&mut next_placeholder);
+                let ph1 = typed(&mut next_placeholder, &f.column);
+                let ph2 = typed(&mut next_placeholder, &f.column);
                 parts.push(format!("{col} BETWEEN {ph1} AND {ph2}"));
                 binds.push(json_to_string(&f.value));
                 binds.push(json_to_string(&f.value2));
@@ -1721,7 +1805,7 @@ pub(crate) fn build_filter_clause_at(
                 } else {
                     let list = bound
                         .iter()
-                        .map(|_| placeholder(&mut next_placeholder))
+                        .map(|_| typed(&mut next_placeholder, &f.column))
                         .collect::<Vec<_>>()
                         .join(", ");
                     // SQL's three-valued logic makes NULL the whole subtlety
@@ -1882,7 +1966,8 @@ pub(crate) async fn fetch_table_data_inner(
     let driver = pool.driver_name();
     let dialect = Dialect::try_of(&pool)?;
 
-    let (data_sql, where_binds) = sql_page_statement(dialect, &query)?;
+    let types = page_bind_types(&pool, dialect, &query).await?;
+    let (data_sql, where_binds) = sql_page_statement(dialect, &query, &types)?;
     let TableQuery {
         connection_id,
         schema,
@@ -1892,7 +1977,7 @@ pub(crate) async fn fetch_table_data_inner(
         with_count,
         ..
     } = query;
-    let (where_clause, _) = filter.clause(dialect)?;
+    let (where_clause, _) = filter.clause(dialect, &types)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
@@ -2107,8 +2192,9 @@ pub(crate) async fn count_table_rows_inner(
     }
 
     // Exact count: predicate present, asked for, or no estimate available.
-    let (where_clause, where_binds) = filter.clause(dialect)?;
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
+    let types = filter.bind_types(&pool, &qt).await?;
+    let (where_clause, where_binds) = filter.clause(dialect, &types)?;
     let count_sql = format!("SELECT COUNT(*) FROM {qt}{where_clause}");
 
     let start = Instant::now();
@@ -2246,6 +2332,7 @@ pub(crate) fn update_cell_statement(
     pk_columns: &[String],
     value: Option<String>,
     pk_values: &[Value],
+    types: &BindTypes,
 ) -> (String, Vec<Option<String>>) {
     let col_id = dialect.quote_ident(column);
     // SET uses placeholder #1; the PK predicate consumes #2..=#N+1 on the
@@ -2257,7 +2344,7 @@ pub(crate) fn update_cell_statement(
             format!(
                 "{} = {}",
                 dialect.quote_ident(c),
-                dialect.placeholder(i + 2)
+                dialect.typed_placeholder(i + 2, types.of(c))
             )
         })
         .collect::<Vec<_>>()
@@ -2269,7 +2356,7 @@ pub(crate) fn update_cell_statement(
         // SQL Server's binary family — see `db::mssql::binary_convert`.
         crate::db::mssql::binary_convert(column_type, &dialect.placeholder(1))
     } else {
-        dialect.placeholder(1)
+        dialect.typed_placeholder(1, types.of(column))
     };
     let sql = format!("UPDATE {qt} SET {col_id} = {set_placeholder} WHERE {where_clause}");
     let effective_value = if bit_cast {
@@ -2287,8 +2374,9 @@ pub(crate) fn update_cell_statement(
 /// full primary key.
 ///
 /// The new value is always sent as `Option<String>` because the cell
-/// editor produces text. Drivers cast textual literals to the column type
-/// automatically. NULLs are conveyed by passing `None`.
+/// editor produces text. MySQL, SQLite and SQL Server coerce it to the
+/// column type; on Postgres the statement casts it, and the key values, to
+/// their columns' types (ADR #129). NULLs are conveyed by passing `None`.
 ///
 /// Composite primary keys are supported: `pk_columns` is the ordered list
 /// of column names that participate in the PK, and `pk_values` is the
@@ -2407,15 +2495,15 @@ pub(crate) async fn update_cell_inner(
 
     let qt = dialect.qualify(schema.as_deref(), &table);
 
-    // The cell value travels as a textual literal (ADR #5) and drivers
-    // coerce it to the column type server-side. That coercion is wrong for
+    // The cell value travels as a textual literal (ADR #5) and MySQL coerces
+    // it to the column type server-side. That coercion is wrong for
     // MySQL `BIT`: binding the string "1" makes MySQL store the ASCII byte
     // 0x31 (the character '1') rather than the integer 1, so editing a BIT
     // cell silently wrote garbage. Wrapping the placeholder in
     // `CAST(? AS UNSIGNED)` forces numeric interpretation of the literal,
     // and `CAST(NULL AS UNSIGNED)` is still NULL so the set-NULL path is
-    // unaffected. Only MySQL needs this; PG/SQLite cast textual literals to
-    // their bit/blob types correctly on their own.
+    // unaffected. Only MySQL needs this; SQLite takes the text as it is, and
+    // Postgres gets its own cast below (ADR #129).
     let is_mysql = dialect == Dialect::Mysql;
     // Same fallback as `insert_row`: if the frontend's `column_type` hint is
     // missing (stale/unloaded schema cache), fall back to a catalog lookup
@@ -2431,6 +2519,9 @@ pub(crate) async fn update_cell_inner(
             .unwrap_or(false);
     let bit_cast =
         is_mysql && (column_type.as_deref().is_some_and(mysql::is_bit_type) || catalog_bit_cast);
+    // Postgres only, and not optional: without the casts every non-text key
+    // or value fails `smallint = text` (ADR #129).
+    let types = crate::db::exec::bind_types(&pool, &qt).await?;
     let (sql, binds) = update_cell_statement(
         dialect,
         &qt,
@@ -2440,6 +2531,7 @@ pub(crate) async fn update_cell_inner(
         &pk_columns,
         value,
         &pk_values,
+        &types,
     );
 
     // Wrap the UPDATE in a transaction so a stray multi-row hit can be
@@ -2581,6 +2673,51 @@ pub async fn delete_rows(
 
 /// Tauri-independent core of [`delete_rows`], shared with the headless MCP
 /// `delete_rows` write tool.
+/// `DELETE FROM qt WHERE (pk…) IN ((…), …)` and its binds, one tuple per row.
+///
+/// Pure, like [`update_cell_statement`], so the SQL each dialect gets is
+/// testable without a pool. `pk_value_rows` must already be arity-checked.
+/// `types` casts each key value on Postgres (ADR #129).
+pub(crate) fn delete_rows_statement(
+    dialect: Dialect,
+    qt: &str,
+    pk_columns: &[String],
+    pk_value_rows: &[Vec<Value>],
+    types: &BindTypes,
+) -> (String, Vec<Option<String>>) {
+    let lhs = pk_columns
+        .iter()
+        .map(|c| dialect.quote_ident(c))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut counter = 0usize;
+    let tuples = pk_value_rows
+        .iter()
+        .map(|row| {
+            // Row values sit in `pk_columns` order, which names each one's type.
+            let placeholders = pk_columns
+                .iter()
+                .take(row.len())
+                .map(|c| {
+                    counter += 1;
+                    dialect.typed_placeholder(counter, types.of(c))
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("({placeholders})")
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    // For arity==1 wrap the LHS in parentheses too — `(c) IN ((?), (?))`
+    // is valid across all three drivers and keeps a single code path.
+    let sql = format!("DELETE FROM {qt} WHERE ({lhs}) IN ({tuples})");
+    let binds: Vec<Option<String>> = pk_value_rows
+        .iter()
+        .flat_map(|row| row.iter().map(json_to_string))
+        .collect();
+    (sql, binds)
+}
+
 pub(crate) async fn delete_rows_inner(
     sink: &dyn LogSink,
     state: &AppState,
@@ -2631,34 +2768,8 @@ pub(crate) async fn delete_rows_inner(
     let dialect = Dialect::try_of(&pool)?;
 
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
-    let lhs = pk_columns
-        .iter()
-        .map(|c| dialect.quote_ident(c))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let mut counter = 0usize;
-    let tuples = pk_value_rows
-        .iter()
-        .map(|row| {
-            let placeholders = row
-                .iter()
-                .map(|_| {
-                    counter += 1;
-                    dialect.placeholder(counter)
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("({placeholders})")
-        })
-        .collect::<Vec<_>>()
-        .join(", ");
-    // For arity==1 wrap the LHS in parentheses too — `(c) IN ((?), (?))`
-    // is valid across all three drivers and keeps a single code path.
-    let sql = format!("DELETE FROM {qt} WHERE ({lhs}) IN ({tuples})");
-    let binds: Vec<Option<String>> = pk_value_rows
-        .iter()
-        .flat_map(|row| row.iter().map(json_to_string))
-        .collect();
+    let types = crate::db::exec::bind_types(&pool, &qt).await?;
+    let (sql, binds) = delete_rows_statement(dialect, &qt, &pk_columns, &pk_value_rows, &types);
 
     let start = Instant::now();
     let affected = try_sql_sink!(
@@ -2685,7 +2796,8 @@ pub(crate) async fn delete_rows_inner(
 ///
 /// `values` carries the columns the caller wants to populate; any column
 /// omitted will fall back to the database default. Bound values are sent
-/// as text and cast by the driver, matching [`update_cell`]'s semantics.
+/// as text, matching [`update_cell`]'s semantics — cast to each column's
+/// type in the SQL on Postgres (ADR #129).
 ///
 /// When `pk_column` is provided on Postgres, the statement is suffixed
 /// with `RETURNING <pk>` and the generated value is returned to the
@@ -2881,12 +2993,15 @@ pub(crate) async fn insert_row_inner(
         })
         .collect();
     let one_row = [values.iter().map(|v| v.value.clone()).collect::<Vec<_>>()];
+    // Postgres's casts, from its catalogue (ADR #129); empty elsewhere.
+    let types = crate::db::exec::bind_types(&pool, &qt).await?;
     let plain = build_insert_statement(
         dialect,
         &qt,
         &insert_columns,
         &one_row,
         InsertClauses::default(),
+        &types,
     );
     let binds = plain.binds;
     let base_sql = plain.sql;
@@ -2908,6 +3023,7 @@ pub(crate) async fn insert_row_inner(
                             returning: Some(&dialect.quote_ident(pk)),
                             ..Default::default()
                         },
+                        &types,
                     )
                     .sql
                 }
@@ -2995,6 +3111,7 @@ pub(crate) async fn insert_row_inner(
                     output_inserted: Some(&dialect.quote_ident(pk)),
                     ..Default::default()
                 },
+                &types,
             )
             .sql;
             match p.query_all(&output_sql, &binds).await {
@@ -3755,14 +3872,16 @@ mod filter_tests {
             raw: Some("qty > 3 OR qty IS NULL -- note".into()),
             ..TableFilter::default()
         };
-        let (clause, binds) = f.clause(Dialect::Postgres).unwrap();
+        let (clause, binds) = f.clause(Dialect::Postgres, &BindTypes::default()).unwrap();
         assert_eq!(
             clause,
             " WHERE \"code\" = $1 AND (\nqty > 3 OR qty IS NULL -- note\n)"
         );
         assert_eq!(binds.len(), 1);
 
-        let (alone, _) = with_raw("qty > 3").clause(Dialect::Mysql).unwrap();
+        let (alone, _) = with_raw("qty > 3")
+            .clause(Dialect::Mysql, &BindTypes::default())
+            .unwrap();
         assert_eq!(alone, " WHERE (\nqty > 3\n)");
     }
 
@@ -3845,6 +3964,176 @@ mod filter_tests {
 
         assert_eq!(q.filter.needle(), None);
         assert!(q.filter.is_unfiltered());
+    }
+}
+
+/// The SQL each write and filter path builds once it knows the column types
+/// (ADR #129): Postgres casts the values compared with or assigned to a column,
+/// and the other dialects are byte-for-byte what they were — even when handed
+/// a type map, which in the app they never are.
+#[cfg(test)]
+mod bind_type_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn pg_types() -> BindTypes {
+        BindTypes::new([
+            ("id".to_string(), "smallint".to_string()),
+            ("tenant".to_string(), "uuid".to_string()),
+            ("name".to_string(), "text".to_string()),
+            ("mood".to_string(), "public.mood".to_string()),
+        ])
+    }
+
+    fn filter(column: &str, op: FilterOp, value: Value) -> ColumnFilter {
+        ColumnFilter {
+            column: column.into(),
+            op,
+            value,
+            value2: Value::Null,
+            values: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn postgres_filter_values_are_cast_to_their_column_type() {
+        let filters = vec![
+            filter("id", FilterOp::Gte, json!(1)),
+            ColumnFilter {
+                value2: json!(9),
+                ..filter("id", FilterOp::Between, json!(2))
+            },
+            ColumnFilter {
+                values: vec![json!("happy"), json!("ok")],
+                ..filter("mood", FilterOp::In, Value::Null)
+            },
+        ];
+        let (clause, binds, next) =
+            build_filter_clause_at(1, Dialect::Postgres, &filters, None, &[], &pg_types());
+        assert_eq!(
+            clause,
+            " WHERE \"id\" >= CAST($1 AS smallint) \
+             AND \"id\" BETWEEN CAST($2 AS smallint) AND CAST($3 AS smallint) \
+             AND \"mood\" IN (CAST($4 AS public.mood), CAST($5 AS public.mood))"
+        );
+        assert_eq!(binds.len(), 5);
+        assert_eq!(next, 6);
+    }
+
+    #[test]
+    fn postgres_pattern_matches_and_unknown_columns_stay_uncast() {
+        let filters = vec![
+            filter("id", FilterOp::Contains, json!("4")),
+            filter("id", FilterOp::NotContains, json!("5")),
+            filter("computed", FilterOp::Eq, json!("x")),
+        ];
+        let search = vec!["tenant".to_string()];
+        let (clause, _, _) = build_filter_clause_at(
+            1,
+            Dialect::Postgres,
+            &filters,
+            Some("q"),
+            &search,
+            &pg_types(),
+        );
+        assert!(!clause.contains("CAST($"), "{clause}");
+        assert!(clause.contains("\"computed\" = $3"), "{clause}");
+    }
+
+    #[test]
+    fn other_dialects_ignore_the_types() {
+        let filters = vec![
+            filter("id", FilterOp::Eq, json!(1)),
+            ColumnFilter {
+                values: vec![json!(1), json!(2)],
+                ..filter("id", FilterOp::NotIn, Value::Null)
+            },
+        ];
+        for dialect in [Dialect::Mysql, Dialect::Sqlite, Dialect::MsSql] {
+            let typed = build_filter_clause_at(1, dialect, &filters, None, &[], &pg_types());
+            let plain =
+                build_filter_clause_at(1, dialect, &filters, None, &[], &BindTypes::default());
+            assert_eq!(typed, plain, "{dialect:?}");
+        }
+    }
+
+    #[test]
+    fn postgres_update_cell_casts_the_value_and_every_key() {
+        let (sql, binds) = update_cell_statement(
+            Dialect::Postgres,
+            "\"public\".\"t\"",
+            "mood",
+            None,
+            false,
+            &["id".to_string(), "tenant".to_string()],
+            None,
+            &[json!(1), json!("00000000-0000-0000-0000-000000000001")],
+            &pg_types(),
+        );
+        assert_eq!(
+            sql,
+            "UPDATE \"public\".\"t\" SET \"mood\" = CAST($1 AS public.mood) \
+             WHERE \"id\" = CAST($2 AS smallint) AND \"tenant\" = CAST($3 AS uuid)"
+        );
+        // SET NULL stays a NULL bind; a cast of NULL is NULL.
+        assert_eq!(binds[0], None);
+    }
+
+    #[test]
+    fn mysql_update_cell_is_unchanged_by_a_type_map() {
+        let build = |types: &BindTypes| {
+            update_cell_statement(
+                Dialect::Mysql,
+                "`t`",
+                "name",
+                None,
+                false,
+                &["id".to_string()],
+                Some("x".into()),
+                &[json!(1)],
+                types,
+            )
+        };
+        assert_eq!(build(&pg_types()), build(&BindTypes::default()));
+        assert_eq!(
+            build(&pg_types()).0,
+            "UPDATE `t` SET `name` = ? WHERE `id` = ?"
+        );
+    }
+
+    #[test]
+    fn postgres_delete_casts_every_key_of_every_tuple() {
+        let (sql, binds) = delete_rows_statement(
+            Dialect::Postgres,
+            "\"public\".\"t\"",
+            &["id".to_string(), "tenant".to_string()],
+            &[vec![json!(1), json!("a")], vec![json!(2), json!("b")]],
+            &pg_types(),
+        );
+        assert_eq!(
+            sql,
+            "DELETE FROM \"public\".\"t\" WHERE (\"id\", \"tenant\") IN \
+             ((CAST($1 AS smallint), CAST($2 AS uuid)), (CAST($3 AS smallint), CAST($4 AS uuid)))"
+        );
+        assert_eq!(binds.len(), 4);
+    }
+
+    #[test]
+    fn sql_server_delete_is_unchanged_by_a_type_map() {
+        let build = |types: &BindTypes| {
+            delete_rows_statement(
+                Dialect::MsSql,
+                "[dbo].[t]",
+                &["id".to_string()],
+                &[vec![json!(1)], vec![json!(2)]],
+                types,
+            )
+        };
+        assert_eq!(build(&pg_types()), build(&BindTypes::default()));
+        assert_eq!(
+            build(&pg_types()).0,
+            "DELETE FROM [dbo].[t] WHERE ([id]) IN ((@P1), (@P2))"
+        );
     }
 }
 
