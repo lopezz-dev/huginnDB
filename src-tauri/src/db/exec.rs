@@ -20,9 +20,12 @@
 //! already did.
 //!
 //! Values cross as `Option<String>` end-to-end (ADR #5): the cell editor only
-//! ever emits text and the drivers cast textual literals server-side. Anything
-//! needing a per-driver cast around the placeholder (a MySQL `BIT`, a SQL Server
-//! `varbinary`) builds that into the SQL *before* getting here.
+//! ever emits text and MySQL, SQLite and SQL Server cast textual literals
+//! server-side. Postgres does not — `sqlx` declares the bind as `text` — so its
+//! statements carry a `CAST` to each column's type, read by [`bind_types`]
+//! (ADR #129). Anything needing a per-driver cast around the placeholder (that
+//! one, a MySQL `BIT`, a SQL Server `varbinary`) builds it into the SQL
+//! *before* getting here.
 
 use crate::error::{AppError, AppResult};
 use crate::state::DbPool;
@@ -448,6 +451,42 @@ pub async fn scalar_i64(
             .await
             .map_err(AppError::from),
         DbPool::MsSql(p) => p.scalar(sql, binds).await,
+        DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
+    }
+}
+
+/// The declared type of every column of `qt`, for the casts
+/// [`Dialect::typed_placeholder`](crate::db::sql::Dialect::typed_placeholder)
+/// puts around Postgres binds (ADR #129). Empty on every other engine, without
+/// a round trip.
+///
+/// `qt` is the relation exactly as the statement about to run names it —
+/// quoted, and qualified or not — and is resolved with `to_regclass`, so an
+/// unqualified name follows the same `search_path` the statement will. A
+/// relation that does not resolve yields an empty map rather than an error:
+/// the statement then runs uncast, as it always did, and reports its own
+/// error.
+///
+/// `format_type(…, -1)` names the type **without its modifier** on purpose.
+/// With it, the cast would be to `varchar(4)`, `char(3)` or `bit(3)`, and an
+/// explicit cast to those *silently truncates* — a value too long for the
+/// column would be cut instead of refused. Without it the cast is to
+/// `character varying`, `bpchar` or `"bit"`, and the column's own modifier is
+/// enforced on assignment exactly as for a hand-written literal.
+pub async fn bind_types(pool: &DbPool, qt: &str) -> AppResult<crate::db::sql::BindTypes> {
+    match pool {
+        DbPool::Postgres(p) => {
+            let rows: Vec<(String, String)> = sqlx::query_as(
+                "SELECT a.attname::text, format_type(a.atttypid, -1)                  FROM pg_attribute a                  WHERE a.attrelid = to_regclass($1) AND a.attnum > 0 AND NOT a.attisdropped",
+            )
+            .bind(qt)
+            .fetch_all(p)
+            .await?;
+            Ok(crate::db::sql::BindTypes::new(rows))
+        }
+        DbPool::Mysql(_) | DbPool::Sqlite(_) | DbPool::MsSql(_) => {
+            Ok(crate::db::sql::BindTypes::default())
+        }
         DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),
     }
 }

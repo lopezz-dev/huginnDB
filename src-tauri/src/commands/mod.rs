@@ -36,6 +36,9 @@ pub mod vault;
 pub mod view;
 pub mod write_batch;
 
+#[cfg(test)]
+mod pg_live_tests;
+
 use crate::log_bus::TauriSink;
 use crate::state::AppState;
 use tauri::AppHandle;

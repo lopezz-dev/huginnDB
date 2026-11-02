@@ -30,7 +30,7 @@ use crate::commands::insert::{build_insert_statement, InsertClauses, InsertColum
 use crate::commands::query::{update_cell_statement, RowValue};
 use crate::db::exec;
 use crate::db::mysql;
-use crate::db::sql::{Dialect, Verbs};
+use crate::db::sql::{BindTypes, Dialect, Verbs};
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink};
 use crate::state::{AppState, DbPool};
@@ -157,10 +157,16 @@ fn validate(args: &PasteArgs) -> AppResult<()> {
 /// The statements a SQL paste runs, in order: the cell writes, then the new
 /// rows. Pure, for the tests. `bit_columns` are the MySQL `BIT` columns the
 /// catalogue reported, for writes that arrived without a type.
+///
+/// `types` casts every value on Postgres (ADR #129). One map serves both
+/// halves: the cell edits' and the new rows' table names differ only in
+/// whether a missing schema is spelled out, which cannot matter when a schema
+/// is passed — and the grid always passes one on Postgres.
 fn paste_statements(
     dialect: Dialect,
     args: &PasteArgs,
     bit_columns: &std::collections::HashSet<String>,
+    types: &BindTypes,
 ) -> Vec<(String, Vec<Option<String>>)> {
     let is_mysql = dialect == Dialect::Mysql;
     let is_bit = |column: &str, column_type: Option<&str>| {
@@ -182,6 +188,7 @@ fn paste_statements(
             &args.pk_columns,
             u.value.clone(),
             &u.pk_values,
+            types,
         ));
     }
 
@@ -204,6 +211,7 @@ fn paste_statements(
             &columns,
             &values,
             InsertClauses::default(),
+            types,
         );
         out.push((built.sql, built.binds));
     }
@@ -302,7 +310,9 @@ pub(crate) async fn apply_paste_inner(
     } else {
         std::collections::HashSet::new()
     };
-    let batches = paste_statements(dialect, &args, &bit_columns);
+    let types =
+        exec::bind_types(&pool, &dialect.qualify(args.schema.as_deref(), &args.table)).await?;
+    let batches = paste_statements(dialect, &args, &bit_columns, &types);
 
     let result = exec::execute_params_in_tx_at_most_one(&pool, &batches, "paste").await;
 
@@ -387,7 +397,7 @@ mod tests {
             vec![write(1, "estado", Some("Cerrado")), write(2, "obs", None)],
             vec![vec![rv("cliente", "Ruiz"), rv("estado", "Abierto")]],
         );
-        let s = paste_statements(Dialect::MsSql, &a, &HashSet::new());
+        let s = paste_statements(Dialect::MsSql, &a, &HashSet::new(), &BindTypes::default());
         assert_eq!(s.len(), 3);
         assert_eq!(
             s[0].0,
@@ -401,7 +411,12 @@ mod tests {
             "INSERT INTO [dbo].[pedidos] ([cliente], [estado]) VALUES (@P1, @P2)"
         );
 
-        let pg = paste_statements(Dialect::Postgres, &a, &HashSet::new());
+        let pg = paste_statements(
+            Dialect::Postgres,
+            &a,
+            &HashSet::new(),
+            &BindTypes::default(),
+        );
         assert_eq!(
             pg[0].0,
             r#"UPDATE "dbo"."pedidos" SET "estado" = $1 WHERE "id" = $2"#
@@ -414,7 +429,7 @@ mod tests {
         w.column_type = None;
         let a = args(vec![w], Vec::new());
         let bits: HashSet<String> = ["flag".to_string()].into();
-        let s = paste_statements(Dialect::Mysql, &a, &bits);
+        let s = paste_statements(Dialect::Mysql, &a, &bits, &BindTypes::default());
         assert!(s[0].0.contains("CAST(? AS UNSIGNED)"), "{}", s[0].0);
         assert_eq!(s[0].1[0], Some("1".into()));
     }

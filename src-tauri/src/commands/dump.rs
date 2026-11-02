@@ -429,8 +429,9 @@ pub async fn export_table_rows(
     }
     let dialect = Dialect::try_of(&pool)?;
     // The same clause the browse runs, the expression included.
-    let (where_clause, binds) = filter.clause(dialect)?;
     let qt = dialect.qualify(schema.as_deref(), &table);
+    let types = filter.bind_types(&pool, &qt).await?;
+    let (where_clause, binds) = filter.clause(dialect, &types)?;
     let select = select_list(dialect, projection.as_ref())?;
     let order_clause = order_by_clause(dialect, &order, nonblank(&collation))?;
     let from = from_clause(dialect, &qt, nonblank(&hint))?;

@@ -25,6 +25,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   tooltip gives the reason. The same reason appears in the empty grid's
   right-click menu. As with the other policy locks, this is advisory: the
   backend still refuses what it refuses.
+  
+### Fixed
+
+- **Postgres: editing, filtering, deleting and inserting on a non-text column
+  work again (#268).** On a table keyed by a `smallint` (or an `integer`,
+  `uuid`, enum…), saving a cell, deleting a row, filtering on the key and
+  inserting a row all failed with `operator does not exist: smallint = text`
+  or `column "id" is of type smallint but expression is of type text`. Every
+  value the app binds travels as text, and the Postgres driver declares it as
+  `text`. MySQL, SQLite and SQL Server convert it to the column's type on
+  their own, but Postgres refuses. On Postgres each value is now cast to its
+  column's type, read from the server's catalogue: the grid's filters and
+  query panel (and their *Result*, *Explain*, count and export), cell edits,
+  deletes, inserts, pasted rows, JSON row inserts and bulk updates. Text
+  searches are unchanged, and a value too long for a `varchar(n)` is still
+  refused rather than truncated. The other engines run exactly the SQL they
+  ran before (ADR #129).
 
 ## [1.37.1] — 2026-10-30
 

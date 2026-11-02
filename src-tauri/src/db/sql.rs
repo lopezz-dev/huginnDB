@@ -3,6 +3,29 @@
 use crate::error::{AppError, AppResult};
 use crate::state::DbPool;
 
+/// The declared type of each column of one relation, keyed by column name, for
+/// [`Dialect::typed_placeholder`].
+///
+/// Only ever filled on Postgres, by [`crate::db::exec::bind_types`], and always
+/// from the server's own catalogue (`format_type`), never from the frontend:
+/// the type name is spliced into the SQL text, so it must not be something a
+/// caller can choose. Empty everywhere else, which is what keeps the SQL of the
+/// other dialects byte-for-byte what it was.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BindTypes(std::collections::HashMap<String, String>);
+
+impl BindTypes {
+    /// `(column, type)` pairs as the catalogue reported them.
+    pub fn new(pairs: impl IntoIterator<Item = (String, String)>) -> Self {
+        Self(pairs.into_iter().collect())
+    }
+
+    /// The type to cast a value bound against `column` to, if known.
+    pub fn of(&self, column: &str) -> Option<&str> {
+        self.0.get(column).map(String::as_str)
+    }
+}
+
 /// The SQL dialect spoken by one connection.
 ///
 /// This is the single source of truth for every place the generated SQL has to
@@ -66,6 +89,25 @@ impl Dialect {
             Self::Postgres => format!("${index}"),
             Self::Mysql | Self::Sqlite => "?".to_string(),
             Self::MsSql => format!("@P{index}"),
+        }
+    }
+
+    /// The `index`-th placeholder for a value bound against a column of type
+    /// `ty`, as reported by [`BindTypes`].
+    ///
+    /// Postgres wraps it in `CAST($n AS ty)` and every other dialect ignores
+    /// `ty` and gets exactly [`Self::placeholder`]. The reason is ADR #129:
+    /// values cross as `Option<String>` (ADR #5) and `sqlx` declares those as
+    /// `text`, which Postgres will neither compare with nor assign to a
+    /// `smallint`, `uuid`, `boolean`, enum… column. MySQL, SQLite and SQL
+    /// Server coerce the text themselves. `ty` is `None` when the catalogue did
+    /// not know the column, which keeps the bare placeholder it always had.
+    pub fn typed_placeholder(self, index: usize, ty: Option<&str>) -> String {
+        match (self, ty) {
+            (Self::Postgres, Some(ty)) => format!("CAST(${index} AS {ty})"),
+            (Self::Postgres | Self::Mysql | Self::Sqlite | Self::MsSql, _) => {
+                self.placeholder(index)
+            }
         }
     }
 
@@ -1029,8 +1071,23 @@ fn contains_word(haystack_lower: &str, word: &str) -> bool {
 mod tests {
     use super::{
         classify, is_ddl, is_read_only, is_unfiltered_write, mssql_sp_rename, split_statements,
-        verbs, Dialect, Relation, StmtClass, Verbs,
+        verbs, BindTypes, Dialect, Relation, StmtClass, Verbs,
     };
+
+    #[test]
+    fn only_postgres_casts_a_typed_placeholder() {
+        assert_eq!(
+            Dialect::Postgres.typed_placeholder(3, Some("smallint")),
+            "CAST($3 AS smallint)"
+        );
+        assert_eq!(Dialect::Postgres.typed_placeholder(3, None), "$3");
+        assert_eq!(Dialect::Mysql.typed_placeholder(3, Some("smallint")), "?");
+        assert_eq!(Dialect::Sqlite.typed_placeholder(3, Some("smallint")), "?");
+        assert_eq!(Dialect::MsSql.typed_placeholder(3, Some("smallint")), "@P3");
+        let types = BindTypes::new([("id".to_string(), "smallint".to_string())]);
+        assert_eq!(types.of("id"), Some("smallint"));
+        assert_eq!(types.of("ID"), None, "column names are matched exactly");
+    }
 
     #[test]
     fn truncate_stmt_is_delete_only_on_sqlite() {
