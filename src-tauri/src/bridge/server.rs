@@ -808,6 +808,7 @@ mod tests {
                     expect_rows: None,
                 })
                 .collect(),
+            timeout_secs: None,
         };
         let rows = batch(&["UPDATE t SET a = 1 WHERE id = 1", "db.t.insertOne({a: 1})"]);
         assert_eq!(policy_id_of(&rows), Some("p"));

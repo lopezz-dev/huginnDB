@@ -53,6 +53,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConnectionTreeCard } from "./ConnectionTreeCard";
 import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
+import { DEFAULT_MCP_TIMEOUT_SECS } from "@/lib/connection/mcpTimeout";
 import { McpConnectionTree } from "./McpConnectionTree";
 import { WRITE_LEVELS } from "./McpWritePolicySelect";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -290,6 +291,34 @@ export function McpSection() {
   }
 
   /**
+   * Persist one connection's MCP timeout ceiling, or clear it (`null`) so it
+   * follows the default. The same shape as `setMaxRows` above.
+   */
+  async function setTimeoutSecs(id: string, secs: number | null) {
+    const name = profiles.find((p) => p.id === id)?.name ?? id;
+    setProfiles((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, mcp_timeout_secs: secs } : p)),
+    );
+    try {
+      await api.setMcpTimeoutSecs([id], secs);
+      notify.success(
+        secs == null
+          ? t("settings.mcp.timeout.clearedSaved", {
+              name,
+              secs: DEFAULT_MCP_TIMEOUT_SECS,
+            })
+          : t("settings.mcp.timeout.saved", { name, secs }),
+      );
+    } catch {
+      notify.error(t("settings.mcp.timeout.saveError"));
+      void api
+        .listProfiles()
+        .then(setProfiles)
+        .catch(() => {});
+    }
+  }
+
+  /**
    * Set every listed connection's policy in one backend write.
    *
    * "Listed" — scope plus name filter — rather than "selected": the selection
@@ -497,6 +526,9 @@ export function McpSection() {
               {t("settings.mcp.maxRows.hint")}
             </p>
             <p className="text-2xs leading-relaxed text-muted-foreground">
+              {t("settings.mcp.timeout.hint")}
+            </p>
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               {t("settings.mcp.sharedIdsHint")}
             </p>
             {/* The snippet below is valid whether or not anything is ticked, so
@@ -517,6 +549,7 @@ export function McpSection() {
           onToggleAll={(ids) => void toggleAll(ids)}
           onSetPolicy={(id, level) => void setWritePolicy(id, level)}
           onSetMaxRows={(id, rows) => void setMaxRows(id, rows)}
+          onSetTimeout={(id, secs) => void setTimeoutSecs(id, secs)}
           defaultMaxRows={defaultMaxRows}
           sharedTooltip={sharedTooltip}
           searching={filter.trim().length > 0}

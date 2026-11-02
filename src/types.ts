@@ -185,6 +185,12 @@ export interface ConnectionProfile {
    *  sync), edited in Settings → MCP, and clamped to 1..10000 backend-side. A
    *  managed policy's `mcpMaxRows` can only lower it. */
   mcp_max_rows?: number | null;
+  /** Longest an MCP `run_script` / `run_writes` call may run on this
+   *  connection, in seconds — a ceiling, not a default: a call still gets 300
+   *  unless it asks for more with `timeout_seconds`. `null`/absent = 300.
+   *  Strictly local like `mcp_max_rows` (preserved across a shared-origin
+   *  sync), edited in Settings → MCP, clamped to 1..86400 backend-side. */
+  mcp_timeout_secs?: number | null;
   /** Whether the in-app AI panel may reach this connection at all. Opt-in,
    *  `false`/absent by default, and strictly local for the same reasons as
    *  `mcp_exposed`: preserved across a shared-origin sync, cleared on import.

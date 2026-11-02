@@ -40,6 +40,7 @@ Template: [`../templates/gotcha.md`](../templates/gotcha.md).
 | 20 | ADR: [huginndb-mcp lives in its own workspace crate, never a second [[bin]]](../adr/adr-020-mcp-sidecar-separate-workspace-crate.md) | tauri-bundler's Windows bundling enumerates every [[bin]] in the package's cargo metadata regardless of required-features and fails sizing a binary that a normal build never compiles (tauri#4807, #14176). | accepted |
 | 22 | ADR: [huginndb-mcp ships as a Tauri externalBin sidecar staged by CI](../adr/adr-022-mcp-sidecar-external-bin-staging.md) | tauri-build hard-fails any compile of huginndb_lib if the externalBin file for the current target triple is not already on disk, creating a circular dependency with building the sidecar itself. | accepted |
 | 59 | ADR: [MCP tool annotations are read once at startup, so they must be constants](../adr/adr-059-mcp-tool-annotation-constants-split.md) | MCP clients fetch tools/list (and its annotations) once at startup and cache it for the session, and destructiveHint defaults to true when absent. | accepted |
+| 130 | ADR: [A long MCP call is timed out where it runs, and always reports what became of its work](../adr/adr-130-a-long-mcp-call-is-timed-out-where-it-runs-and-always-reports-its-outcome.md) | dropping a `tiberius` future does not tell SQL Server anything (the batch keeps running and holding its locks), and a TDS Attention, which does stop it, ends the batch but **not** an explicit transaction. | accepted |
 
 ### monaco
 
@@ -142,6 +143,7 @@ Template: [`../templates/gotcha.md`](../templates/gotcha.md).
 | # | Entry | Trap | Status |
 | - | ----- | ---- | ------ |
 | 116 | Gotcha: [tiberius 0.13 bounds every query at 30 s and the handshake at 15 s by default, and its connect future is three times larger](gotcha-116-tiberius-013-default-timeouts.md) | tiberius 0.13 compiles unchanged over 0.12 but cuts any query whose server round-trip passes 30 s (TimedOut, connection desynced) unless `command_timeout(None)` is set, and its larger connect future, left inline, overflowed a 2 MiB thread stack in a debug build. | active |
+| 132 | Gotcha: [tiberius 0.13's `cancel_query` gives up before SQL Server acknowledges, and leaves the acknowledgement on the wire](gotcha-132-tiberius-cancel-query-misses-the-attention-ack.md) | cancelling a running batch with tiberius 0.13 against a real SQL Server returns `Error::Protocol` and leaves the session's replies out of step with its queries. | active |
 
 ### updater
 

@@ -208,6 +208,8 @@ export const api = {
    */
   setMcpMaxRows: (ids: string[], rows: number | null) =>
     invoke<number>("set_mcp_max_rows", { ids, rows }),
+  setMcpTimeoutSecs: (ids: string[], secs: number | null) =>
+    invoke<number>("set_mcp_timeout_secs", { ids, secs }),
 
   /**
    * Let the in-app AI panel reach (or stop reaching) several connections in one

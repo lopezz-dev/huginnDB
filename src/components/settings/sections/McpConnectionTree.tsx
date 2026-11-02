@@ -8,8 +8,8 @@
  * everything the rail needs and this doesn't: no live-pool dot (nothing is
  * connected from here), no driver badge or host subline (the snippet is built
  * from ids, not endpoints), no keyboard range selection. A row is a checkbox, a
- * name, and the two controls that matter here — its write policy and how many
- * rows one MCP call may return from it.
+ * name, and the controls that matter here — its write policy, how many rows one
+ * MCP call may return from it and how long a script may run on it.
  *
  * Group folds reuse `useConnectionGroupCollapse`, so a folder the user collapsed
  * in the manager opens collapsed here too; section folds are local state, for the
@@ -30,6 +30,7 @@ import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups
 import type { ConnectionProfile, McpWritePolicy } from "@/types";
 
 import { McpMaxRowsInput } from "./McpMaxRowsInput";
+import { McpTimeoutInput } from "./McpTimeoutInput";
 import { McpWritePolicySelect } from "./McpWritePolicySelect";
 
 export function McpConnectionTree({
@@ -39,6 +40,7 @@ export function McpConnectionTree({
   onToggleAll,
   onSetPolicy,
   onSetMaxRows,
+  onSetTimeout,
   defaultMaxRows,
   sharedTooltip,
   searching,
@@ -50,6 +52,8 @@ export function McpConnectionTree({
   onSetPolicy: (id: string, level: McpWritePolicy) => void;
   /** `null` clears the connection's own limit, back to `defaultMaxRows`. */
   onSetMaxRows: (id: string, rows: number | null) => void;
+  /** `null` clears the connection's own timeout ceiling, back to the default. */
+  onSetTimeout: (id: string, secs: number | null) => void;
   /** The global `connections.mcpMaxRows`, each row's placeholder. */
   defaultMaxRows: number;
   sharedTooltip: (profile: ConnectionProfile) => string;
@@ -87,6 +91,11 @@ export function McpConnectionTree({
           value={p.mcp_max_rows}
           fallback={defaultMaxRows}
           onChange={(rows) => onSetMaxRows(p.id, rows)}
+        />
+        <McpTimeoutInput
+          name={p.name}
+          value={p.mcp_timeout_secs}
+          onChange={(secs) => onSetTimeout(p.id, secs)}
         />
         <McpWritePolicySelect
           value={p.mcp_write}

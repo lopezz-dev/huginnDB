@@ -565,8 +565,9 @@ pub fn set_mcp_write_policy(
 ///
 /// Deliberately scoped to fields that touch neither the keychain nor anything a
 /// shared origin publishes: every current caller sets a *local* trust or
-/// resource decision (`mcp_write`, `mcp_exposed`, `mcp_max_rows`, `pulse_enabled`,
-/// `ai_enabled`, `ai_rows_allowed`), which is what makes running one over an
+/// resource decision (`mcp_write`, `mcp_exposed`, `mcp_max_rows`,
+/// `mcp_timeout_secs`, `pulse_enabled`, `ai_enabled`, `ai_rows_allowed`),
+/// which is what makes running one over an
 /// origin-owned profile safe. Reach for `save_profile` for anything else.
 fn set_local_flag(
     app: AppHandle,
@@ -666,6 +667,28 @@ pub fn set_mcp_max_rows(
             return false;
         }
         p.mcp_max_rows = rows;
+        true
+    })
+}
+
+/// Set (or clear, with `None`) the MCP timeout ceiling of several connections.
+///
+/// The write half of `ConnectionProfile::mcp_timeout_secs`, next to the row
+/// cap in Settings → MCP and local for the same reason. Stored clamped, so
+/// the number shown back is the number the executor applies.
+#[tauri::command]
+pub fn set_mcp_timeout_secs(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    secs: Option<u32>,
+) -> AppResult<usize> {
+    let secs = secs.map(|n| n.clamp(1, crate::state::MAX_MCP_TIMEOUT_SECS));
+    set_local_flag(app, state, ids, |p| {
+        if p.mcp_timeout_secs == secs {
+            return false;
+        }
+        p.mcp_timeout_secs = secs;
         true
     })
 }

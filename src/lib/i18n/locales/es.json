@@ -1773,6 +1773,14 @@
         "clearedSaved": "{{name}}: sigue el valor por defecto ({{rows}} filas por llamada)",
         "saveError": "No se pudo guardar el límite de filas."
       },
+      "timeout": {
+        "hint": "El segundo número de cada conexión es el tiempo máximo, en segundos, que puede durar una llamada run_script o run_writes en esa conexión. Vacío: 300. No alarga nada por sí solo: la llamada sigue teniendo 300 s salvo que pida más con timeout_seconds. Al vencer, HuginnDB cancela la sentencia en el servidor, deshace la transacción y dice si llegó a confirmarse. Súbelo solo en copias de trabajo donde una carga pueda tardar horas.",
+        "rowLabel": "Tiempo máximo de una llamada MCP en {{name}}, en segundos",
+        "rowTitle": "Lo más que puede durar un run_script o run_writes en esta conexión, en segundos. Vacío: el valor por defecto ({{secs}} s).",
+        "saved": "{{name}}: hasta {{secs}} s por llamada",
+        "clearedSaved": "{{name}}: sigue el valor por defecto ({{secs}} s por llamada)",
+        "saveError": "No se pudo guardar el tiempo máximo."
+      },
       "writePolicySaveError": "No se pudo guardar el nivel de escritura.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / otros clientes (JSON)",

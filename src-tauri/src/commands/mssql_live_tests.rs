@@ -74,7 +74,29 @@ async fn state() -> Option<AppState> {
 }
 
 async fn run(state: &AppState, sql: &str, transaction: bool) -> Result<ScriptResult, String> {
-    execute_script_inner(&Quiet, state, "c", sql, transaction, 100)
+    run_within(
+        state,
+        sql,
+        transaction,
+        crate::state::DEFAULT_MCP_TIMEOUT_SECS,
+    )
+    .await
+}
+
+/// [`run`] with a timeout of `secs` that the call asked for and the
+/// connection allows.
+async fn run_within(
+    state: &AppState,
+    sql: &str,
+    transaction: bool,
+    secs: u32,
+) -> Result<ScriptResult, String> {
+    let timeout = crate::state::McpTimeout {
+        secs,
+        requested: Some(secs),
+        cap: secs,
+    };
+    execute_script_inner(&Quiet, state, "c", sql, transaction, 100, timeout)
         .await
         .map_err(|e| e.to_string())
 }
@@ -197,4 +219,97 @@ END CATCH;"
     .unwrap();
     assert_eq!(out.total_affected, 1);
     assert_eq!(rows(&state).await, vec![(7, 7)]);
+}
+
+/// A statement past its timeout is cancelled on the server, and what the
+/// error says about the work is what the table shows afterwards (ADR #130).
+///
+/// Whether the server acknowledged the Attention or the session had to be
+/// closed (tiberius 0.13 — gotcha #132), what counts is what is left, read
+/// from another session: the read waits on the cancelled one's locks, so it
+/// sees the final state. Its own table, so it cannot race the tests above
+/// over theirs.
+#[tokio::test]
+#[ignore = "needs HUGINNDB_TEST_MSSQL_HOST"]
+async fn mssql_live_a_statement_past_its_timeout_is_cancelled_on_the_server() {
+    use std::time::{Duration, Instant};
+    let Some(state) = state().await else { return };
+    let Ok(DbPool::MsSql(raw)) = state.pool_for("c") else {
+        unreachable!()
+    };
+    raw.execute_simple(
+        "DROP TABLE IF EXISTS dbo.hdb_timeout_probe; CREATE TABLE dbo.hdb_timeout_probe (k int)",
+    )
+    .await
+    .unwrap();
+    let count = || async {
+        raw.scalar("SELECT COUNT(*) FROM dbo.hdb_timeout_probe", &[])
+            .await
+            .unwrap()
+            .unwrap()
+    };
+    let cut = |sql: &'static str, transaction: bool| {
+        let state = &state;
+        async move {
+            let started = Instant::now();
+            let err = run_within(state, sql, transaction, 2).await.unwrap_err();
+            assert!(
+                started.elapsed() < Duration::from_secs(9),
+                "the statement was waited out instead of cancelled: {err}"
+            );
+            assert!(err.contains("ran out of time after 2 s"), "{err}");
+            eprintln!("{err}");
+            err
+        }
+    };
+
+    // In run_script's own transaction: everything goes.
+    let err = cut(
+        "INSERT INTO dbo.hdb_timeout_probe VALUES (1);\nWAITFOR DELAY '00:00:10';",
+        true,
+    )
+    .await;
+    assert!(err.contains("nothing was committed"), "{err}");
+    assert_eq!(count().await, 0);
+
+    // As written: the statement before stays, the WAITFOR is stopped.
+    let err = cut(
+        "INSERT INTO dbo.hdb_timeout_probe VALUES (2);\nWAITFOR DELAY '00:00:10';",
+        false,
+    )
+    .await;
+    assert!(err.contains("undone"), "{err}");
+    assert!(err.contains("before it changed stays"), "{err}");
+    assert_eq!(count().await, 1);
+
+    // As written, inside the script's own transaction, which neither an
+    // Attention nor the cancel ends by itself.
+    let err = cut(
+        "BEGIN TRANSACTION;\nINSERT INTO dbo.hdb_timeout_probe VALUES (3);\n\
+         WAITFOR DELAY '00:00:10';",
+        false,
+    )
+    .await;
+    assert!(err.contains("transaction the script had opened"), "{err}");
+    assert_eq!(count().await, 1);
+
+    // The case the verdict has to be right about: one long INSERT … SELECT
+    // with no transaction around it, cut off while it is still writing. A
+    // server that went on and finished it would commit ten million rows; one
+    // that aborts on the cancel leaves none of them.
+    cut(
+        "INSERT INTO dbo.hdb_timeout_probe SELECT TOP (10000000) 4 \
+         FROM sys.all_columns a CROSS JOIN sys.all_columns b CROSS JOIN sys.all_columns c;",
+        false,
+    )
+    .await;
+    assert_eq!(
+        count().await,
+        1,
+        "the cut-off INSERT … SELECT must not stay"
+    );
+
+    raw.execute_simple("DROP TABLE dbo.hdb_timeout_probe")
+        .await
+        .unwrap();
 }

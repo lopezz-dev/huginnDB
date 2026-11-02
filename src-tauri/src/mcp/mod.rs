@@ -61,7 +61,7 @@ use crate::bridge::protocol::BridgeRequest;
 use crate::db::sql::{StmtClass, Verbs};
 use crate::error::AppResult;
 use crate::log_bus::{LogEntry, LogSink, NoopSink};
-use crate::state::{ActivePool, AppState, McpRowCap, McpWritePolicy};
+use crate::state::{ActivePool, AppState, McpRowCap, McpTimeout, McpWritePolicy};
 
 /// Default pool ceiling per exposed connection, overridable with
 /// `--max-connections`.
@@ -271,6 +271,13 @@ where
     }
 }
 
+/// A client's `timeout_seconds` as the `u32` [`crate::state::mcp_timeout`]
+/// takes: a negative or zero ends up at its floor of one second, an absurd one
+/// at its day-long ceiling.
+fn clamp_secs(n: i64) -> u32 {
+    u32::try_from(n.max(0)).unwrap_or(u32::MAX)
+}
+
 /// Tool-argument shapes. Each derives [`Deserialize`] (so the `Parameters`
 /// wrapper can parse the JSON-RPC `arguments`) and `JsonSchema` via rmcp's
 /// re-exported `schemars` (so the tool advertises a schema to the client).
@@ -380,6 +387,12 @@ mod args {
         /// bound.
         #[serde(default)]
         pub database: Option<String>,
+        /// Seconds the call may run before it is cancelled and rolled back
+        /// (default 300). Capped by the connection's MCP timeout, which the
+        /// user sets in HuginnDB → Settings → MCP; the reply says what was
+        /// applied when the cap lowered it.
+        #[serde(default, deserialize_with = "super::lenient_opt_i64")]
+        pub timeout_seconds: Option<i64>,
     }
 
     /// Arguments for `run_script`.
@@ -400,6 +413,12 @@ mod args {
         /// BEGIN/COMMIT included.
         #[serde(default)]
         pub transaction: Option<bool>,
+        /// Seconds the call may run before it is cancelled and rolled back
+        /// (default 300). Capped by the connection's MCP timeout, which the
+        /// user sets in HuginnDB → Settings → MCP; the reply says what was
+        /// applied when the cap lowered it.
+        #[serde(default, deserialize_with = "super::lenient_opt_i64")]
+        pub timeout_seconds: Option<i64>,
     }
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -758,9 +777,18 @@ pub struct Huginn {
 /// useful provenance line for an audit log whose subject is "what did the AI
 /// ask for".
 fn audit_entry(request: &BridgeRequest, error: Option<&str>) -> LogEntry {
+    // The timeout a long call was given goes on the line with it: when one is
+    // cancelled, the error says so, and the reader needs both halves.
+    let timeout = match request {
+        BridgeRequest::RunScript { timeout_secs, .. }
+        | BridgeRequest::RunWriteBatch { timeout_secs, .. } => timeout_secs
+            .map(|s| format!(" timeout={s}s"))
+            .unwrap_or_default(),
+        _ => String::new(),
+    };
     let mut entry = LogEntry::new(crate::log_bus::LogKind::Sql)
         .message(format!("mcp bridge: {}", request.label()))
-        .sql(format!("[via bridge] {}", request.label()));
+        .sql(format!("[via bridge] {}{timeout}", request.label()));
     if let Some(id) = bridged_connection_id(request) {
         entry = entry.connection_id(id);
     }
@@ -1604,6 +1632,18 @@ impl Huginn {
         ok_json(&Capped::cut(result, cap.rows as usize, cap))
     }
 
+    /// The timeout for a `run_script` / `run_writes` on `connection_id`: the
+    /// call's `timeout_seconds` under the connection's ceiling, read fresh
+    /// from `profiles.json` like [`Self::row_cap`]. The rules live in
+    /// [`crate::state::mcp_timeout`]; the app applies them again on its side.
+    fn call_timeout(&self, connection_id: &str, requested: Option<i64>) -> McpTimeout {
+        let profile = self
+            .all_profiles()
+            .into_iter()
+            .find(|p| p.id == connection_id);
+        crate::state::mcp_timeout(profile.as_ref(), requested.map(clamp_secs))
+    }
+
     /// The row cap in force for `connection_id`, read **fresh** — the profile
     /// from `profiles.json` and the preference from `prefs.json` — so a limit
     /// changed in Settings → MCP applies to the next call without restarting
@@ -2037,12 +2077,14 @@ impl Huginn {
         // Against the profile, never the resolved target — see `run_statement`.
         self.require_verbs(&a.connection_id, write_batch::verbs_of_writes(&writes))?;
 
+        let timeout = self.call_timeout(&a.connection_id, a.timeout_seconds);
         let value = self
             .call(
                 BridgeRequest::RunWriteBatch {
                     connection_id: target.clone(),
                     policy_id: a.connection_id.clone(),
                     writes,
+                    timeout_secs: Some(timeout.secs),
                 },
                 true,
             )
@@ -2138,6 +2180,7 @@ impl Huginn {
         // One budget for every read in the script, the same per-connection cap
         // the other row tools use.
         let cap = self.row_cap(&a.connection_id);
+        let timeout = self.call_timeout(&a.connection_id, a.timeout_seconds);
         let value = self
             .call(
                 BridgeRequest::RunScript {
@@ -2146,6 +2189,7 @@ impl Huginn {
                     sql: text,
                     transaction,
                     max_rows: cap.rows as usize,
+                    timeout_secs: Some(timeout.secs),
                 },
                 true,
             )

@@ -1773,6 +1773,14 @@
         "clearedSaved": "{{name}}: follows the default ({{rows}} rows per call)",
         "saveError": "Couldn't save the row limit."
       },
+      "timeout": {
+        "hint": "Each connection's second number is the longest, in seconds, a run_script or run_writes call may run on that connection. Blank: 300. It lengthens nothing on its own: a call still gets 300 s unless it asks for more with timeout_seconds. When it runs out, HuginnDB cancels the statement on the server, rolls the transaction back and says whether anything was committed. Raise it only on work copies where a load may take hours.",
+        "rowLabel": "Longest MCP call on {{name}}, in seconds",
+        "rowTitle": "Longest a run_script or run_writes may run on this connection, in seconds. Blank: the default ({{secs}} s).",
+        "saved": "{{name}}: up to {{secs}} s per call",
+        "clearedSaved": "{{name}}: follows the default ({{secs}} s per call)",
+        "saveError": "Couldn't save the time limit."
+      },
       "writePolicySaveError": "Couldn't save the write policy.",
       "claudeCodeLabel": "Claude Code",
       "jsonLabel": "Claude Desktop / other clients (JSON)",
