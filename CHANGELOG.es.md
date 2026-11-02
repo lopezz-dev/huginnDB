@@ -31,6 +31,32 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Corregido
 
+- **SQL Server: `run_script` ejecuta cada lote `GO` entero, como SSMS.**
+  Antes cortaba además el script en cada `;` y mandaba cada trozo como un lote
+  aparte, así que una variable `DECLARE` desaparecía en la sentencia siguiente
+  y un `IF` / `WHILE` / `BEGIN … END` / `BEGIN TRY … END CATCH` con un `;`
+  dentro llegaba al servidor en trozos que rechazaba — mientras la
+  descripción de la herramienta prometía que las variables se conservan.
+  Ahora cada lote va en un solo viaje: las variables viven lo que su lote y
+  no pasan de un `GO`, las tablas `#temp` y los `SET` siguen cruzando lotes, y
+  un `MERGE` conserva el `;` final que necesita. En modo transacción el script
+  corre con `XACT_ABORT ON`, así que un `THROW` o cualquier error lo deshace
+  todo. Un fallo nombra el lote y la línea que da SQL Server, contada en las
+  líneas del propio script. Un lote de varias sentencias devuelve sus
+  resultados pero no sus recuentos de filas (un lote T-SQL simple no los
+  trae): se cuenta en el nuevo campo `uncounted_batches` y queda fuera de
+  `total_affected`. Postgres, MySQL y SQLite no cambian.
+- **`run_script` lee todas las palabras clave de una sentencia para decidir
+  su nivel de política.** T-SQL no necesita `;` entre sentencias y las anida
+  en control de flujo, así que `SELECT 1 EXEC dbo.p`, `INSERT … DROP TABLE x` o
+  `IF @x = 1 DROP TABLE t` pasaban en `data` por su primera palabra. Ahora una
+  sentencia necesita `full` por un `CREATE`, `DROP`, `ALTER`, `TRUNCATE`,
+  `EXEC`, `GRANT`, `DBCC`, `KILL`… en cualquier punto de su código (sin contar
+  literales, nombres entre comillas ni `@variables`), y una llamada `sp_…`
+  suelta al principio de un lote también es DDL. En modo transacción se
+  rechaza un `COMMIT` / `ROLLBACK` / `BEGIN TRAN` dentro de un `IF` o un
+  `CATCH` igual que uno suelto, y deja de rechazarse un bloque T-SQL
+  `BEGIN … END` o `BEGIN TRY`.
 - **Postgres: editar, filtrar, borrar e insertar sobre una columna que no es
   de texto vuelve a funcionar (#268).** En una tabla cuya clave es un
   `smallint` (o un `integer`, un `uuid`, un enum…), guardar una celda, borrar

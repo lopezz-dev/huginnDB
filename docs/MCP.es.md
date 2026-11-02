@@ -447,7 +447,7 @@ datos a demanda.
 | `run_write` *(escritura)* | Ejecuta una única sentencia que **cambia** la base de datos. El DML necesita `data`, el DDL `full`. Una lectura también se rechaza aquí — va en `run_query`, que no necesita permiso de escritura. |
 | `run_queries` | Ejecuta varias sentencias **de solo lectura** en una llamada, cada una como lo haría `run_query`. La que falla se informa en su propio hueco y las demás se ejecutan igual. Las filas comparten un único presupuesto: el [límite de filas](#límite-de-filas) de la conexión. |
 | `run_writes` *(escritura)* | Aplica varias escrituras de fila (`INSERT`/`UPDATE`/`DELETE`) en **una transacción**: o entran todas o ninguna. Cada escritura puede llevar `expect_rows`; las lecturas de `verify` se ejecutan tras el commit y vuelven en la misma respuesta. Necesita `data` o `full`. Ver [Lotes](#lotes-menos-llamadas-menos-tokens). |
-| `run_script` *(escritura)* | Ejecuta un script SQL entero — una migración, un fichero `.sql` — en **una única sesión fijada**, en orden, así que las tablas temporales, los `SET` y las variables pasan de una sentencia a la siguiente. Una transacción por defecto. Va en línea como `sql` o como `path` a un fichero local. Necesita `data`; cualquier DDL, tablas temporales incluidas, necesita `full`. No MongoDB. Ver [Scripts](#scripts-tablas-temporales-y-migraciones). |
+| `run_script` *(escritura)* | Ejecuta un script SQL entero — una migración, un fichero `.sql` — en **una única sesión fijada**, en orden, así que las tablas temporales y los `SET` duran hasta el final del script. SQL Server lo ejecuta lote `GO` a lote `GO`, así que una variable `DECLARE` vive lo que su lote, como en SSMS. Una transacción por defecto. Va en línea como `sql` o como `path` a un fichero local. Necesita `data`; cualquier DDL, tablas temporales incluidas, necesita `full`. No MongoDB. Ver [Scripts](#scripts-tablas-temporales-y-migraciones). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
 | `server_version` | El motor y la versión conectados. |
 | `list_users` / `list_privileges` | Usuarios/roles del servidor y sus permisos. |
@@ -591,6 +591,20 @@ contesta en una respuesta:
   corre exactamente como está escrito — su propio control de transacciones
   incluido — y un fallo dice cuántas sentencias anteriores se ejecutaron y se
   quedan aplicadas.
+- **En SQL Server la unidad es el lote `GO`**, como en SSMS y `sqlcmd`: cada
+  lote va entero al servidor, así que las variables `DECLARE`, los `IF`/`WHILE`/
+  `BEGIN … END` y `BEGIN TRY … END CATCH` funcionan dentro de él, y una variable
+  no llega al lote siguiente. Lo que vive en la sesión — tablas `#temp`, `SET`,
+  la transacción — sí cruza lotes. Las comprobaciones siguen leyendo cada
+  sentencia: una sola sentencia DDL en cualquier punto de un lote (un `EXEC`
+  incluido, aunque no lleve `;` delante o esté dentro de un `IF`) hace que el
+  script necesite `full`. En modo transacción el script corre con
+  `XACT_ABORT ON`, así que un `THROW` o cualquier error lo deshace todo; un
+  `COMMIT`/`ROLLBACK` dentro de un `IF` o un `CATCH` se rechaza igual que uno
+  suelto. Un lote de varias sentencias devuelve sus resultados pero no sus
+  recuentos de filas (el protocolo de lote simple no los trae): se cuenta en
+  `uncounted_batches` y queda fuera de `total_affected`. Un fallo nombra el
+  lote y la línea que da SQL Server, con la numeración del propio script.
 - **En MySQL**, un cambio de esquema persistente (y `LOCK TABLES`) hace commit
   implícito, lo que partiría la transacción, así que en modo transacción se
   rechaza indicando `"transaction": false`. `CREATE/DROP TEMPORARY TABLE` no
