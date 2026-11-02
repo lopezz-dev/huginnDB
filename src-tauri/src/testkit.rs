@@ -45,6 +45,7 @@ pub fn profile(id: &str) -> ConnectionProfile {
         pulse_enabled: false,
         mcp_exposed: false,
         mcp_max_rows: None,
+        mcp_timeout_secs: None,
         ai_enabled: false,
         ai_rows_allowed: false,
         ai_notes: None,

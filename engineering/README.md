@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-129 entries: 103 ADRs, 17 gotchas, 9 conventions.
+130 entries: 104 ADRs, 17 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -169,4 +169,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 127 | ADR | [A lone ad-hoc read stops at the row cap and closes its connection instead of draining it](adr/adr-127-a-lone-adhoc-read-stops-at-the-row-cap-and-closes-its-connection.md) | accepted | 2026-10-30 |
 | 128 | Gotcha | [tiberius's `execute` is an `sp_executesql` call, and SQL Server scopes what runs inside it](gotchas/gotcha-128-tiberius-execute-is-an-rpc-and-scopes-what-it-runs.md) | active | 2026-10-30 |
 | 129 | ADR | [On Postgres, every bound value is cast to its column's type, read from the catalogue](adr/adr-129-postgres-binds-are-cast-to-the-column-type-from-the-catalogue.md) | accepted | 2026-11-02 |
+| 130 | ADR | [A long MCP call is timed out where it runs, and always reports what became of its work](adr/adr-130-a-long-mcp-call-is-timed-out-where-it-runs-and-always-reports-its-outcome.md) | accepted | 2026-11-02 |
 <!-- index:end -->

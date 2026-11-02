@@ -601,8 +601,57 @@ objects to pin; `run_writes` runs a list of MongoDB writes in order.
 {"transaction":true,"statements":6,"total_affected":8,"results":[{"statement":4,"line":5,"columns":[{"name":"n","data_type":"INTEGER"}],"rows":[[3]],"rows_affected":1,"elapsed_ms":0,"total":null,"truncated":false}]}
 ```
 
-A script that runs for more than five minutes outlives the bridge's wait for
-the app's answer; split long loads into several calls.
+### Long scripts: the timeout, and what happens when it runs out
+
+`run_script` and `run_writes` run for at most **300 seconds** unless both of
+these say otherwise:
+
+- **the call** asks for more with `timeout_seconds`;
+- **the connection** allows it. Its ceiling is the second number next to it in
+  HuginnDB → Settings → MCP, in seconds (blank means 300, and at most a day).
+  It is local, like the write policy, so a shared origin never raises or
+  lowers it.
+
+The call gets the smaller of the two. Raising the ceiling alone lengthens
+nothing, so turn it up only on the work copies where a load may take hours.
+
+When the time runs out, HuginnDB **cancels the statement on the server**, rolls
+the transaction back, and returns an error that names the statement, the
+timeout applied, and what became of the work:
+
+| Situation | What the error says | Certain? |
+| --- | --- | --- |
+| SQL Server, in `run_script`'s own transaction (the default) or `run_writes` | The server acknowledged the cancel (a TDS Attention), the transaction was rolled back, `@@TRANCOUNT` is 0, and nothing was committed. | Yes |
+| SQL Server, `transaction: false` | The statement in flight was stopped and undone. The ones before it stay applied. A transaction the script itself had opened is rolled back. | Yes |
+| Postgres, MySQL, SQLite, in a transaction | The session was closed with the transaction open, so the server rolls it back and nothing was committed. | Yes |
+| Postgres, MySQL, SQLite, `transaction: false` | The session was closed, but the statement in flight **may still complete** on the server. Check before running it again. | No |
+
+The deadline covers the statements, never the `COMMIT`. If every statement
+finishes in time, the script is committed however long that takes, so a
+timeout can never land between "COMMIT sent" and "reply received". The audit
+log opens every script with a `-- timeout 300 s (default)` line, and a cut-off
+one ends with `CANCEL (…)` and the verdict.
+
+**Your MCP client has its own limit, and it is usually the tighter one:**
+
+- **Claude Code** waits up to the server's `"timeout"` (in ms, in its
+  `.mcp.json` entry; without one, `MCP_TOOL_TIMEOUT`, about 28 hours by
+  default). A stdio server that sends no progress is also cut off by the idle
+  limit `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, 30 minutes by default. HuginnDB
+  does not send progress yet, so an hour-long load needs both raised, for
+  example `"timeout": 4200000` and `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=0`. After
+  two minutes Claude Code moves the call to the background instead of blocking
+  the conversation.
+- **Claude Desktop** has been reported to give up after about 60 seconds on a
+  local server, and the limit cannot be changed. Long loads do not belong there.
+
+A client that gives up does not stop HuginnDB: the call runs to its own
+timeout, commits or rolls back, and the reply goes nowhere. Keep
+`timeout_seconds` below the client's limit, and the error that comes back will
+be HuginnDB's, with the outcome in it.
+
+An **asynchronous mode** (start a script, get an id back, ask for its status)
+would remove the dependence on the client's patience. It is not built yet.
 
 ### Indexes: why the two write tools are MongoDB-only
 

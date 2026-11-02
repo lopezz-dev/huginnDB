@@ -18,6 +18,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   *Pegar filas como JSON…* y *Recargar*. Cuando el grid está vacío por un
   filtro, el estado vacío avisa de que una fila nueva que no cumpla el
   filtro no se verá después de guardarla.
+- **MCP: `run_script` y `run_writes` pueden pasar de cinco minutos si la
+  llamada y la conexión lo permiten.** Un nuevo argumento, `timeout_seconds`,
+  pide más tiempo, y un techo por conexión en Ajustes → MCP lo limita: es el
+  segundo número junto a cada conexión, en segundos. Sin ninguno de los dos,
+  el límite sigue siendo de 300 s. El techo es local, como la política de
+  escritura, así que un origen compartido nunca lo cambia.
 
 ### Cambiado
 
@@ -47,6 +53,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   búsquedas de texto no cambian, y un valor demasiado largo para un
   `varchar(n)` se sigue rechazando en vez de truncarse. Los demás motores
   ejecutan exactamente el mismo SQL que antes (ADR #129).
+- **MCP: un script o un lote que se queda sin tiempo ahora se cancela en el
+  servidor y dice qué ha pasado con su trabajo.** Antes, el único límite era
+  la espera de 300 segundos del puente, en el lado del sidecar. La app seguía
+  ejecutando el script y lo confirmaba, mientras a la IA solo le llegaba que
+  la app «no respondió a tiempo». Ahora el límite se aplica donde corren las
+  sentencias. En SQL Server, la sentencia se para con un Attention de TDS, se
+  hace rollback de la transacción y se comprueba que `@@TRANCOUNT` sea 0. En
+  el resto de drivers, la sesión se cierra con la transacción abierta y el
+  servidor la deshace. En los dos casos, el error dice si se llegó a
+  confirmar algo. El timeout nunca corta el `COMMIT`. El log de auditoría
+  registra el timeout que se aplicó a cada llamada y, si se corta, añade una
+  línea `CANCEL`.
+- **MCP: tras una llamada que se queda sin tiempo, la siguiente ya no recibe
+  como suya la respuesta de la anterior.** La conexión del puente seguía
+  abierta mientras la app trabajaba. Por eso una llamada hecha justo después
+  del timeout se encolaba detrás de la anterior y recibía su respuesta: el
+  resultado del script en lugar del de un `SELECT`, o un éxito para un
+  reintento que aún no había ocurrido. El protocolo del puente pasa a la
+  versión 6. Así, si el sidecar y la app son de versiones distintas, cada uno
+  usa sus propios pools en vez de discrepar sobre quién corta.
 
 ## [1.37.1] — 2026-10-30
 

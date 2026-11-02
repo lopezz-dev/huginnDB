@@ -53,7 +53,13 @@ use serde_json::Value;
 /// `4`: [`BridgeRequest`] gained `RunWriteBatch` (the `run_writes` tool).
 ///
 /// `5`: [`BridgeRequest`] gained `RunScript` (the `run_script` tool).
-pub const PROTOCOL_VERSION: u32 = 5;
+///
+/// `6`: `RunScript` and `RunWriteBatch` gained `timeout_secs`, and the app
+/// started cancelling them when it runs out. The field alone is additive, but
+/// the two sides must agree on who times out: a `5` sidecar stops reading at
+/// the same 300 s the app now cancels at, and whichever loses that race leaves
+/// the reply on the connection for the next call to read as its own.
+pub const PROTOCOL_VERSION: u32 = 6;
 
 /// Opening frame. Sent once, before any request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -224,6 +230,10 @@ pub enum BridgeRequest {
         connection_id: String,
         policy_id: String,
         writes: Vec<crate::commands::write_batch::BatchWrite>,
+        /// The call's `timeout_seconds`. The app resolves it against its own
+        /// copy of the connection's ceiling — see [`crate::state::mcp_timeout`].
+        #[serde(default)]
+        timeout_secs: Option<u32>,
     },
     /// Run a whole SQL script on one session — the `run_script` tool
     /// (ADR #121).
@@ -241,6 +251,9 @@ pub enum BridgeRequest {
         /// Rows kept across every read in the script: the sidecar's own cap,
         /// applied where the rows are fetched rather than after they crossed.
         max_rows: usize,
+        /// As in [`BridgeRequest::RunWriteBatch`].
+        #[serde(default)]
+        timeout_secs: Option<u32>,
     },
     FetchTableData {
         connection_id: String,
@@ -607,6 +620,7 @@ mod tests {
                 connection_id: "c".into(),
                 policy_id: "c".into(),
                 writes: vec![],
+                timeout_secs: None,
             },
             BridgeRequest::RunScript {
                 connection_id: "c".into(),
@@ -614,6 +628,7 @@ mod tests {
                 sql: "SELECT 1".into(),
                 transaction: true,
                 max_rows: 1,
+                timeout_secs: None,
             },
         ] {
             assert!(req.is_mutating(), "{} must be mutating", req.label());

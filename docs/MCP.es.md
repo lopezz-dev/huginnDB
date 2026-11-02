@@ -621,8 +621,59 @@ escrituras de MongoDB.
 {"transaction":true,"statements":6,"total_affected":8,"results":[{"statement":4,"line":5,"columns":[{"name":"n","data_type":"INTEGER"}],"rows":[[3]],"rows_affected":1,"elapsed_ms":0,"total":null,"truncated":false}]}
 ```
 
-Un script que tarda más de cinco minutos supera la espera del bridge por la
-respuesta de la app; divide las cargas largas en varias llamadas.
+### Scripts largos: el timeout y qué pasa cuando vence
+
+`run_script` y `run_writes` corren como mucho **300 segundos**, salvo que lo
+digan las dos partes:
+
+- **la llamada** pide más con `timeout_seconds`;
+- **la conexión** lo permite. Su techo es el segundo número que tiene al lado en
+  HuginnDB → Ajustes → MCP, en segundos (vacío es 300, y el máximo es un día).
+  Es local, como la política de escritura: un origen compartido nunca lo sube
+  ni lo baja.
+
+La llamada recibe el menor de los dos. Subir solo el techo no alarga nada, así
+que súbelo únicamente en las copias de trabajo donde una carga pueda tardar
+horas.
+
+Cuando se acaba el tiempo, HuginnDB **cancela la sentencia en el servidor**,
+deshace la transacción y devuelve un error que nombra la sentencia, el timeout
+aplicado y qué ha pasado con el trabajo:
+
+| Situación | Qué dice el error | ¿Seguro? |
+| --- | --- | --- |
+| SQL Server, en la transacción propia de `run_script` (por defecto) o en `run_writes` | El servidor confirmó la cancelación (un Attention de TDS), se hizo rollback de la transacción, `@@TRANCOUNT` es 0 y no se confirmó nada. | Sí |
+| SQL Server, `transaction: false` | La sentencia en curso se paró y se deshizo; las anteriores se quedan aplicadas. Si el propio script había abierto una transacción, se deshace. | Sí |
+| Postgres, MySQL, SQLite, con transacción | La sesión se cerró con la transacción abierta, así que el servidor la deshace y no se confirmó nada. | Sí |
+| Postgres, MySQL, SQLite, `transaction: false` | La sesión se cerró, pero la sentencia en curso **puede terminar igualmente** en el servidor. Compruébalo antes de relanzarla. | No |
+
+El límite cubre las sentencias, nunca el `COMMIT`. Si todas acaban a tiempo, el
+script se confirma tarde lo que tarde. Así un timeout no puede caer entre
+«COMMIT enviado» y «respuesta recibida». El log de auditoría empieza cada script
+con una línea `-- timeout 300 s (default)`, y uno que se corta termina con
+`CANCEL (…)` y el veredicto.
+
+**Tu cliente MCP tiene su propio límite, y suele ser el más estricto:**
+
+- **Claude Code** espera hasta el `"timeout"` del servidor (en ms, en su
+  entrada de `.mcp.json`). Si no hay, usa `MCP_TOOL_TIMEOUT`, unas 28 horas por
+  defecto. Además, a un servidor stdio que no manda progreso lo corta el límite
+  de inactividad `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT`, que por defecto es de
+  30 minutos. HuginnDB todavía no manda progreso, así que una carga de una hora
+  necesita subir los dos; por ejemplo, `"timeout": 4200000` y
+  `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=0`. A los dos minutos, Claude Code pasa la
+  llamada a segundo plano en vez de bloquear la conversación.
+- **Claude Desktop**, según lo que han reportado otros usuarios, se rinde a los
+  60 segundos con un servidor local, y ese límite no se puede cambiar. Las
+  cargas largas no van por ahí.
+
+Que el cliente se rinda no para a HuginnDB: la llamada sigue hasta su propio
+timeout, confirma o deshace, y la respuesta no llega a nadie. Mantén
+`timeout_seconds` por debajo del límite del cliente; así el error que vuelve es
+el de HuginnDB, con el resultado dentro.
+
+Un **modo asíncrono** quitaría la dependencia de la paciencia del cliente:
+lanzar el script, recibir un id y consultar su estado. Todavía no existe.
 
 ### Índices: por qué las dos herramientas de escritura son solo de MongoDB
 

@@ -188,6 +188,180 @@ impl Session {
         self.in_tx = false;
         Ok(())
     }
+
+    /// [`Self::exec`], stopped at `deadline`.
+    pub async fn exec_by(&mut self, sql: &str, deadline: tokio::time::Instant) -> Bounded<u64> {
+        match tokio::time::timeout_at(deadline, self.exec(sql)).await {
+            Ok(done) => Bounded::Done(done),
+            Err(_) => Bounded::TimedOut(self.cancel().await),
+        }
+    }
+
+    /// [`Self::fetch`], stopped at `deadline`.
+    pub async fn fetch_by(
+        &mut self,
+        sql: &str,
+        cap: usize,
+        deadline: tokio::time::Instant,
+    ) -> Bounded<Vec<RowSet>> {
+        match tokio::time::timeout_at(deadline, self.fetch(sql, cap)).await {
+            Ok(done) => Bounded::Done(done),
+            Err(_) => Bounded::TimedOut(self.cancel().await),
+        }
+    }
+
+    /// Stop the statement a deadline cut off. The session is closed when it
+    /// drops either way: whatever state it was left in is not the next
+    /// borrower's.
+    async fn cancel(&mut self) -> Cancelled {
+        self.close_on_drop();
+        match &mut self.conn {
+            Conn::MsSql(m) => {
+                if m.cancel(CANCEL_ACK_WAIT).await {
+                    Cancelled::Acknowledged
+                } else {
+                    Cancelled::Closed
+                }
+            }
+            // `sqlx` has no cancel to send. What it does have is a future that
+            // was dropped mid-statement, after which the connection would
+            // first wait out the rest of that statement — so nothing more runs
+            // on it, and closing it is the cancel.
+            _ => Cancelled::Closed,
+        }
+    }
+
+    /// After a cancel SQL Server acknowledged: roll back whatever transaction
+    /// is still open — an Attention stops the batch, not the transaction — and
+    /// confirm none is left. `Ok(true)` when one was open.
+    ///
+    /// Not bounded: a rollback undoes what the statement did so far, which can
+    /// take as long again, and cutting it off would leave the outcome to the
+    /// server's own rollback after the socket closes — the same outcome, minus
+    /// the confirmation.
+    async fn roll_back_after_cancel(&mut self) -> AppResult<bool> {
+        let Conn::MsSql(m) = &mut self.conn else {
+            return Err(AppError::InvalidInput(
+                "only a SQL Server session survives a cancel".into(),
+            ));
+        };
+        let sets = m
+            .simple_query_sets(
+                "DECLARE @open int = @@TRANCOUNT; \
+                 IF @open > 0 ROLLBACK TRANSACTION; \
+                 SELECT @open, @@TRANCOUNT",
+            )
+            .await?;
+        let row = sets.iter().flatten().next();
+        let at = |i: usize| row.and_then(|r| r.try_get::<i32, _>(i).ok().flatten());
+        match (at(0), at(1)) {
+            (Some(open), Some(0)) => {
+                self.in_tx = false;
+                Ok(open > 0)
+            }
+            (_, now) => Err(AppError::InvalidInput(format!(
+                "@@TRANCOUNT is {} after the rollback",
+                now.map_or("unknown".into(), |n| n.to_string())
+            ))),
+        }
+    }
+
+    /// Make sure nothing of the transaction open when a deadline fired can be
+    /// committed, and say what became of the work in a sentence a timeout
+    /// error can end with.
+    ///
+    /// `in_transaction` is whether the caller wrapped the work in a
+    /// transaction it opened itself. Then the answer is always "nothing was
+    /// committed": the `COMMIT` is never sent once the deadline has fired, and
+    /// either the rollback here or the server's own, on the closed socket,
+    /// undoes the rest. Without one, the statements before the cut stay, and
+    /// whether the one in flight did depends on whether the server could be
+    /// told to stop it.
+    pub async fn settle_after_timeout(
+        &mut self,
+        cancelled: Cancelled,
+        in_transaction: bool,
+    ) -> String {
+        if cancelled == Cancelled::Closed {
+            return if in_transaction {
+                "The session was closed with its transaction open, so the server rolls it back: \
+                 nothing was committed."
+                    .into()
+            } else {
+                "The session was closed, but this driver cannot cancel a statement on the \
+                 server: without a transaction, the statement in flight may still complete \
+                 there and stay applied. Check before running it again."
+                    .into()
+            };
+        }
+        match self.roll_back_after_cancel().await {
+            Ok(_) if in_transaction => {
+                "SQL Server acknowledged the cancel and the transaction was rolled back \
+                 (@@TRANCOUNT is 0): nothing was committed."
+                    .into()
+            }
+            Ok(true) => "SQL Server acknowledged the cancel: the statement in flight was \
+                         stopped and undone, and the transaction the script had opened was \
+                         rolled back (@@TRANCOUNT is 0)."
+                .into(),
+            Ok(false) => "SQL Server acknowledged the cancel: the statement in flight was \
+                          stopped and undone."
+                .into(),
+            Err(e) => {
+                let why = failure_text(&e);
+                if in_transaction {
+                    format!(
+                        "SQL Server acknowledged the cancel, but the rollback after it failed \
+                         ({why}); the session was closed with the transaction open, so the \
+                         server rolls it back: nothing was committed."
+                    )
+                } else {
+                    format!(
+                        "SQL Server acknowledged the cancel: the statement in flight was \
+                         stopped and undone. Rolling back a transaction the script may have \
+                         opened failed ({why}); the session was closed, which rolls it back."
+                    )
+                }
+            }
+        }
+    }
+}
+
+/// How long [`Session::cancel`] waits for SQL Server to acknowledge an
+/// Attention before giving up and closing the socket. The acknowledgement
+/// comes once the batch has stopped, which is quick; a server too busy to
+/// answer in this long is no better served by waiting longer.
+const CANCEL_ACK_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// What a statement run against a deadline came to.
+#[derive(Debug)]
+pub enum Bounded<T> {
+    /// It finished — successfully or not — before the deadline.
+    Done(AppResult<T>),
+    /// The deadline fired first, and the statement was cancelled.
+    TimedOut(Cancelled),
+}
+
+impl<T> Bounded<T> {
+    /// Transform what a statement that finished in time returned.
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Bounded<U> {
+        match self {
+            Bounded::Done(r) => Bounded::Done(r.map(f)),
+            Bounded::TimedOut(c) => Bounded::TimedOut(c),
+        }
+    }
+}
+
+/// How a statement cut off by a deadline was stopped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Cancelled {
+    /// SQL Server acknowledged an Attention: the batch was aborted and the
+    /// session is at a clean boundary, able to roll back and report.
+    Acknowledged,
+    /// The session is closed instead — a `sqlx` driver, which has no cancel,
+    /// or a SQL Server that did not acknowledge. The server rolls back the
+    /// open transaction when it notices.
+    Closed,
 }
 
 impl Drop for Session {

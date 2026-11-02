@@ -544,6 +544,38 @@ impl PooledClient {
         Ok(rows.first().and_then(values::first_i64))
     }
 
+    /// Cancel the request in flight on this session — one whose future the
+    /// caller has just dropped, typically to a timeout — with a TDS Attention,
+    /// and wait up to `within` for the server to acknowledge it.
+    ///
+    /// Dropping the future alone tells the server nothing: the batch keeps
+    /// running, holding its locks, and its reply sits unread on the stream.
+    /// The Attention makes SQL Server abort the batch and answer `DONE_ATTN`,
+    /// after which the stream is at a boundary again and the session can run
+    /// the `ROLLBACK` that has to follow — an Attention stops the statement
+    /// but leaves an explicit transaction open.
+    ///
+    /// `true` when the server acknowledged. `false` when it did not in time,
+    /// or the stream was already unusable: the session is then dropped, and
+    /// closing the socket is what makes the server abort the batch and roll
+    /// its transaction back instead.
+    pub async fn cancel(&mut self, within: std::time::Duration) -> bool {
+        let Some(client) = self.client.as_mut() else {
+            return false;
+        };
+        match tokio::time::timeout(within, client.cancel_query()).await {
+            Ok(Ok(())) => {
+                self.healthy = true;
+                true
+            }
+            _ => {
+                self.client = None;
+                self.healthy = false;
+                false
+            }
+        }
+    }
+
     fn client_mut(&mut self) -> AppResult<&mut MsSqlClient> {
         self.client.as_mut().ok_or_else(|| {
             AppError::NotConnected(

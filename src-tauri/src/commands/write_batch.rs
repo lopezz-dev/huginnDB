@@ -43,7 +43,8 @@
 //! On MySQL the atomicity is only as real as the table's storage engine: InnoDB
 //! honours it, MyISAM commits every statement.
 
-use crate::db::session::{failure_text, Session};
+use crate::commands::script;
+use crate::db::session::{failure_text, Bounded, Session};
 use crate::db::sql::{StmtClass, Verbs};
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink, SqlLog};
@@ -192,11 +193,16 @@ const ROLLED_BACK: &str = "The transaction was rolled back; nothing was changed.
 /// `sink` gets one entry per statement as it runs, then a closing `COMMIT` or
 /// `ROLLBACK` entry — so `mcp-audit.log` never shows a row count for a write
 /// without also showing whether it stayed.
+///
+/// `timeout` bounds the writes and not the `COMMIT`, as in
+/// [`crate::commands::script::execute_script_inner`]. MongoDB's writes are
+/// single operations with no session to cancel, and are not bounded.
 pub(crate) async fn execute_write_batch_inner(
     sink: &dyn LogSink,
     state: &AppState,
     connection_id: &str,
     writes: &[BatchWrite],
+    timeout: crate::state::McpTimeout,
 ) -> AppResult<WriteBatchResult> {
     check_writes(writes)?;
     let pool = state.pool_for(connection_id)?;
@@ -224,13 +230,34 @@ pub(crate) async fn execute_write_batch_inner(
     };
 
     let mut session = Session::acquire(&pool).await?;
+    closing(&script::timeout_line(timeout), None);
+    let deadline = tokio::time::Instant::now() + timeout.duration();
     session.begin(begin).await?;
     let log = SqlLog::new(sink, connection_id, driver);
     let mut affected = Vec::with_capacity(writes.len());
     for (i, write) in writes.iter().enumerate() {
         let sql = write.sql.trim();
         let start = Instant::now();
-        let failure = match session.exec(sql).await {
+        let done = match session.exec_by(sql, deadline).await {
+            Bounded::Done(done) => done,
+            Bounded::TimedOut(cancelled) => {
+                let verdict = session.settle_after_timeout(cancelled, true).await;
+                let reason = format!(
+                    "writes[{i}] was cancelled: the batch ran out of time after {}",
+                    timeout.describe()
+                );
+                log.err(sql, start, &reason);
+                closing(
+                    &format!("CANCEL ({})", script::cancel_how(cancelled)),
+                    Some(&verdict),
+                );
+                return Err(AppError::InvalidInput(format!(
+                    "{reason}. {verdict} {}",
+                    script::TIMEOUT_HINT
+                )));
+            }
+        };
+        let failure = match done {
             Ok(n) => {
                 log.ok(sql, start, n);
                 affected.push(n);
@@ -322,6 +349,13 @@ async fn execute_mongo(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a call that sets no timeout anywhere gets.
+    const DEFAULT_TIMEOUT: crate::state::McpTimeout = crate::state::McpTimeout {
+        secs: crate::state::DEFAULT_MCP_TIMEOUT_SECS,
+        requested: None,
+        cap: crate::state::DEFAULT_MCP_TIMEOUT_SECS,
+    };
     use crate::log_bus::LogEntry;
     use crate::state::ActivePool;
     use parking_lot::Mutex;
@@ -472,6 +506,7 @@ mod tests {
                 w("INSERT INTO cfg VALUES ('c', '3')"),
                 w("DELETE FROM cfg WHERE k = 'b'"),
             ],
+            DEFAULT_TIMEOUT,
         )
         .await
         .unwrap();
@@ -483,9 +518,14 @@ mod tests {
             vec![("a".into(), "2".into()), ("c".into(), "3".into())]
         );
         let log = sink.0.lock();
-        assert_eq!(log.len(), 4, "one entry per write, then the COMMIT");
-        assert_eq!(log[3].sql.as_deref(), Some("COMMIT"));
-        assert!(log[3].error.is_none());
+        assert_eq!(
+            log.len(),
+            5,
+            "the timeout, one entry per write, then the COMMIT"
+        );
+        assert_eq!(log[0].sql.as_deref(), Some("-- timeout 300 s (default)"));
+        assert_eq!(log[4].sql.as_deref(), Some("COMMIT"));
+        assert!(log[4].error.is_none());
         let _ = std::fs::remove_file(&path);
     }
 
@@ -503,6 +543,7 @@ mod tests {
                 w("INSERT INTO cfg VALUES ('b', 'x')"),
                 w("DELETE FROM cfg WHERE k = 'a'"),
             ],
+            DEFAULT_TIMEOUT,
         )
         .await
         .unwrap_err()
@@ -515,8 +556,12 @@ mod tests {
             "the first write must not have survived the second's failure"
         );
         let log = sink.0.lock();
-        assert_eq!(log.len(), 3, "the two that ran, then the ROLLBACK");
-        assert_eq!(log[2].sql.as_deref(), Some("ROLLBACK"));
+        assert_eq!(
+            log.len(),
+            4,
+            "the timeout, the two that ran, then the ROLLBACK"
+        );
+        assert_eq!(log[3].sql.as_deref(), Some("ROLLBACK"));
         let _ = std::fs::remove_file(&path);
     }
 
@@ -533,6 +578,7 @@ mod tests {
                 // which is what an agent otherwise re-reads to find out.
                 expect("UPDATE cfg SET v = '5' WHERE k = 'bb'", 1),
             ],
+            DEFAULT_TIMEOUT,
         )
         .await
         .unwrap_err()
@@ -558,6 +604,7 @@ mod tests {
             &state,
             "c",
             &[w("UPDATE cfg SET v = '7' WHERE k = 'a'"), w("COMMIT")],
+            DEFAULT_TIMEOUT,
         )
         .await
         .unwrap_err()
@@ -582,6 +629,7 @@ mod tests {
                 w("/* c */ COMMIT"),
                 expect("UPDATE cfg SET v = '7' WHERE k = 'nope'", 1),
             ],
+            DEFAULT_TIMEOUT,
         )
         .await
         .unwrap_err()

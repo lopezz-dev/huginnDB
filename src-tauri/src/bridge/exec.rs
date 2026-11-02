@@ -257,29 +257,33 @@ pub async fn execute(
                 crate::commands::query::execute_with_state(sink, state, connection_id, sql).await?
             })?
         }
-        // Unbounded, like every statement the AI writes itself: a timeout that
-        // fired mid-transaction would only leave the batch to be rolled back.
+        // Bounded by the call's timeout under the connection's own ceiling,
+        // resolved here against this side's profiles rather than taken from
+        // the request — the write policy's reasoning. The executor cancels a
+        // statement that runs past it and never lets the COMMIT be the thing
+        // cut off, so a timeout always comes back with a known outcome.
         RunWriteBatch {
             connection_id,
+            policy_id,
             writes,
-            ..
+            timeout_secs,
         } => serde_json::to_value(
             crate::commands::write_batch::execute_write_batch_inner(
                 sink,
                 state,
                 connection_id,
                 writes,
+                timeout_for(state, policy_id, *timeout_secs),
             )
             .await?,
         )?,
-        // Unbounded for the reason `RunWriteBatch` is, and more so: a migration
-        // is the one thing here expected to run for minutes.
         RunScript {
             connection_id,
+            policy_id,
             sql,
             transaction,
             max_rows,
-            ..
+            timeout_secs,
         } => serde_json::to_value(
             crate::commands::script::execute_script_inner(
                 sink,
@@ -288,6 +292,7 @@ pub async fn execute(
                 sql,
                 *transaction,
                 *max_rows,
+                timeout_for(state, policy_id, *timeout_secs),
             )
             .await?,
         )?,
@@ -500,4 +505,21 @@ pub async fn execute(
         }
     };
     Ok(value)
+}
+
+/// The timeout a `run_script` / `run_writes` gets on this side: what it asked
+/// for, under the ceiling the profile sets.
+///
+/// Read fresh from `profiles.json`, falling back to the in-memory copy, like
+/// the sidecar's write policy: on the sidecar's own path that copy is the one
+/// loaded at startup, and a ceiling raised in Settings → MCP since must apply
+/// to the next call without restarting the MCP client. In the app the two are
+/// the same list.
+pub(crate) fn timeout_for(
+    state: &AppState,
+    policy_id: &str,
+    requested: Option<u32>,
+) -> crate::state::McpTimeout {
+    let profiles = crate::store::load_profiles().unwrap_or_else(|_| state.profiles.read().clone());
+    crate::state::mcp_timeout(profiles.iter().find(|p| p.id == policy_id), requested)
 }

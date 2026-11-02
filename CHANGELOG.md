@@ -15,6 +15,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   grid, opens a menu with *Insert row…*, *Paste rows as JSON…* and *Reload*.
   When the grid is empty because of a filter, the empty state warns that a
   new row that doesn't match the filter won't be shown after it is saved.
+- **MCP: `run_script` and `run_writes` can run past five minutes, when both the
+  call and the connection allow it.** A new `timeout_seconds` argument asks for
+  more time, and a per-connection ceiling in Settings → MCP (the second number
+  next to each connection, in seconds) caps it. Without either, the limit is
+  still 300 s. The ceiling is local, like the write policy: a shared origin
+  never changes it.
 
 ### Changed
 
@@ -42,6 +48,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   searches are unchanged, and a value too long for a `varchar(n)` is still
   refused rather than truncated. The other engines run exactly the SQL they
   ran before (ADR #129).
+- **MCP: a script or batch that runs out of time is now cancelled on the
+  server and reports what became of its work.** Before, the only limit was
+  the bridge's 300-second wait on the sidecar side. The app kept running the
+  script and committed it, while the AI was told only that the app "did not
+  answer in time". Now the limit is enforced where the statements run. On SQL
+  Server, the statement is stopped with a TDS Attention, the transaction is
+  rolled back, and `@@TRANCOUNT` is checked to be 0. On the other drivers, the
+  session is closed with its transaction open, so the server rolls it back.
+  Either way, the error says whether anything was committed. The `COMMIT` is
+  never what the timeout cuts off. The audit log records the timeout applied
+  to every call, and a `CANCEL` line when one is cut off.
+- **MCP: after a timed-out call, the next call no longer reads the previous
+  call's answer as its own.** The bridge connection used to stay open while
+  the app was still working, so a call made right after the timeout queued
+  behind the old one and got its reply: the result of the script for a
+  `SELECT`, or a success for a re-run that had not happened yet. The bridge
+  protocol moves to version 6, so a sidecar and an app from different
+  versions fall back to separate pools instead of disagreeing about who times
+  out.
 
 ## [1.37.1] — 2026-10-30
 

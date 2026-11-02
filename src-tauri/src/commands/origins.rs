@@ -838,6 +838,10 @@ pub(crate) fn merge_into(
                 // size of what leaves this machine for its AI clients, decided
                 // here for the same reason the policy above is.
                 profile.mcp_max_rows = existing.mcp_max_rows;
+                // And how long they may hold its session per call: raising it
+                // is what lets an hour-long migration run, a decision about
+                // this machine and this copy of the data, not the file's.
+                profile.mcp_timeout_secs = existing.mcp_timeout_secs;
                 // And the same pair one surface across: whether the in-app AI
                 // panel may reach this connection, and whether its rows may go
                 // to an untrusted endpoint. Both are decisions about what
@@ -1372,6 +1376,38 @@ mod tests {
         let cap = |id: &str| after.iter().find(|p| p.id == id).unwrap().mcp_max_rows;
         assert_eq!(cap("shared"), Some(50));
         assert_eq!(cap("other"), None);
+    }
+
+    /// The MCP timeout ceiling is local for the same reason the row cap is: a
+    /// publisher who allows hour-long scripts on their copy does not get to
+    /// allow them on this one, nor take away a ceiling raised here.
+    #[test]
+    fn a_sync_preserves_the_local_mcp_timeout() {
+        let set = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            mcp_timeout_secs: Some(7200),
+            ..testkit::profile("shared")
+        };
+        let unset = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            ..testkit::profile("other")
+        };
+        let incoming = [
+            published(ConnectionProfile {
+                mcp_timeout_secs: None,
+                ..testkit::profile("shared")
+            }),
+            published(ConnectionProfile {
+                mcp_timeout_secs: Some(86_400),
+                ..testkit::profile("other")
+            }),
+        ];
+
+        let after = merge(vec![set, unset], &incoming);
+
+        let secs = |id: &str| after.iter().find(|p| p.id == id).unwrap().mcp_timeout_secs;
+        assert_eq!(secs("shared"), Some(7200));
+        assert_eq!(secs("other"), None);
     }
 
     /// The counterpart to the three above, and the reason the preserve list is

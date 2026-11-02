@@ -374,6 +374,7 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("connection::set_ai_rows_allowed", "none"),
     ("connection::set_mcp_exposed", "none"),
     ("connection::set_mcp_max_rows", "none"),
+    ("connection::set_mcp_timeout_secs", "none"),
     ("connection::set_mcp_write_policy", "none"),
     ("connection::set_pulse_enabled", "none"),
     ("connection::take_detached_tab_intent", "none"),

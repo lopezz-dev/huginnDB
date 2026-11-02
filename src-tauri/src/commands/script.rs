@@ -46,7 +46,7 @@
 //! MongoDB writes in order.
 
 use crate::commands::query::{column_meta, QueryResult};
-use crate::db::session::Session;
+use crate::db::session::{Bounded, Cancelled, Session};
 use crate::db::sql::{skip_leading_noise, Verbs};
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink, SqlLog};
@@ -317,12 +317,43 @@ pub struct ScriptResult {
 
 const ROLLED_BACK: &str = "The transaction was rolled back; nothing was changed.";
 
+/// What a timeout error ends with: the two knobs, in the order they apply.
+pub(crate) const TIMEOUT_HINT: &str = "To give it longer, pass `timeout_seconds`; it is capped by      this connection's MCP timeout, which only the user can raise (HuginnDB → Settings → MCP).";
+
+/// The audit line every script opens with, saying how long it was given.
+pub(crate) fn timeout_line(timeout: crate::state::McpTimeout) -> String {
+    format!("-- timeout {}", timeout.describe())
+}
+
+/// How a cancel went, for the `CANCEL` audit line.
+pub(crate) fn cancel_how(cancelled: Cancelled) -> &'static str {
+    match cancelled {
+        Cancelled::Acknowledged => "acknowledged by the server",
+        Cancelled::Closed => "session closed",
+    }
+}
+
+/// What a script run without a transaction leaves behind when it stops after
+/// `ran` statements.
+fn left_in_place(ran: usize) -> String {
+    match ran {
+        0 => "nothing ran before it".to_string(),
+        1 => "the 1 statement before it ran and stays applied".to_string(),
+        n => format!("the {n} statements before it ran and stay applied"),
+    }
+}
+
 /// Run `script` against `connection_id` on one session.
 ///
 /// `max_rows` bounds the rows kept across every read in the script. `sink`
 /// gets one entry per statement as it runs, plus `BEGIN` / `COMMIT` /
 /// `ROLLBACK` entries in transaction mode, so `mcp-audit.log` shows whether
 /// the writes it lists stayed.
+///
+/// `timeout` bounds the statements, not the `COMMIT`: once every statement
+/// has finished in time the script is committed however long that takes, so a
+/// timeout can never land between "sent COMMIT" and "heard back" — the one
+/// place its outcome would be unknown. See [`crate::db::session::Bounded`].
 pub(crate) async fn execute_script_inner(
     sink: &dyn LogSink,
     state: &AppState,
@@ -330,6 +361,7 @@ pub(crate) async fn execute_script_inner(
     script: &str,
     transaction: bool,
     max_rows: usize,
+    timeout: crate::state::McpTimeout,
 ) -> AppResult<ScriptResult> {
     if script.len() > MAX_SCRIPT_BYTES {
         return Err(AppError::InvalidInput(format!(
@@ -382,6 +414,8 @@ pub(crate) async fn execute_script_inner(
     let log = SqlLog::new(sink, connection_id, driver);
     let mut session = Session::acquire(&pool).await?;
     session.close_on_drop();
+    closing(&timeout_line(timeout), None);
+    let deadline = tokio::time::Instant::now() + timeout.duration();
     if transaction {
         session.begin(begin).await?;
         closing(begin, None);
@@ -396,10 +430,10 @@ pub(crate) async fn execute_script_inner(
         }
         let sql = st.sql;
         let start = Instant::now();
-        let outcome: AppResult<u64> = if crate::db::sql::is_read_only(sql) {
+        let outcome: Bounded<u64> = if crate::db::sql::is_read_only(sql) {
             // Capped at what is left of the script's budget, not the
             // per-statement ceiling: the rows past it would only be shed.
-            session.fetch(sql, left).await.map(|sets| {
+            session.fetch_by(sql, left, deadline).await.map(|sets| {
                 let mut produced = 0u64;
                 // A read that matched nothing decodes no columns, and has no
                 // panel to show.
@@ -423,7 +457,34 @@ pub(crate) async fn execute_script_inner(
                 produced
             })
         } else {
-            session.exec(sql).await.inspect(|n| total_affected += n)
+            session.exec_by(sql, deadline).await.map(|n| {
+                total_affected += n;
+                n
+            })
+        };
+        let outcome = match outcome {
+            Bounded::Done(outcome) => outcome,
+            Bounded::TimedOut(cancelled) => {
+                let verdict = session.settle_after_timeout(cancelled, transaction).await;
+                let reason = format!(
+                    "{} was cancelled: the script ran out of time after {}",
+                    name(i, st),
+                    timeout.describe()
+                );
+                log.err(sql, start, &reason);
+                closing(
+                    &format!("CANCEL ({})", cancel_how(cancelled)),
+                    Some(&verdict),
+                );
+                let before = if transaction {
+                    String::new()
+                } else {
+                    format!(" {}.", left_in_place(ran))
+                };
+                return Err(AppError::InvalidInput(format!(
+                    "{reason}. {verdict}{before} {TIMEOUT_HINT}"
+                )));
+            }
         };
         match outcome {
             Ok(n) => {
@@ -441,13 +502,9 @@ pub(crate) async fn execute_script_inner(
                     closing(rollback, Some(&reason));
                     return Err(AppError::InvalidInput(format!("{reason}. {ROLLED_BACK}")));
                 }
-                let left_in_place = match ran {
-                    0 => "nothing ran before it".to_string(),
-                    1 => "the 1 statement before it ran and stays applied".to_string(),
-                    n => format!("the {n} statements before it ran and stay applied"),
-                };
                 return Err(AppError::InvalidInput(format!(
-                    "{reason}. No transaction was requested: {left_in_place}; the rest                      did not run."
+                    "{reason}. No transaction was requested: {}; the rest did not run.",
+                    left_in_place(ran)
                 )));
             }
         }
@@ -473,6 +530,13 @@ pub(crate) async fn execute_script_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// What a call that sets no timeout anywhere gets.
+    const DEFAULT_TIMEOUT: crate::state::McpTimeout = crate::state::McpTimeout {
+        secs: crate::state::DEFAULT_MCP_TIMEOUT_SECS,
+        requested: None,
+        cap: crate::state::DEFAULT_MCP_TIMEOUT_SECS,
+    };
     use crate::log_bus::LogEntry;
     use crate::state::ActivePool;
     use parking_lot::Mutex;
@@ -644,7 +708,7 @@ mod tests {
     async fn a_temp_table_lives_for_the_whole_script_and_dies_with_it() {
         let (state, path) = sqlite_state("temp").await;
         let sink = Recorder::default();
-        let out = execute_script_inner(&sink, &state, "c", MIGRATION, true, 100)
+        let out = execute_script_inner(&sink, &state, "c", MIGRATION, true, 100, DEFAULT_TIMEOUT)
             .await
             .unwrap();
         assert!(out.transaction);
@@ -659,7 +723,11 @@ mod tests {
         );
         {
             let log = sink.0.lock();
-            assert_eq!(log.first().and_then(|e| e.sql.as_deref()), Some("BEGIN"));
+            assert_eq!(
+                log.first().and_then(|e| e.sql.as_deref()),
+                Some("-- timeout 300 s (default)")
+            );
+            assert_eq!(log.get(1).and_then(|e| e.sql.as_deref()), Some("BEGIN"));
             assert_eq!(log.last().and_then(|e| e.sql.as_deref()), Some("COMMIT"));
         }
         // The session was closed, not pooled: the temp table is gone.
@@ -680,10 +748,18 @@ mod tests {
         let script = "INSERT INTO dest VALUES ('a', 1);\n\
                       CREATE TEMP TABLE s (k TEXT);\n\
                       INSERT INTO dest VALUES ('a', 2);";
-        let err = execute_script_inner(&Recorder::default(), &state, "c", script, true, 100)
-            .await
-            .unwrap_err()
-            .to_string();
+        let err = execute_script_inner(
+            &Recorder::default(),
+            &state,
+            "c",
+            script,
+            true,
+            100,
+            DEFAULT_TIMEOUT,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
         assert!(err.contains("statements[2] (line 3"), "{err}");
         assert!(err.contains("rolled back"), "{err}");
         assert!(dest(&state).await.is_empty());
@@ -696,10 +772,18 @@ mod tests {
         // The script's own transaction control runs, on the same session.
         let script = "BEGIN; INSERT INTO dest VALUES ('a', 1); COMMIT;\n\
                       INSERT INTO dest VALUES ('a', 2);";
-        let err = execute_script_inner(&Recorder::default(), &state, "c", script, false, 100)
-            .await
-            .unwrap_err()
-            .to_string();
+        let err = execute_script_inner(
+            &Recorder::default(),
+            &state,
+            "c",
+            script,
+            false,
+            100,
+            DEFAULT_TIMEOUT,
+        )
+        .await
+        .unwrap_err()
+        .to_string();
         assert!(
             err.contains("the 3 statements before it ran and stay applied"),
             "{err}"
@@ -713,9 +797,17 @@ mod tests {
         let (state, path) = sqlite_state("budget").await;
         let script = "INSERT INTO dest VALUES ('a', 1), ('b', 2), ('c', 3);\n\
                       SELECT * FROM dest; SELECT * FROM dest;";
-        let out = execute_script_inner(&Recorder::default(), &state, "c", script, true, 4)
-            .await
-            .unwrap();
+        let out = execute_script_inner(
+            &Recorder::default(),
+            &state,
+            "c",
+            script,
+            true,
+            4,
+            DEFAULT_TIMEOUT,
+        )
+        .await
+        .unwrap();
         assert_eq!(out.results[0].result.rows.len(), 3);
         assert!(!out.results[0].result.truncated);
         assert_eq!(out.results[1].result.rows.len(), 1);
@@ -733,6 +825,7 @@ mod tests {
             "INSERT INTO dest VALUES ('a', 1); COMMIT;",
             true,
             100,
+            DEFAULT_TIMEOUT,
         )
         .await
         .unwrap_err()
@@ -740,5 +833,206 @@ mod tests {
         assert!(err.contains("transaction control"), "{err}");
         assert!(dest(&state).await.is_empty());
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A timeout of `secs` that the call asked for and the connection allows.
+    fn timeout(secs: u32) -> crate::state::McpTimeout {
+        crate::state::McpTimeout {
+            secs,
+            requested: Some(secs),
+            cap: secs,
+        }
+    }
+
+    /// One statement SQLite takes seconds over: counting thirty million rows
+    /// out of a recursive CTE, inserted as one row at the end.
+    const SLOW_INSERT: &str = "INSERT INTO dest SELECT 'slow', COUNT(*) FROM \
+        (WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 30000000) \
+        SELECT n FROM c)";
+
+    #[tokio::test]
+    async fn a_script_past_its_timeout_is_cancelled_and_nothing_is_committed() {
+        let (state, path) = sqlite_state("timeout").await;
+        let sink = Recorder::default();
+        let script = format!("INSERT INTO dest VALUES ('a', 1);\n{SLOW_INSERT};");
+        let started = Instant::now();
+        let err = execute_script_inner(&sink, &state, "c", &script, true, 100, timeout(1))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "the call must come back at the timeout, not when the statement ends"
+        );
+        assert!(err.contains("statements[1] (line 2"), "{err}");
+        assert!(err.contains("ran out of time after 1 s"), "{err}");
+        assert!(err.contains("nothing was committed"), "{err}");
+        assert!(err.contains("timeout_seconds"), "{err}");
+        // The connection was closed with the transaction open; once SQLite
+        // has let go of it, the first insert is gone too.
+        assert!(dest(&state).await.is_empty());
+        {
+            let log = sink.0.lock();
+            assert_eq!(
+                log.first().and_then(|e| e.sql.as_deref()),
+                Some("-- timeout 1 s (asked for)")
+            );
+            let cancel = log.last().unwrap();
+            assert_eq!(cancel.sql.as_deref(), Some("CANCEL (session closed)"));
+            assert!(cancel.error.is_some());
+            assert!(
+                !log.iter().any(|e| e.sql.as_deref() == Some("COMMIT")),
+                "a cancelled script must never reach its COMMIT"
+            );
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Without a transaction, a driver that cannot cancel on the server says
+    /// so instead of claiming an outcome it cannot know.
+    #[tokio::test]
+    async fn without_a_transaction_a_timeout_says_what_it_cannot_know() {
+        let (state, path) = sqlite_state("timeout-no-tx").await;
+        let script = format!("INSERT INTO dest VALUES ('a', 1);\n{SLOW_INSERT};");
+        let err = execute_script_inner(
+            &Recorder::default(),
+            &state,
+            "c",
+            &script,
+            false,
+            100,
+            timeout(1),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("may still complete"), "{err}");
+        assert!(
+            err.contains("the 1 statement before it ran and stays applied"),
+            "{err}"
+        );
+        assert!(dest(&state).await.contains(&("a".into(), 1)));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The same against a real SQL Server, where the cancel is a TDS
+    /// Attention the server acknowledges. `#[ignore]`d: it needs one. Run it
+    /// with `HUGINNDB_TEST_MSSQL_HOST`, `_PORT`, `_DATABASE`, `_USER` and
+    /// `_PASSWORD` set (SQL authentication, a database the login may create a
+    /// table in) and `cargo test --lib --features mcp -- --ignored mssql_live`.
+    #[tokio::test]
+    #[ignore = "needs a SQL Server; see the doc comment"]
+    async fn mssql_live_a_waitfor_past_its_timeout_is_cancelled_on_the_server() {
+        let env = |k: &str| std::env::var(format!("HUGINNDB_TEST_MSSQL_{k}")).ok();
+        let (Some(host), Some(database), Some(user), Some(password)) =
+            (env("HOST"), env("DATABASE"), env("USER"), env("PASSWORD"))
+        else {
+            panic!("set HUGINNDB_TEST_MSSQL_HOST, _DATABASE, _USER and _PASSWORD");
+        };
+        let profile = crate::state::ConnectionProfile {
+            driver: crate::state::Driver::MsSql,
+            host,
+            port: env("PORT").map_or(1433, |p| p.parse().unwrap()),
+            database,
+            username: user,
+            mssql: Some(crate::state::MsSqlOptions {
+                instance: None,
+                trust_server_certificate: true,
+                auth: crate::state::MsSqlAuth::Sql,
+            }),
+            ..crate::testkit::profile("mssql-live")
+        };
+        let (pool, _tunnel) = crate::db::pool::open_pool(
+            &profile,
+            &password,
+            None,
+            Default::default(),
+            Default::default(),
+        )
+        .await
+        .expect("connect to the test SQL Server");
+        let DbPool::MsSql(raw) = &pool else {
+            unreachable!()
+        };
+        let raw = raw.clone();
+        let count = || async {
+            raw.scalar("SELECT COUNT(*) FROM hdb_timeout_probe", &[])
+                .await
+                .unwrap()
+                .unwrap()
+        };
+        raw.execute_simple(
+            "IF OBJECT_ID('hdb_timeout_probe') IS NOT NULL DROP TABLE hdb_timeout_probe",
+        )
+        .await
+        .unwrap();
+        raw.execute_simple("CREATE TABLE hdb_timeout_probe (k int)")
+            .await
+            .unwrap();
+        let state = AppState::new();
+        state
+            .connections
+            .write()
+            .insert("c".into(), ActivePool::bare(pool));
+        let run = |script: &'static str, transaction: bool| {
+            let state = &state;
+            async move {
+                let started = Instant::now();
+                let err = execute_script_inner(
+                    &Recorder::default(),
+                    state,
+                    "c",
+                    script,
+                    transaction,
+                    100,
+                    timeout(2),
+                )
+                .await
+                .unwrap_err()
+                .to_string();
+                assert!(
+                    started.elapsed() < std::time::Duration::from_secs(9),
+                    "the WAITFOR was waited out instead of cancelled: {err}"
+                );
+                err
+            }
+        };
+
+        // In run_script's own transaction: everything goes, and the server
+        // confirmed it.
+        let err = run(
+            "INSERT INTO hdb_timeout_probe VALUES (1);\nWAITFOR DELAY '00:00:10';",
+            true,
+        )
+        .await;
+        assert!(err.contains("acknowledged the cancel"), "{err}");
+        assert!(err.contains("@@TRANCOUNT is 0"), "{err}");
+        assert!(err.contains("nothing was committed"), "{err}");
+        assert_eq!(count().await, 0);
+
+        // As written: the statement before stays, the WAITFOR is stopped.
+        let err = run(
+            "INSERT INTO hdb_timeout_probe VALUES (2);\nWAITFOR DELAY '00:00:10';",
+            false,
+        )
+        .await;
+        assert!(err.contains("stopped and undone"), "{err}");
+        assert!(err.contains("stays applied"), "{err}");
+        assert_eq!(count().await, 1);
+
+        // As written, inside the script's own transaction: an Attention does
+        // not end it, so the executor rolls it back and says so.
+        let err = run(
+            "BEGIN TRANSACTION;\nINSERT INTO hdb_timeout_probe VALUES (3);\n\
+             WAITFOR DELAY '00:00:10';",
+            false,
+        )
+        .await;
+        assert!(err.contains("transaction the script had opened"), "{err}");
+        assert_eq!(count().await, 1);
+
+        raw.execute_simple("DROP TABLE hdb_timeout_probe")
+            .await
+            .unwrap();
     }
 }

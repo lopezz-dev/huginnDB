@@ -285,6 +285,76 @@ pub fn mcp_max_rows(
     }
 }
 
+/// How long an MCP `run_script` / `run_writes` call runs before it is
+/// cancelled, when neither the call nor the connection says otherwise. The 300
+/// seconds the bridge's read timeout always was, now enforced where the
+/// statement runs instead of only where the sidecar waits for it.
+pub const DEFAULT_MCP_TIMEOUT_SECS: u32 = 300;
+
+/// Highest timeout any source may set: a day. Past it a hand-edited
+/// `profiles.json` would be asking for a session nobody is watching.
+pub const MAX_MCP_TIMEOUT_SECS: u32 = 86_400;
+
+/// The timeout in force for one long-running MCP call, and the two numbers it
+/// was decided from — all three go into the audit log and the error a timeout
+/// returns, so whoever reads either knows which knob to turn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpTimeout {
+    /// Seconds the call may run.
+    pub secs: u32,
+    /// What the call asked for (`timeout_seconds`), if anything.
+    pub requested: Option<u32>,
+    /// The connection's ceiling: [`ConnectionProfile::mcp_timeout_secs`] or
+    /// [`DEFAULT_MCP_TIMEOUT_SECS`].
+    pub cap: u32,
+}
+
+impl McpTimeout {
+    pub fn duration(self) -> std::time::Duration {
+        std::time::Duration::from_secs(u64::from(self.secs))
+    }
+
+    /// One line for the audit log and the timeout error.
+    pub fn describe(self) -> String {
+        match self.requested {
+            Some(r) if r > self.cap => format!(
+                "{} s (asked for {r} s; this connection allows at most {} s)",
+                self.secs, self.cap
+            ),
+            Some(_) => format!("{} s (asked for)", self.secs),
+            None => format!("{} s (default)", self.secs),
+        }
+    }
+}
+
+/// The one place the timeout of an MCP `run_script` / `run_writes` call is
+/// decided.
+///
+/// The call's `timeout_seconds` when it gives one, [`DEFAULT_MCP_TIMEOUT_SECS`]
+/// when it does not — and in both cases never more than the connection's
+/// ceiling, which is [`ConnectionProfile::mcp_timeout_secs`] or the same
+/// default. So a longer run takes two decisions: the connection allows it
+/// (Settings → MCP, a local setting) and the call asks for it. Everything is
+/// clamped into `1..=MAX_MCP_TIMEOUT_SECS`.
+///
+/// Both sides of the bridge run this: the sidecar to tell the AI what it got,
+/// the app again against its own `profiles.json`, for the reason it re-checks
+/// the write policy — the app does not take a bridge client's word for it.
+pub fn mcp_timeout(profile: Option<&ConnectionProfile>, requested: Option<u32>) -> McpTimeout {
+    let clamp = |s: u32| s.clamp(1, MAX_MCP_TIMEOUT_SECS);
+    let cap = clamp(
+        profile
+            .and_then(|p| p.mcp_timeout_secs)
+            .unwrap_or(DEFAULT_MCP_TIMEOUT_SECS),
+    );
+    let wanted = clamp(requested.unwrap_or(DEFAULT_MCP_TIMEOUT_SECS));
+    McpTimeout {
+        secs: wanted.min(cap),
+        requested,
+        cap,
+    }
+}
+
 /// User-defined connection profile stored on disk.
 ///
 /// Only contains non-sensitive metadata; the matching password is kept in
@@ -482,6 +552,22 @@ pub struct ConnectionProfile {
     /// hand-edited value into `1..=MAX_MCP_MAX_ROWS`.
     #[serde(default)]
     pub mcp_max_rows: Option<u32>,
+    /// Longest an MCP `run_script` / `run_writes` call may run on this
+    /// connection, in seconds. `None` (the default, and every profile written
+    /// before this field existed) means [`DEFAULT_MCP_TIMEOUT_SECS`].
+    ///
+    /// A ceiling, not a default: a call that does not ask for more still gets
+    /// [`DEFAULT_MCP_TIMEOUT_SECS`], and one that asks for more gets at most
+    /// this. Raising it is what lets a migration's hour-long `INSERT … SELECT`
+    /// run at all, so it is opted into per connection — a work copy, not
+    /// production.
+    ///
+    /// **Strictly local**, like `mcp_write` and `mcp_max_rows`: how long this
+    /// machine's AI clients may hold a server's session is a decision about
+    /// this machine, so `merge_into` preserves it across a shared-origin sync.
+    /// Resolved only by [`mcp_timeout`].
+    #[serde(default)]
+    pub mcp_timeout_secs: Option<u32>,
     /// Whether the in-app AI panel may reach this connection at all.
     ///
     /// Opt-in, off by default, and strictly local — the same three properties
@@ -2150,6 +2236,56 @@ mod tests {
         let profile: ConnectionProfile =
             serde_json::from_value(serde_json::Value::Object(object)).unwrap();
         assert_eq!(profile.mcp_max_rows, None);
+    }
+
+    /// The timeout of a long MCP call: what the call asks for (300 s when it
+    /// asks for nothing), never past the connection's ceiling (300 s when it
+    /// sets none) — so a longer run needs both.
+    #[test]
+    fn mcp_timeout_is_the_request_under_the_connection_ceiling() {
+        let with = |secs: Option<u32>| ConnectionProfile {
+            mcp_timeout_secs: secs,
+            ..crate::testkit::profile("p")
+        };
+        let secs = |p: Option<&ConnectionProfile>, r| mcp_timeout(p, r).secs;
+
+        // Nothing set anywhere: the 300 s the bridge always waited.
+        assert_eq!(secs(None, None), DEFAULT_MCP_TIMEOUT_SECS);
+        assert_eq!(secs(Some(&with(None)), None), 300);
+        // Asking for more is not enough on its own…
+        assert_eq!(secs(Some(&with(None)), Some(7200)), 300);
+        // …and a raised ceiling alone does not lengthen a call that asks for
+        // nothing.
+        assert_eq!(secs(Some(&with(Some(7200))), None), 300);
+        // Both: the request, up to the ceiling.
+        assert_eq!(secs(Some(&with(Some(7200))), Some(3900)), 3900);
+        assert_eq!(secs(Some(&with(Some(3600))), Some(7200)), 3600);
+        // Shorter is always allowed.
+        assert_eq!(secs(Some(&with(None)), Some(5)), 5);
+        // Clamped: zero is not "no timeout", and a hand-edited ceiling cannot
+        // pass a day.
+        assert_eq!(secs(Some(&with(None)), Some(0)), 1);
+        assert_eq!(
+            secs(Some(&with(Some(u32::MAX))), Some(u32::MAX)),
+            MAX_MCP_TIMEOUT_SECS
+        );
+
+        let t = mcp_timeout(Some(&with(Some(3600))), Some(7200));
+        assert_eq!((t.requested, t.cap), (Some(7200), 3600));
+        assert!(t.describe().contains("at most 3600 s"), "{}", t.describe());
+        assert_eq!(mcp_timeout(None, None).describe(), "300 s (default)");
+    }
+
+    /// A profile written before the field existed takes the default ceiling.
+    #[test]
+    fn a_profile_without_mcp_timeout_secs_takes_the_default() {
+        let json = serde_json::to_value(crate::testkit::profile("p")).unwrap();
+        let mut object = json.as_object().unwrap().clone();
+        object.remove("mcp_timeout_secs");
+        let profile: ConnectionProfile =
+            serde_json::from_value(serde_json::Value::Object(object)).unwrap();
+        assert_eq!(profile.mcp_timeout_secs, None);
+        assert_eq!(mcp_timeout(Some(&profile), Some(9999)).secs, 300);
     }
 
     /// The per-connection MCP policy never split the row writes, and the verb
