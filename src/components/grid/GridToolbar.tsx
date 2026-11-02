@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   ChevronDown,
+  Lock,
   MoreHorizontal,
   Plus,
   X,
@@ -33,6 +34,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { PolicyLockHint } from "@/components/common/PolicyLock";
 import { GridSearchInput } from "@/components/grid/GridSearchInput";
 import { ServerFilterChip } from "@/components/grid/ServerFilterChips";
 import { SortChip } from "@/components/grid/SortControls";
@@ -132,6 +134,13 @@ interface GridToolbarProps {
    */
   queryChips?: QueryChip[];
   onInsertRow?: () => void;
+  /**
+   * Why an insert cannot begin here, when `onInsertRow` is absent. Set, the
+   * Insert button stays in the bar disabled with this as its tooltip (#267,
+   * ADR #96: locked, not hidden). Unset — a query-result grid, which never
+   * inserts — there is no button at all, as before.
+   */
+  insertBlocked?: string | null;
   /** Fit every column to its widest visible value. */
   /**
    * Other ways to add data to this relation, offered behind the Insert
@@ -171,6 +180,7 @@ export function GridToolbar({
   onRemoveSort,
   queryChips,
   onInsertRow,
+  insertBlocked,
   insertAlternatives,
   showRowCount,
   visibleRowCount,
@@ -308,7 +318,39 @@ export function GridToolbar({
           </>
         ),
       }
-    : null;
+    : insertBlocked
+      ? {
+          // Disabled, and the reason is on the control: a `disabled` Button
+          // gets `pointer-events: none`, so the tooltip hangs off
+          // `PolicyLockHint`'s focusable wrapper instead (ADR #96).
+          id: "insert",
+          bar: (
+            <PolicyLockHint reason={insertBlocked}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs"
+                disabled
+                aria-label={`${t("dataGrid.insert")}: ${insertBlocked}`}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("dataGrid.insert")}
+              </Button>
+            </PolicyLockHint>
+          ),
+          // A disabled menu row gets no hover either, so the reason is a
+          // second line under the label, as `ContextMenuAction` does.
+          menu: (
+            <DropdownMenuItem className="items-start text-xs" disabled>
+              <Lock className="mr-2 mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span className="flex flex-col">
+                <span>{t("dataGrid.insertNewRow")}</span>
+                <span className="text-muted-foreground">{insertBlocked}</span>
+              </span>
+            </DropdownMenuItem>
+          ),
+        }
+      : null;
 
   /**
    * What the overflow menu holds right now, grouped so the menu keeps the

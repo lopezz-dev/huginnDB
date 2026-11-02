@@ -6,6 +6,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **An empty grid can start a new row (#267).** A table with no rows, or one
+  a filter has emptied, had no right-click menu at all: every row has its own
+  menu, and with no rows there was nothing to click. The empty state now
+  offers *Insert new row*, and right-clicking it, or any blank space in the
+  grid, opens a menu with *Insert row…*, *Paste rows as JSON…* and *Reload*.
+  When the grid is empty because of a filter, the empty state warns that a
+  new row that doesn't match the filter won't be shown after it is saved.
+
+### Changed
+
+- **The Insert button stays in the toolbar when an insert isn't possible
+  (#267).** It used to disappear on a view, on a table without a primary key,
+  when a projection hid the key, or when the organization's policy forbids
+  inserting, and nothing said which. It is now shown disabled, and its
+  tooltip gives the reason. The same reason appears in the empty grid's
+  right-click menu. As with the other policy locks, this is advisory: the
+  backend still refuses what it refuses.
+  
 ### Fixed
 
 - **Postgres: editing, filtering, deleting and inserting on a non-text column

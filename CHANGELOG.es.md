@@ -8,6 +8,27 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Un grid vacío permite empezar una fila nueva (#267).** Una tabla sin
+  filas, o que un filtro ha dejado vacía, no tenía ningún menú contextual:
+  cada fila tiene el suyo, y sin filas no había dónde hacer clic. El estado
+  vacío ofrece ahora *Insertar nueva fila*, y el clic derecho sobre él, o
+  sobre cualquier espacio vacío del grid, abre un menú con *Insertar fila…*,
+  *Pegar filas como JSON…* y *Recargar*. Cuando el grid está vacío por un
+  filtro, el estado vacío avisa de que una fila nueva que no cumpla el
+  filtro no se verá después de guardarla.
+
+### Cambiado
+
+- **El botón Insertar se queda en la barra cuando no se puede insertar
+  (#267).** Antes desaparecía en una vista, en una tabla sin clave primaria,
+  cuando una proyección ocultaba la clave o cuando la política de la
+  organización prohíbe insertar, y nada decía cuál era el motivo. Ahora se
+  muestra deshabilitado y su tooltip da el motivo. El mismo motivo aparece en
+  el menú contextual del grid vacío. Como los demás bloqueos de la política,
+  es orientativo: el backend sigue rechazando lo que rechaza.
+  
 ### Corregido
 
 - **Postgres: editar, filtrar, borrar e insertar sobre una columna que no es

@@ -49,6 +49,10 @@ import { notify } from "@/lib/notify";
 import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
+import {
+  insertAvailability,
+  insertBlockReason,
+} from "@/lib/grid/insertAvailability";
 import { useTabs } from "@/stores/session/tabs";
 import { useFilterHistory } from "@/stores/grid/filterHistory";
 import { useConnections } from "@/stores/session/connections";
@@ -204,6 +208,17 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // disconnect) so the status bar never reads a stale count.
   useEffect(() => () => clearSelection(tabId), [tabId, clearSelection]);
   const loadColumns = useSchema((s) => s.loadColumns);
+  // A view takes no inserts from the grid; the explorer's listing says which
+  // relations are views (`TableInfo.kind`).
+  const isView = useSchema(
+    (s) =>
+      s.byConnection[connectionId]?.tables.some(
+        (t) =>
+          t.kind === "view" &&
+          t.name === table &&
+          (schema == null || t.schema === schema),
+      ) ?? false,
+  );
   // Needed by the DataGrid so its "Copy as SQL …" snippets use the right
   // identifier quoting (backticks for MySQL, brackets for SQL Server, double
   // quotes for PG/SQLite).
@@ -1287,6 +1302,22 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const hasPk =
     pkColumns.length > 0 &&
     (result === null || pkColumnIndices.every((i) => i >= 0));
+  // Whether an insert can begin, and if not why (#267): the Insert button and
+  // the blank-space menu show it disabled with this reason rather than
+  // disappearing. Undecided until the columns load, so a table never flashes
+  // "no primary key" while its key is still on the way.
+  const insertBlock = cols
+    ? insertAvailability({
+        isView,
+        pkColumnCount: pkColumns.length,
+        pkInResult: hasPk,
+        policyLock: insertLock,
+      })
+    : null;
+  const canInsert = !!cols && insertBlock === null;
+  const insertBlocked = insertBlock ? insertBlockReason(insertBlock, t) : null;
+  const filterActive =
+    serverFilters.length > 0 || !!appliedFilter || rawFilter.trim() !== "";
 
   /**
    * A block pasted into the grid (ADR #114): work out what it writes — cells
@@ -2024,7 +2055,10 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onAddFilter={onAddFilter}
             onRemoveFilter={onRemoveFilter}
             onEditFilter={onEditFilter}
-            onInsertRow={hasPk && !insertLock ? onInsertRow : undefined}
+            onInsertRow={canInsert ? onInsertRow : undefined}
+            insertBlocked={insertBlocked}
+            filterActive={filterActive}
+            onReload={() => void reloadAll()}
             // A duplicate copies the row as the page holds it, so under a
             // projection it would silently drop every hidden column's value.
             onDuplicateRow={

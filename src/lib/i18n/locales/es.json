@@ -672,6 +672,13 @@
     "zoomOut": "Filas más pequeñas (Ctrl + −)",
     "zoomReset": "Restablecer tamaño de fila (Ctrl + 0)",
     "noRows": "Sin filas",
+    "emptyInsertFiltered": "Hay filtros activos: una fila nueva que no los cumpla no se verá después de guardarla.",
+    "ctxReload": "Recargar",
+    "insertBlocked": {
+      "view": "Una vista no admite filas nuevas aquí: inserta en la tabla de la que lee",
+      "noPk": "Esta tabla no tiene clave primaria, así que una fila nueva no se podría editar ni borrar desde el grid",
+      "pkHidden": "La proyección actual oculta la clave primaria: muéstrala para insertar filas"
+    },
     "headerPk": "Clave primaria",
     "headerFk": "Clave foránea",
     "headerFkTo": "Clave foránea → {{target}}",

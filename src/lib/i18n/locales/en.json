@@ -672,6 +672,13 @@
     "viewModeList": "List view",
     "fieldsCount": "{{count}} fields",
     "noRows": "No rows",
+    "emptyInsertFiltered": "Filters are active: a new row that doesn't match them won't be shown after it is saved.",
+    "ctxReload": "Reload",
+    "insertBlocked": {
+      "view": "A view can't take new rows here — insert into the table it reads from",
+      "noPk": "This table has no primary key, so a new row couldn't be edited or deleted from the grid",
+      "pkHidden": "The primary key is hidden by the current projection — show it to insert rows"
+    },
     "headerPk": "Primary key",
     "headerFk": "Foreign key",
     "headerFkTo": "Foreign key → {{target}}",
