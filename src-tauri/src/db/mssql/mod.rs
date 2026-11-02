@@ -501,10 +501,11 @@ impl PooledClient {
     /// tiberius reports row counts only for `sp_executesql` calls; a plain
     /// batch's `DONE` counts never leave its stream. `@@ROWCOUNT` survives from
     /// one batch to the next on a session, so asking right after is exact for
-    /// the one-statement texts the session paths send (the editor batch and
-    /// `run_script` split on `;`, `run_writes` takes one statement per entry).
-    /// A text holding several statements reports its last one, where
-    /// [`Self::simple_execute`] summed them all.
+    /// the one-statement texts the session paths send (the editor batch splits
+    /// on `;`, `run_script` sends a `GO` batch here only when it holds one
+    /// statement, `run_writes` takes one statement per entry). A text holding
+    /// several statements reports its last one, where [`Self::simple_execute`]
+    /// summed them all.
     pub async fn batch_execute(&mut self, sql: &str) -> AppResult<u64> {
         self.batch(sql).await?;
         let sets = self

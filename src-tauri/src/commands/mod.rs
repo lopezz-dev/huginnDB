@@ -37,6 +37,8 @@ pub mod view;
 pub mod write_batch;
 
 #[cfg(test)]
+mod mssql_live_tests;
+#[cfg(test)]
 mod pg_live_tests;
 
 use crate::log_bus::TauriSink;
