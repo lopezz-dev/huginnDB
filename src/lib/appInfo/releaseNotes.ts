@@ -112,6 +112,38 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.38.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_38_0.tagline",
+    highlights: [
+      {
+        icon: Table2,
+        titleKey: "whatsNew.releases.1_38_0.items.emptyGridInsert.title",
+        bodyKey: "whatsNew.releases.1_38_0.items.emptyGridInsert.body",
+      },
+      {
+        icon: FileCode,
+        titleKey: "whatsNew.releases.1_38_0.items.mssqlBatches.title",
+        bodyKey: "whatsNew.releases.1_38_0.items.mssqlBatches.body",
+      },
+      {
+        icon: Timer,
+        titleKey: "whatsNew.releases.1_38_0.items.scriptTimeout.title",
+        bodyKey: "whatsNew.releases.1_38_0.items.scriptTimeout.body",
+      },
+      {
+        icon: ShieldCheck,
+        titleKey: "whatsNew.releases.1_38_0.items.everyKeyword.title",
+        bodyKey: "whatsNew.releases.1_38_0.items.everyKeyword.body",
+      },
+      {
+        icon: Database,
+        titleKey: "whatsNew.releases.1_38_0.items.postgresTypes.title",
+        bodyKey: "whatsNew.releases.1_38_0.items.postgresTypes.body",
+      },
+    ],
+  },
+  {
     version: "1.37.0",
     major: true,
     taglineKey: "whatsNew.releases.1_37_0.tagline",

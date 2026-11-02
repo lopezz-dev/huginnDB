@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.38.0] — 2026-11-02
+
 ### Añadido
 
 - **Un grid vacío permite empezar una fila nueva (#267).** Una tabla sin

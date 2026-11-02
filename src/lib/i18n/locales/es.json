@@ -2755,6 +2755,31 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_38_0": {
+        "tagline": "Un grid vacío ya permite empezar una fila nueva, los scripts de SQL Server se ejecutan lote a lote como en SSMS, y el script largo de una IA ahora se detiene en el servidor cuando se queda sin tiempo.",
+        "items": {
+          "emptyGridInsert": {
+            "title": "Inserta en un grid vacío",
+            "body": "Una tabla sin filas, o que un filtro ha dejado vacía, ofrece ahora Insertar nueva fila, y el clic derecho sobre su espacio vacío abre un menú con Insertar, Pegar filas como JSON y Recargar. Cuando no se puede insertar, el botón Insertar sigue a la vista pero deshabilitado, y su tooltip dice por qué."
+          },
+          "mssqlBatches": {
+            "title": "Scripts de SQL Server, lote a lote",
+            "body": "El run_script del conector MCP manda ahora cada lote GO entero, como SSMS, así que las variables DECLARE, los bloques IF y WHILE y los TRY…CATCH llegan intactos al servidor. En una transacción el script corre con XACT_ABORT ON, y un error nombra el lote y la línea de tu propio script."
+          },
+          "scriptTimeout": {
+            "title": "Límites de tiempo que paran el trabajo, no solo la espera",
+            "body": "Cuando run_script o run_writes se quedan sin tiempo, la sentencia se cancela ahora en el servidor y el error dice si se llegó a confirmar algo. Una llamada puede pedir más de cinco minutos con timeout_seconds, hasta el techo que fijes por conexión en Ajustes → MCP, y la siguiente llamada ya nunca recibe la respuesta de la anterior."
+          },
+          "everyKeyword": {
+            "title": "Cada palabra clave cuenta para la política de escritura",
+            "body": "run_script clasificaba una sentencia T-SQL por su primera palabra, así que un DROP o un EXEC escondido detrás, o dentro de un IF, pasaba como cambio de datos. Ahora un CREATE, DROP, ALTER, EXEC o similar en cualquier punto de la sentencia exige la política de escritura completa."
+          },
+          "postgresTypes": {
+            "title": "Postgres: las claves que no son texto vuelven a funcionar",
+            "body": "En una tabla cuya clave es un smallint, integer, uuid o enum, guardar una celda, borrar, filtrar por la clave o insertar fallaba con «operator does not exist». Ahora cada valor se convierte al tipo de su columna según el catálogo del servidor, y los demás motores ejecutan exactamente el mismo SQL que antes."
+          }
+        }
+      },
       "1_37_0": {
         "tagline": "Las tablas y vistas de SQL Server ya se pueden editar, renombrar y volcar a .sql, y una IA conectada por el conector MCP puede ejecutar un script entero en una sola sesión.",
         "items": {

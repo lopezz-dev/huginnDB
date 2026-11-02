@@ -2755,6 +2755,31 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_38_0": {
+        "tagline": "An empty grid can start a new row, SQL Server scripts run batch by batch as in SSMS, and an AI's long script is now stopped on the server when it runs out of time.",
+        "items": {
+          "emptyGridInsert": {
+            "title": "Insert into an empty grid",
+            "body": "A table with no rows, or one a filter has emptied, now offers Insert new row, and right-clicking its blank space opens a menu with Insert, Paste rows as JSON and Reload. When an insert isn't possible, the Insert button stays visible but disabled, and its tooltip says why."
+          },
+          "mssqlBatches": {
+            "title": "SQL Server scripts, batch by batch",
+            "body": "The MCP connector's run_script now sends each GO batch whole, as SSMS does, so DECLAREd variables, IF and WHILE blocks and TRY…CATCH reach the server intact. In a transaction the script runs with XACT_ABORT ON, and an error names the batch and the line in your own script."
+          },
+          "scriptTimeout": {
+            "title": "Time limits that stop the work, not just the wait",
+            "body": "When run_script or run_writes runs out of time, the statement is now cancelled on the server and the error says whether anything was committed. A call can ask for more than five minutes with timeout_seconds, up to a ceiling you set per connection in Settings → MCP, and the next call never picks up the previous one's answer."
+          },
+          "everyKeyword": {
+            "title": "Every keyword counts for the write policy",
+            "body": "run_script used to classify a T-SQL statement by its first word, so a DROP or an EXEC hidden after it, or inside an IF, passed as a data change. Now a CREATE, DROP, ALTER, EXEC or similar anywhere in the statement needs the full write policy."
+          },
+          "postgresTypes": {
+            "title": "Postgres: non-text keys work again",
+            "body": "On a table keyed by a smallint, integer, uuid or enum, saving a cell, deleting, filtering on the key or inserting failed with “operator does not exist”. Every value is now cast to its column's type from the server's catalogue, and the other engines run exactly the SQL they did before."
+          }
+        }
+      },
       "1_37_0": {
         "tagline": "SQL Server tables and views can now be edited, renamed and dumped to .sql, and an AI connected through the MCP connector can run a whole script on one session.",
         "items": {
