@@ -559,6 +559,14 @@ impl PooledClient {
     /// or the stream was already unusable: the session is then dropped, and
     /// closing the socket is what makes the server abort the batch and roll
     /// its transaction back instead.
+    ///
+    /// `false` is the usual answer against a real server with tiberius 0.13:
+    /// its `cancel_query` reads only the first message the server sends after
+    /// the Attention, and SQL Server acknowledges in a later one, so it fails
+    /// with "Never got a DONE token acknowledging the Attention signal" and
+    /// leaves the acknowledgement on the wire — the next query would read it
+    /// and every reply after would be one behind (gotcha #131). Dropping the
+    /// session is the only safe thing left, and it still stops the work.
     pub async fn cancel(&mut self, within: std::time::Duration) -> bool {
         let Some(client) = self.client.as_mut() else {
             return false;

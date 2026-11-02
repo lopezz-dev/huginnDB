@@ -253,7 +253,8 @@ impl BridgeClient {
                 // instead, which is safe because nothing of it was sent.
                 let _ = guard.writer.shutdown().await;
                 return Err(BridgeError::Remote(format!(
-                    "the HuginnDB app did not answer within {} s; whether this call                      completed is unknown — check before running it again",
+                    "the HuginnDB app did not answer within {} s; whether this call \
+                     completed is unknown — check before running it again",
                     wait.as_secs()
                 )));
             }

@@ -58,10 +58,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   la espera de 300 segundos del puente, en el lado del sidecar. La app seguía
   ejecutando el script y lo confirmaba, mientras a la IA solo le llegaba que
   la app «no respondió a tiempo». Ahora el límite se aplica donde corren las
-  sentencias. En SQL Server, la sentencia se para con un Attention de TDS, se
-  hace rollback de la transacción y se comprueba que `@@TRANCOUNT` sea 0. En
-  el resto de drivers, la sesión se cierra con la transacción abierta y el
-  servidor la deshace. En los dos casos, el error dice si se llegó a
+  sentencias. En SQL Server, la sentencia se cancela con un Attention de TDS.
+  Si el servidor no lo reconoce (que es lo que pasa hoy con tiberius 0.13), se
+  cierra la sesión, y SQL Server aborta la petición y la deshace. Se ha
+  comprobado contra un servidor real, también con un `INSERT … SELECT` de diez
+  millones de filas cortado sin transacción. En el resto de drivers, la sesión
+  se cierra con la transacción abierta y el servidor la deshace. En los dos casos, el error dice si se llegó a
   confirmar algo. El timeout nunca corta el `COMMIT`. El log de auditoría
   registra el timeout que se aplicó a cada llamada y, si se corta, añade una
   línea `CANCEL`.

@@ -621,8 +621,8 @@ timeout applied, and what became of the work:
 
 | Situation | What the error says | Certain? |
 | --- | --- | --- |
-| SQL Server, in `run_script`'s own transaction (the default) or `run_writes` | The server acknowledged the cancel (a TDS Attention), the transaction was rolled back, `@@TRANCOUNT` is 0, and nothing was committed. | Yes |
-| SQL Server, `transaction: false` | The statement in flight was stopped and undone. The ones before it stay applied. A transaction the script itself had opened is rolled back. | Yes |
+| SQL Server, in `run_script`'s own transaction (the default) or `run_writes` | Nothing was committed. Either the server acknowledged the cancel (a TDS Attention) and the rollback confirmed `@@TRANCOUNT` is 0, or the session was closed, which makes SQL Server abort the request and roll it back. | Yes |
+| SQL Server, `transaction: false` | The statement in flight was stopped and undone. What the statements before it changed stays, except inside a transaction the script itself had opened, which is rolled back. | Yes |
 | Postgres, MySQL, SQLite, in a transaction | The session was closed with the transaction open, so the server rolls it back and nothing was committed. | Yes |
 | Postgres, MySQL, SQLite, `transaction: false` | The session was closed, but the statement in flight **may still complete** on the server. Check before running it again. | No |
 

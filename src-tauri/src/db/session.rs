@@ -220,7 +220,7 @@ impl Session {
                 if m.cancel(CANCEL_ACK_WAIT).await {
                     Cancelled::Acknowledged
                 } else {
-                    Cancelled::Closed
+                    Cancelled::Disconnected
                 }
             }
             // `sqlx` has no cancel to send. What it does have is a future that
@@ -282,6 +282,19 @@ impl Session {
         cancelled: Cancelled,
         in_transaction: bool,
     ) -> String {
+        if cancelled == Cancelled::Disconnected {
+            return if in_transaction {
+                "SQL Server did not acknowledge the cancel, so the session was closed; SQL \
+                 Server aborts the request of a client that disconnects and rolls its \
+                 transaction back: nothing was committed."
+                    .into()
+            } else {
+                "SQL Server did not acknowledge the cancel, so the session was closed; SQL \
+                 Server aborts the request of a client that disconnects: the statement in \
+                 flight is undone, and so is any transaction the script had opened."
+                    .into()
+            };
+        }
         if cancelled == Cancelled::Closed {
             return if in_transaction {
                 "The session was closed with its transaction open, so the server rolls it back: \
@@ -358,9 +371,15 @@ pub enum Cancelled {
     /// SQL Server acknowledged an Attention: the batch was aborted and the
     /// session is at a clean boundary, able to roll back and report.
     Acknowledged,
-    /// The session is closed instead — a `sqlx` driver, which has no cancel,
-    /// or a SQL Server that did not acknowledge. The server rolls back the
-    /// open transaction when it notices.
+    /// SQL Server did not acknowledge (with tiberius 0.13, the usual case —
+    /// see [`PooledClient::cancel`]) and the session was closed instead. SQL
+    /// Server kills the request of a client that disconnects: the statement
+    /// in flight is undone and any open transaction rolled back. Verified
+    /// against a real server by `mssql_live_*` in `commands::script`.
+    Disconnected,
+    /// A `sqlx` driver, which has no cancel: the session is closed, and the
+    /// server rolls back the open transaction when it notices. A statement
+    /// running outside a transaction may still finish first.
     Closed,
 }
 

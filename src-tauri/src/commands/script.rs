@@ -318,7 +318,8 @@ pub struct ScriptResult {
 const ROLLED_BACK: &str = "The transaction was rolled back; nothing was changed.";
 
 /// What a timeout error ends with: the two knobs, in the order they apply.
-pub(crate) const TIMEOUT_HINT: &str = "To give it longer, pass `timeout_seconds`; it is capped by      this connection's MCP timeout, which only the user can raise (HuginnDB → Settings → MCP).";
+pub(crate) const TIMEOUT_HINT: &str = "To give it longer, pass `timeout_seconds`; it is capped by \
+     this connection's MCP timeout, which only the user can raise (HuginnDB → Settings → MCP).";
 
 /// The audit line every script opens with, saying how long it was given.
 pub(crate) fn timeout_line(timeout: crate::state::McpTimeout) -> String {
@@ -329,6 +330,7 @@ pub(crate) fn timeout_line(timeout: crate::state::McpTimeout) -> String {
 pub(crate) fn cancel_how(cancelled: Cancelled) -> &'static str {
     match cancelled {
         Cancelled::Acknowledged => "acknowledged by the server",
+        Cancelled::Disconnected => "not acknowledged; session closed",
         Cancelled::Closed => "session closed",
     }
 }
@@ -476,10 +478,16 @@ pub(crate) async fn execute_script_inner(
                     &format!("CANCEL ({})", cancel_how(cancelled)),
                     Some(&verdict),
                 );
-                let before = if transaction {
-                    String::new()
-                } else {
-                    format!(" {}.", left_in_place(ran))
+                // Not `left_in_place`: a statement the script ran inside a
+                // transaction of its own was just rolled back with it.
+                let before = match (transaction, ran) {
+                    (true, _) | (false, 0) => String::new(),
+                    (false, n) => format!(
+                        " No transaction was requested: what the {n} statement{} before it \
+                         changed stays, except inside a transaction the script opened and had \
+                         not committed.",
+                        if n == 1 { "" } else { "s" }
+                    ),
                 };
                 return Err(AppError::InvalidInput(format!(
                     "{reason}. {verdict}{before} {TIMEOUT_HINT}"
@@ -908,7 +916,7 @@ mod tests {
         .to_string();
         assert!(err.contains("may still complete"), "{err}");
         assert!(
-            err.contains("the 1 statement before it ran and stays applied"),
+            err.contains("what the 1 statement before it changed stays"),
             "{err}"
         );
         assert!(dest(&state).await.contains(&("a".into(), 1)));
@@ -998,15 +1006,18 @@ mod tests {
             }
         };
 
-        // In run_script's own transaction: everything goes, and the server
-        // confirmed it.
+        // Whether the server acknowledged the Attention or the session had to
+        // be closed (tiberius 0.13 — see `PooledClient::cancel`), what counts
+        // is what is left in the table, read from another session: the read
+        // waits on the cancelled one's locks, so it sees the final state.
+        //
+        // In run_script's own transaction: everything goes.
         let err = run(
             "INSERT INTO hdb_timeout_probe VALUES (1);\nWAITFOR DELAY '00:00:10';",
             true,
         )
         .await;
-        assert!(err.contains("acknowledged the cancel"), "{err}");
-        assert!(err.contains("@@TRANCOUNT is 0"), "{err}");
+        eprintln!("transaction: {err}");
         assert!(err.contains("nothing was committed"), "{err}");
         assert_eq!(count().await, 0);
 
@@ -1016,20 +1027,41 @@ mod tests {
             false,
         )
         .await;
-        assert!(err.contains("stopped and undone"), "{err}");
-        assert!(err.contains("stays applied"), "{err}");
+        eprintln!("as written: {err}");
+        assert!(err.contains("undone"), "{err}");
+        assert!(err.contains("before it changed stays"), "{err}");
         assert_eq!(count().await, 1);
 
-        // As written, inside the script's own transaction: an Attention does
-        // not end it, so the executor rolls it back and says so.
+        // As written, inside the script's own transaction, which neither an
+        // Attention nor the cancel ends by itself.
         let err = run(
             "BEGIN TRANSACTION;\nINSERT INTO hdb_timeout_probe VALUES (3);\n\
              WAITFOR DELAY '00:00:10';",
             false,
         )
         .await;
+        eprintln!("script's own transaction: {err}");
         assert!(err.contains("transaction the script had opened"), "{err}");
         assert_eq!(count().await, 1);
+
+        // The case the verdict has to be right about: one long INSERT …
+        // SELECT with no transaction around it, cut off while it is still
+        // writing. A server that went on and finished it would commit ten
+        // million rows; one that aborts on the cancel leaves none of them.
+        let err = run(
+            "INSERT INTO hdb_timeout_probe SELECT TOP (10000000) 4 \
+             FROM sys.all_columns a CROSS JOIN sys.all_columns b CROSS JOIN sys.all_columns c;",
+            false,
+        )
+        .await;
+        eprintln!("long insert: {err}");
+        let waited = Instant::now();
+        assert_eq!(
+            count().await,
+            1,
+            "the cut-off INSERT … SELECT must not stay"
+        );
+        eprintln!("the count waited {:?} for the rollback", waited.elapsed());
 
         raw.execute_simple("DROP TABLE hdb_timeout_probe")
             .await

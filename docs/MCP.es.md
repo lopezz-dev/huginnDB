@@ -642,8 +642,8 @@ aplicado y qué ha pasado con el trabajo:
 
 | Situación | Qué dice el error | ¿Seguro? |
 | --- | --- | --- |
-| SQL Server, en la transacción propia de `run_script` (por defecto) o en `run_writes` | El servidor confirmó la cancelación (un Attention de TDS), se hizo rollback de la transacción, `@@TRANCOUNT` es 0 y no se confirmó nada. | Sí |
-| SQL Server, `transaction: false` | La sentencia en curso se paró y se deshizo; las anteriores se quedan aplicadas. Si el propio script había abierto una transacción, se deshace. | Sí |
+| SQL Server, en la transacción propia de `run_script` (por defecto) o en `run_writes` | No se confirmó nada: o el servidor reconoció la cancelación (un Attention de TDS) y el rollback dejó `@@TRANCOUNT` en 0, o se cerró la sesión, con lo que SQL Server aborta la petición y la deshace. | Sí |
+| SQL Server, `transaction: false` | La sentencia en curso se paró y se deshizo. Lo que cambiaron las anteriores se queda, salvo lo que estuviera dentro de una transacción abierta por el propio script, que se deshace. | Sí |
 | Postgres, MySQL, SQLite, con transacción | La sesión se cerró con la transacción abierta, así que el servidor la deshace y no se confirmó nada. | Sí |
 | Postgres, MySQL, SQLite, `transaction: false` | La sesión se cerró, pero la sentencia en curso **puede terminar igualmente** en el servidor. Compruébalo antes de relanzarla. | No |
 

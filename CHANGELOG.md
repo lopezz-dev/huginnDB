@@ -53,9 +53,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the bridge's 300-second wait on the sidecar side. The app kept running the
   script and committed it, while the AI was told only that the app "did not
   answer in time". Now the limit is enforced where the statements run. On SQL
-  Server, the statement is stopped with a TDS Attention, the transaction is
-  rolled back, and `@@TRANCOUNT` is checked to be 0. On the other drivers, the
-  session is closed with its transaction open, so the server rolls it back.
+  Server, the statement is cancelled with a TDS Attention. If the server does
+  not acknowledge it (which is what tiberius 0.13 leads to today), the session
+  is closed instead, and SQL Server then aborts the request and rolls it back.
+  This was checked against a real server, including a ten-million-row
+  `INSERT … SELECT` cut off with no transaction around it. On the other
+  drivers, the session is closed with its transaction open, so the server
+  rolls it back.
   Either way, the error says whether anything was committed. The `COMMIT` is
   never what the timeout cuts off. The audit log records the timeout applied
   to every call, and a `CANCEL` line when one is cut off.
