@@ -957,6 +957,25 @@ fn mask_non_code(sql: &str) -> Vec<u8> {
     out
 }
 
+/// The lowercased words of `sql`'s code, in order: literals, quoted
+/// identifiers and comments blanked first by [`mask_non_code`], so a
+/// `'drop'` or a `[create]` is not a word here.
+///
+/// For checks that must see a keyword wherever it sits rather than at the
+/// head — T-SQL runs statements with no `;` between them, and nests them in
+/// `IF` / `WHILE` / `BEGIN … END` (see `commands::script`).
+///
+/// `@`, `#` and `$` are part of a word, so a variable `@drop` or a temp table
+/// `#create` is not the keyword its name spells.
+pub(crate) fn code_words(sql: &str) -> Vec<String> {
+    let masked = String::from_utf8_lossy(&mask_non_code(sql)).to_ascii_lowercase();
+    masked
+        .split(|c: char| !c.is_ascii_alphanumeric() && !matches!(c, '_' | '@' | '#' | '$'))
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 /// The identifier-shaped words of `s`, in order — the tokeniser
 /// [`contains_word`] uses, for callers that also need a word's neighbours.
 fn words(s: &str) -> Vec<&str> {

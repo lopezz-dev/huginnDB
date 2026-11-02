@@ -375,7 +375,7 @@ pub enum Cancelled {
     /// see [`PooledClient::cancel`]) and the session was closed instead. SQL
     /// Server kills the request of a client that disconnects: the statement
     /// in flight is undone and any open transaction rolled back. Verified
-    /// against a real server by `mssql_live_*` in `commands::script`.
+    /// against a real server by `mssql_live_*` in `commands::mssql_live_tests`.
     Disconnected,
     /// A `sqlx` driver, which has no cancel: the session is closed, and the
     /// server rolls back the open transaction when it notices. A statement

@@ -438,7 +438,7 @@ connector — leaving only the connections you opened yourself.
 | `run_write` *(write)* | Run a single statement that **changes** the database. DML needs `data`, DDL needs `full`. A read is refused here too — it belongs in `run_query`, which needs no write permission. |
 | `run_queries` | Run several **read-only** statements in one call, each as `run_query` would. One that fails is reported in its own slot and the rest still run. Rows share one budget: the connection's [row limit](#row-limit). |
 | `run_writes` *(write)* | Apply several row writes (`INSERT`/`UPDATE`/`DELETE`) in **one transaction** — all land or none do. Each write can carry `expect_rows`; `verify` reads run after the commit and come back in the same reply. Requires `data` or `full`. See [Batching](#batching-fewer-calls-fewer-tokens). |
-| `run_script` *(write)* | Run a whole SQL script — a migration, a `.sql` file — on **one pinned session**, in order, so temporary tables, `SET`s and variables carry from one statement to the next. One transaction by default. Pass it inline as `sql` or as a local file `path`. Requires `data`; any DDL, temporary tables included, requires `full`. Not MongoDB. See [Scripts](#scripts-temporary-tables-and-migrations). |
+| `run_script` *(write)* | Run a whole SQL script — a migration, a `.sql` file — on **one pinned session**, in order, so temporary tables and `SET`s carry to the end of the script. SQL Server runs it `GO` batch by `GO` batch, so a `DECLARE`d variable lives for its batch, as in SSMS. One transaction by default. Pass it inline as `sql` or as a local file `path`. Requires `data`; any DDL, temporary tables included, requires `full`. Not MongoDB. See [Scripts](#scripts-temporary-tables-and-migrations). |
 | `browse_table` | Browse one page of rows without writing SQL. |
 | `server_version` | The connected engine and version. |
 | `list_users` / `list_privileges` | Server-side users/roles and their grants. |
@@ -573,6 +573,19 @@ in one reply:
   the script are refused in this mode. With `"transaction": false` the script
   runs exactly as written — its own transaction control included — and a
   failure reports how many statements before it ran and stay applied.
+- **On SQL Server the unit is the `GO` batch**, as in SSMS and `sqlcmd`: each
+  batch goes to the server whole, so `DECLARE`d variables, `IF`/`WHILE`/
+  `BEGIN … END` and `BEGIN TRY … END CATCH` work inside it, and a variable does
+  not reach the next batch. What lives on the session — `#temp` tables, `SET`s,
+  the transaction — crosses batches. The checks still read every statement:
+  one DDL statement anywhere in a batch (an `EXEC` included, even with no `;`
+  before it or inside an `IF`) makes the script need `full`. In transaction
+  mode the script runs with `XACT_ABORT ON`, so a `THROW` or any error rolls
+  everything back; `COMMIT`/`ROLLBACK` inside an `IF` or `CATCH` is refused, as
+  a bare one is. A batch of several statements reports its result sets but not
+  its row counts (the plain-batch protocol does not carry them): it is counted
+  in `uncounted_batches` and left out of `total_affected`. A failure names the
+  batch and the line SQL Server reports, in the script's own numbering.
 - **On MySQL**, a persistent schema change (and `LOCK TABLES`) commits
   implicitly, which would split the transaction, so in transaction mode it is
   refused with a pointer to `"transaction": false`. `CREATE/DROP TEMPORARY

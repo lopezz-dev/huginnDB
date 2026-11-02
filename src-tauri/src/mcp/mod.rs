@@ -2116,20 +2116,28 @@ impl Huginn {
             open_world_hint = true
         ),
         description = "Run a whole SQL script — a migration, a .sql file — on \
-                      ONE pinned session, in order, so temporary tables \
-                      (CREATE TEMPORARY TABLE, #temp), SET and variables \
-                      persist from one statement to the next. Mix DDL, \
-                      INSERT … SELECT, multi-row INSERTs and SELECTs to \
-                      verify; each SELECT's rows come back (one --max-rows \
-                      budget). Pass the script as `sql`, or a local .sql \
-                      file as `path` so it never goes through the \
-                      conversation. One transaction by default (all or \
-                      nothing; BEGIN/COMMIT in the script are refused — pass \
-                      `transaction: false` to run them as written). The \
+                      ONE pinned session, in order. Temporary tables \
+                      (CREATE TEMPORARY TABLE, #temp) and SET persist to \
+                      the end of the script on every engine. Postgres, \
+                      MySQL and SQLite run it statement by statement (split \
+                      on `;`); MySQL @user variables persist. SQL Server \
+                      runs it GO batch by GO batch, as SSMS does: each batch \
+                      goes whole, so DECLARE'd variables, IF/WHILE/BEGIN…END \
+                      and TRY/CATCH work inside a batch, and variables do NOT \
+                      cross a GO. Mix DDL, INSERT … SELECT, multi-row \
+                      INSERTs and SELECTs to verify; each SELECT's rows come \
+                      back (one --max-rows budget). Pass the script as \
+                      `sql`, or a local .sql file as `path` so it never goes \
+                      through the conversation. One transaction by default \
+                      (all or nothing; BEGIN/COMMIT/ROLLBACK in the script \
+                      are refused — pass `transaction: false` to run them as \
+                      written); on SQL Server it runs with XACT_ABORT ON, so \
+                      a THROW or any error rolls everything back. The \
                       session is closed afterwards, so nothing carries to the \
-                      next call. Needs policy 'data'; any DDL, temporary \
-                      tables included, needs 'full'. Postgres, MySQL, SQLite, \
-                      SQL Server — not MongoDB. Recorded in the MCP audit log."
+                      next call. Needs policy 'data'; any DDL anywhere in a \
+                      statement or batch (temporary tables, EXEC included) \
+                      needs 'full'. Postgres, MySQL, SQLite, SQL Server — not \
+                      MongoDB. Recorded in the MCP audit log."
     )]
     async fn run_script(
         &self,
@@ -3367,6 +3375,7 @@ mod tests {
             transaction: true,
             statements: 3,
             total_affected: 10,
+            uncounted_batches: 0,
             results: vec![ScriptRows {
                 statement: 3,
                 line: 5,

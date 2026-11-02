@@ -41,6 +41,32 @@
 //!   those inside the read-only transaction every AI read gets (ADR #93), and
 //!   this tool does not.
 //!
+//! # SQL Server runs batches, not statements (ADR #131)
+//!
+//! On SQL Server the unit of execution is the `GO` batch, as in SSMS and
+//! `sqlcmd`: each batch goes to the server whole, in one round trip. Splitting
+//! it on `;` (what every other engine here gets) broke what T-SQL keeps per
+//! batch — a `DECLARE`d variable did not reach the next statement, and an
+//! `IF` / `WHILE` / `BEGIN … END` / `BEGIN TRY … END CATCH` holding a `;` was
+//! cut into pieces the server refused. What lives on the session (`#temp`
+//! tables, `SET`s, the transaction) still crosses batches; variables do not,
+//! exactly as in SSMS.
+//!
+//! The checks do not follow the execution unit. Policy, transaction control
+//! and the limits are still decided **per statement** ([`split_script`]), and
+//! a batch needs the union of what its statements need — one DDL statement
+//! makes the whole batch `full`. Because T-SQL needs no `;` between
+//! statements and nests them inside control flow, a statement's verbs also
+//! include every keyword in its code, not only its head ([`statement_verbs`]):
+//! `SELECT 1 EXEC p` or `IF @x = 1 DROP TABLE t` is DDL, whatever it starts
+//! with. That is stricter on every engine and never looser.
+//!
+//! In transaction mode SQL Server runs with `XACT_ABORT ON`, so any error —
+//! a `THROW`, a constraint, a conversion — dooms the transaction and ends the
+//! batch: nothing after it runs, and the guarded `ROLLBACK` cleans up. A
+//! script that relies on catching an error and carrying on inside the
+//! transaction has to pass `transaction: false`.
+//!
 //! MongoDB is refused: its shell grammar has no session-scoped objects and no
 //! multi-statement script to pin, and `run_writes` already runs a list of
 //! MongoDB writes in order.
@@ -66,21 +92,23 @@ pub const MAX_STATEMENTS: usize = 10_000;
 pub const MAX_SCRIPT_BYTES: usize = 16 * 1024 * 1024;
 
 /// One statement of a script, with the line it starts on (1-based) so a
-/// failure can point into a file the model never read.
+/// failure can point into a file the model never read, and the `GO` batch it
+/// belongs to (0-based).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScriptStatement<'a> {
     pub sql: &'a str,
     pub line: usize,
+    pub batch: usize,
 }
 
-/// Split `text` into statements: on `;` outside literals and comments (the
-/// same lexer every classifier here uses), and on T-SQL's `GO` batch separator —
-/// a line holding nothing but `GO`, which no engine here accepts as SQL, so
-/// treating it as a separator everywhere changes no script that could run.
+/// `text` cut at T-SQL's `GO` batch separator — a line holding nothing but
+/// `GO`, which no engine here accepts as SQL, so treating it as a separator
+/// everywhere changes no script that could run. Every chunk is a subslice of
+/// `text`, the separator lines left out.
 ///
 /// `GO <count>` is not a separator; the server refuses it, which is the honest
 /// answer for a client feature this does not implement.
-pub fn split_script(text: &str) -> Vec<ScriptStatement<'_>> {
+fn go_batches(text: &str) -> Vec<&str> {
     let mut chunks = Vec::new();
     let (mut start, mut pos) = (0usize, 0usize);
     for line in text.split_inclusive('\n') {
@@ -91,14 +119,24 @@ pub fn split_script(text: &str) -> Vec<ScriptStatement<'_>> {
         pos += line.len();
     }
     chunks.push(&text[start..]);
+    chunks
+}
 
+/// Split `text` into statements: on `;` outside literals and comments (the
+/// same lexer every classifier here uses), and on `GO` lines ([`go_batches`]).
+pub fn split_script(text: &str) -> Vec<ScriptStatement<'_>> {
     // Line numbers counted incrementally: statements come out in order, and
     // recounting from the top for each one is quadratic on a 16 MB file.
     let (mut counted_to, mut line) = (0usize, 1usize);
-    chunks
+    go_batches(text)
         .into_iter()
-        .flat_map(crate::db::sql::split_statements)
-        .map(|sql| {
+        .enumerate()
+        .flat_map(|(batch, chunk)| {
+            crate::db::sql::split_statements(chunk)
+                .into_iter()
+                .map(move |sql| (batch, sql))
+        })
+        .map(|(batch, sql)| {
             // Every piece is a subslice of `text`: `split_statements` only
             // trims and slices what it is given.
             let offset = sql.as_ptr() as usize - text.as_ptr() as usize;
@@ -107,9 +145,64 @@ pub fn split_script(text: &str) -> Vec<ScriptStatement<'_>> {
                 .filter(|b| **b == b'\n')
                 .count();
             counted_to = offset;
-            ScriptStatement { sql, line }
+            ScriptStatement { sql, line, batch }
         })
         .collect()
+}
+
+/// What the executor sends to the server in one round trip: one statement,
+/// or on SQL Server one whole `GO` batch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Unit<'a> {
+    sql: &'a str,
+    /// Index of its first statement in [`split_script`]'s list.
+    first: usize,
+    /// Statements it holds, comment-only ones not counted.
+    statements: usize,
+    line: usize,
+}
+
+/// Group `statements` into what the executor runs: each statement on its own,
+/// or with `whole_batches`, every `GO` batch as one unit — from its first
+/// statement to the end of the batch, so a final `;` a `MERGE` needs, and
+/// anything between the statements, is sent as written.
+fn units<'a>(
+    text: &'a str,
+    statements: &[ScriptStatement<'a>],
+    whole_batches: bool,
+) -> Vec<Unit<'a>> {
+    let runnable = statements
+        .iter()
+        .enumerate()
+        .filter(|(_, st)| !is_blank(&unwrap_executable_comments(st.sql)));
+    if !whole_batches {
+        return runnable
+            .map(|(first, st)| Unit {
+                sql: st.sql,
+                first,
+                statements: 1,
+                line: st.line,
+            })
+            .collect();
+    }
+    let batches = go_batches(text);
+    let mut out: Vec<Unit<'a>> = Vec::new();
+    for (i, st) in runnable {
+        match out.last_mut() {
+            Some(unit) if statements[unit.first].batch == st.batch => unit.statements += 1,
+            _ => {
+                let chunk = batches[st.batch];
+                let from = st.sql.as_ptr() as usize - chunk.as_ptr() as usize;
+                out.push(Unit {
+                    sql: chunk[from..].trim_end(),
+                    first: i,
+                    statements: 1,
+                    line: st.line,
+                });
+            }
+        }
+    }
+    out
 }
 
 /// `sql` with every MySQL / MariaDB executable comment (`/*! … */`,
@@ -167,10 +260,75 @@ fn is_blank(visible: &str) -> bool {
         .is_empty()
 }
 
+/// The words after `BEGIN` that make it open a transaction (T-SQL's
+/// `BEGIN TRAN`, Postgres' `BEGIN ISOLATION LEVEL …`, SQLite's
+/// `BEGIN IMMEDIATE`, …). Any other word after it opens a T-SQL block —
+/// `BEGIN TRY`, or `BEGIN` before the block's first statement.
+const BEGIN_OPENS_TRANSACTION: [&str; 11] = [
+    "tran",
+    "transaction",
+    "work",
+    "distributed",
+    "isolation",
+    "read",
+    "not",
+    "deferrable",
+    "deferred",
+    "immediate",
+    "exclusive",
+];
+
+/// Whether the `BEGIN` followed by `next` opens a transaction. A bare one
+/// does: that is Postgres', SQLite's and MySQL's spelling.
+fn begin_opens_transaction(next: Option<&String>) -> bool {
+    next.is_none_or(|w| BEGIN_OPENS_TRANSACTION.contains(&w.as_str()))
+}
+
+/// The T-SQL block depth after a statement whose code words are `words`,
+/// starting from `depth`: a block `BEGIN` or a `CASE` opens one, an `END`
+/// closes one.
+///
+/// Splitting on `;` cuts T-SQL blocks into pieces, and the piece that closes
+/// one is often a bare `END` — which on Postgres is `COMMIT`. The depth is
+/// what tells them apart without knowing the engine: an `END` with a block
+/// open closes it.
+fn block_depth_after(words: &[String], depth: usize) -> usize {
+    words
+        .iter()
+        .enumerate()
+        .fold(depth, |d, (i, w)| match w.as_str() {
+            "begin" if !begin_opens_transaction(words.get(i + 1)) => d + 1,
+            "case" => d + 1,
+            "end" => d.saturating_sub(1),
+            _ => d,
+        })
+}
+
 /// Whether a statement opens, ends or marks a transaction, or switches
 /// autocommit — what this executor owns in transaction mode. `USE`, `SET`
 /// (other than autocommit) and `LOCK` are session state the script may set.
-fn is_transaction_control(head: &str) -> bool {
+///
+/// `words` are the statement's code words and `depth` the T-SQL block depth
+/// before it ([`block_depth_after`]). A statement that is T-SQL control flow
+/// — `IF`, `WHILE`, `ELSE`, a block `BEGIN`, an `END` that closes a block —
+/// is not transaction control by its head, and is by any `COMMIT`,
+/// `ROLLBACK`, `BEGIN TRAN` or `SAVE TRAN` inside it: `IF @@TRANCOUNT > 0
+/// ROLLBACK` would end this executor's transaction just as a bare one does.
+fn is_transaction_control(head: &str, words: &[String], depth: usize) -> bool {
+    let control_flow = match words.first().map(String::as_str) {
+        Some("if" | "while" | "else") => true,
+        Some("begin") => !begin_opens_transaction(words.get(1)),
+        Some("end") => depth > 0,
+        _ => false,
+    };
+    if control_flow {
+        return words.iter().enumerate().any(|(i, w)| {
+            let next = words.get(i + 1).map(String::as_str);
+            matches!(w.as_str(), "commit" | "rollback")
+                || (w == "begin" && matches!(next, Some("tran" | "transaction" | "distributed")))
+                || (w == "save" && matches!(next, Some("tran" | "transaction")))
+        });
+    }
     if head.starts_with("set ") {
         return head.contains("autocommit") || head.contains("implicit_transactions");
     }
@@ -178,6 +336,71 @@ fn is_transaction_control(head: &str) -> bool {
         && !head.starts_with("use ")
         && !head.starts_with("lock ")
         && !head.starts_with("unlock ")
+}
+
+/// Keywords that need `full` wherever they sit in a statement's code. T-SQL
+/// needs no `;` between statements (`SELECT 1 EXEC p` is two) and nests
+/// them in control flow (`IF @x = 1 DROP TABLE t`), so the head alone does
+/// not say what a SQL Server batch does. Every word here is reserved in
+/// T-SQL, so as a column or table name it is quoted and not a code word.
+const DDL_ANYWHERE: [&str; 17] = [
+    "create",
+    "drop",
+    "alter",
+    "truncate",
+    "exec",
+    "execute",
+    "grant",
+    "revoke",
+    "deny",
+    "dbcc",
+    "kill",
+    "backup",
+    "restore",
+    "shutdown",
+    "reconfigure",
+    "checkpoint",
+    "bulk",
+];
+
+/// The verbs a statement's code words carry beyond its head
+/// ([`DDL_ANYWHERE`], and every row write by name). A batch's first statement
+/// may also be a bare procedure call — `sp_rename 'a', 'b'` runs with no
+/// `EXEC` there — so a leading `sp_` / `xp_` name, or `ENABLE` / `DISABLE
+/// TRIGGER`, is DDL too.
+fn verbs_in_code(words: &[String]) -> Verbs {
+    let head = words.first().map(String::as_str).unwrap_or_default();
+    let mut verbs = if head.starts_with("sp_")
+        || head.starts_with("xp_")
+        || matches!(head, "enable" | "disable")
+    {
+        Verbs::DDL
+    } else {
+        Verbs::NONE
+    };
+    for w in words {
+        verbs = verbs
+            | match w.as_str() {
+                w if DDL_ANYWHERE.contains(&w) => Verbs::DDL,
+                "insert" => Verbs::INSERT,
+                "update" => Verbs::UPDATE,
+                "delete" => Verbs::DELETE,
+                "merge" => Verbs::WRITES,
+                _ => Verbs::NONE,
+            };
+    }
+    verbs
+}
+
+/// Everything one statement of a script does: what the classifier reads in
+/// it, as written and as MySQL executes it, plus every keyword in its code
+/// ([`verbs_in_code`]).
+fn statement_verbs(sql: &str) -> Verbs {
+    let visible = unwrap_executable_comments(sql);
+    crate::db::classify::verbs_of(sql)
+        | crate::db::classify::verbs_of(&visible)
+        | verbs_in_code(&crate::db::sql::code_words(sql))
+        | verbs_in_code(&crate::db::sql::code_words(&visible))
 }
 
 /// Whether MySQL commits implicitly around this statement, which in
@@ -190,7 +413,8 @@ fn commits_implicitly_on_mysql(visible: &str, head: &str) -> bool {
 }
 
 /// Everything a script does, for the policy checks: the union over its
-/// statements, each read as written and as MySQL executes it.
+/// statements ([`statement_verbs`]). On SQL Server a `GO` batch runs whole,
+/// so this union is also what each batch needs.
 ///
 /// Nothing to run needs every row write, the rule
 /// [`crate::db::sql::verbs`] applies to empty text.
@@ -201,10 +425,7 @@ pub fn verbs_of_script(text: &str) -> Verbs {
     }
     statements
         .iter()
-        .map(|st| {
-            crate::db::classify::verbs_of(st.sql)
-                | crate::db::classify::verbs_of(&unwrap_executable_comments(st.sql))
-        })
+        .map(|st| statement_verbs(st.sql))
         .fold(Verbs::NONE, |all, one| all | one)
 }
 
@@ -236,11 +457,19 @@ pub fn check_script(statements: &[ScriptStatement<'_>], transaction: bool) -> Ap
         )));
     }
     let mut writes = false;
+    // T-SQL block depth, per `GO` batch: a block cannot span one.
+    let (mut batch, mut depth) = (0usize, 0usize);
     for (i, st) in statements.iter().enumerate() {
         let visible = unwrap_executable_comments(st.sql);
         if is_blank(&visible) {
             continue;
         }
+        if st.batch != batch {
+            (batch, depth) = (st.batch, 0);
+        }
+        let words = crate::db::sql::code_words(&visible);
+        let depth_before = depth;
+        depth = block_depth_after(&words, depth);
         let head = head_of(&visible);
         if crate::db::mongo::shell::looks_like_mongo(st.sql) {
             return Err(AppError::InvalidInput(format!(
@@ -256,11 +485,12 @@ pub fn check_script(statements: &[ScriptStatement<'_>], transaction: bool) -> Ap
                 name(i, st)
             )));
         }
-        if transaction && is_transaction_control(&head) {
+        if transaction && is_transaction_control(&head, &words, depth_before) {
             return Err(AppError::InvalidInput(format!(
-                "{} is transaction control, and run_script already wraps the script in one \
-                 transaction. Leave it out, or pass `transaction: false` to run the script's \
-                 own BEGIN/COMMIT.",
+                "{} is or holds transaction control, and run_script already wraps the script \
+                 in one transaction. Leave it out (on SQL Server a THROW alone is enough: \
+                 run_script rolls everything back), or pass `transaction: false` to run the \
+                 script's own BEGIN/COMMIT/ROLLBACK.",
                 name(i, st)
             )));
         }
@@ -273,9 +503,7 @@ pub fn check_script(statements: &[ScriptStatement<'_>], transaction: bool) -> Ap
                 name(i, st)
             )));
         }
-        writes |= crate::db::classify::classify_statement(st.sql)
-            != crate::db::sql::StmtClass::Read
-            || crate::db::classify::classify_statement(&visible) != crate::db::sql::StmtClass::Read;
+        writes |= statement_verbs(st.sql).class() != crate::db::sql::StmtClass::Read;
     }
     if !writes {
         return Err(AppError::InvalidInput(
@@ -290,7 +518,8 @@ pub fn check_script(statements: &[ScriptStatement<'_>], transaction: bool) -> Ap
 /// One result set a statement of the script returned.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ScriptRows {
-    /// Index of the statement in the script, as error messages count them.
+    /// Index of the statement in the script, as error messages count them. On
+    /// SQL Server, the first statement of the `GO` batch that returned it.
     pub statement: usize,
     pub line: usize,
     #[serde(flatten)]
@@ -309,10 +538,20 @@ pub struct ScriptResult {
     /// Rows the writes affected, summed. Per-statement counts are left out on
     /// purpose: on a migration they are thousands of numbers nobody reads.
     pub total_affected: u64,
+    /// SQL Server only: `GO` batches of more than one statement. A plain T-SQL
+    /// batch does not report its row counts (only `sp_executesql` does, and
+    /// nothing a batch leaves on the session would survive that), so
+    /// `total_affected` leaves these out.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub uncounted_batches: usize,
     /// Result sets, from the statements that returned rows, in order. They
     /// share one `max_rows` budget across the script.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub results: Vec<ScriptRows>,
+}
+
+fn is_zero(n: &usize) -> bool {
+    *n == 0
 }
 
 const ROLLED_BACK: &str = "The transaction was rolled back; nothing was changed.";
@@ -335,13 +574,29 @@ pub(crate) fn cancel_how(cancelled: Cancelled) -> &'static str {
     }
 }
 
-/// What a script run without a transaction leaves behind when it stops after
-/// `ran` statements.
-fn left_in_place(ran: usize) -> String {
-    match ran {
-        0 => "nothing ran before it".to_string(),
-        1 => "the 1 statement before it ran and stays applied".to_string(),
-        n => format!("the {n} statements before it ran and stay applied"),
+/// How a message names a unit: as its statement, or a batch by the range of
+/// statements it holds.
+fn unit_name(unit: &Unit<'_>, statements: &[ScriptStatement<'_>]) -> String {
+    if unit.statements == 1 {
+        return name(unit.first, &statements[unit.first]);
+    }
+    format!(
+        "the GO batch of statements[{}..] (line {}: {})",
+        unit.first,
+        unit.line,
+        crate::commands::query::stmt_preview(statements[unit.first].sql)
+    )
+}
+
+/// The file line SQL Server reports a failure at, when it says: its error
+/// carries the line within the batch, and the batch was sent from its first
+/// statement, which starts on `unit.line`.
+fn server_line(e: &AppError, unit: &Unit<'_>) -> Option<usize> {
+    match e {
+        AppError::MsSql(tiberius::error::Error::Server(t)) if t.line() > 0 => {
+            Some(unit.line + t.line() as usize - 1)
+        }
+        _ => None,
     }
 }
 
@@ -395,10 +650,14 @@ pub(crate) async fn execute_script_inner(
             }
         }
     }
+    let mssql = matches!(pool, DbPool::MsSql(_));
     let (begin, commit, rollback) = match pool {
         DbPool::Mysql(_) => ("START TRANSACTION", "COMMIT", "ROLLBACK"),
         DbPool::MsSql(_) => (
-            "BEGIN TRANSACTION",
+            // `XACT_ABORT` so an error anywhere in a batch dooms the
+            // transaction and ends the batch, instead of the server carrying
+            // on with the statements after it (module docs).
+            "SET XACT_ABORT ON; BEGIN TRANSACTION",
             "COMMIT TRANSACTION",
             // Guarded: an error may already have rolled it back, and a bare
             // ROLLBACK would then fail with 3903 and close the session.
@@ -425,14 +684,17 @@ pub(crate) async fn execute_script_inner(
     let mut left = max_rows;
     let mut ran = 0usize;
     let mut total_affected = 0u64;
+    let mut uncounted_batches = 0usize;
     let mut results = Vec::new();
-    for (i, st) in statements.iter().enumerate() {
-        if is_blank(&unwrap_executable_comments(st.sql)) {
-            continue;
-        }
-        let sql = st.sql;
+    for unit in units(script, &statements, mssql) {
+        let (i, st) = (unit.first, &statements[unit.first]);
+        let sql = unit.sql;
         let start = Instant::now();
-        let outcome: Bounded<u64> = if crate::db::sql::is_read_only(sql) {
+        // A batch of several statements is fetched whatever it holds: its
+        // result sets come back, and its row counts cannot (`uncounted_batches`).
+        let whole_batch = unit.statements > 1;
+        uncounted_batches += usize::from(whole_batch);
+        let outcome: Bounded<u64> = if whole_batch || crate::db::sql::is_read_only(st.sql) {
             // Capped at what is left of the script's budget, not the
             // per-statement ceiling: the rows past it would only be shed.
             session.fetch_by(sql, left, deadline).await.map(|sets| {
@@ -470,7 +732,7 @@ pub(crate) async fn execute_script_inner(
                 let verdict = session.settle_after_timeout(cancelled, transaction).await;
                 let reason = format!(
                     "{} was cancelled: the script ran out of time after {}",
-                    name(i, st),
+                    unit_name(&unit, &statements),
                     timeout.describe()
                 );
                 log.err(sql, start, &reason);
@@ -497,12 +759,15 @@ pub(crate) async fn execute_script_inner(
         match outcome {
             Ok(n) => {
                 log.ok(sql, start, n);
-                ran += 1;
+                ran += unit.statements;
             }
             Err(e) => {
                 let msg = e.to_string();
                 log.err(sql, start, &msg);
-                let reason = format!("{} failed: {msg}", name(i, st));
+                let at = server_line(&e, &unit)
+                    .map(|line| format!(" (SQL Server reports line {line} of the script)"))
+                    .unwrap_or_default();
+                let reason = format!("{} failed{at}: {msg}", unit_name(&unit, &statements));
                 if transaction {
                     // Best effort: the session is closed right after, which
                     // rolls back whatever this did not.
@@ -510,9 +775,23 @@ pub(crate) async fn execute_script_inner(
                     closing(rollback, Some(&reason));
                     return Err(AppError::InvalidInput(format!("{reason}. {ROLLED_BACK}")));
                 }
+                let left_in_place = match ran {
+                    0 => "nothing ran before it".to_string(),
+                    1 => "the 1 statement before it ran and stays applied".to_string(),
+                    n => format!("the {n} statements before it ran and stay applied"),
+                };
+                // Without XACT_ABORT, SQL Server goes on with the rest of a
+                // batch after most errors; only the batches after it are sure
+                // not to have run.
+                let rest = if whole_batch {
+                    "the statements after the failing one in this batch may have run (SQL \
+                     Server carries on after most errors unless XACT_ABORT is ON); the batches \
+                     after it did not run"
+                } else {
+                    "the rest did not run"
+                };
                 return Err(AppError::InvalidInput(format!(
-                    "{reason}. No transaction was requested: {}; the rest did not run.",
-                    left_in_place(ran)
+                    "{reason}. No transaction was requested: {left_in_place}; {rest}."
                 )));
             }
         }
@@ -531,6 +810,7 @@ pub(crate) async fn execute_script_inner(
         transaction,
         statements: ran,
         total_affected,
+        uncounted_batches,
         results,
     })
 }
@@ -575,6 +855,133 @@ mod tests {
         );
         // A `GO` that is not alone on its line is SQL, not a separator.
         assert_eq!(split_script("SELECT 1 AS go\nGO 5").len(), 1);
+    }
+
+    /// The T-SQL a migration engine writes: one batch whose variable is read
+    /// by several statements, inside a loop and a branch.
+    const TSQL_LOOP: &str = "\
+CREATE TABLE #n (i INT);
+GO
+DECLARE @i INT = 0;
+WHILE @i < 3
+BEGIN
+    SET @i = @i + 1;
+    IF @i % 2 = 1
+    BEGIN
+        INSERT INTO #n VALUES (@i);
+    END
+END;
+MERGE INTO #n AS t USING (SELECT @i AS i) AS s ON t.i = s.i
+WHEN NOT MATCHED THEN INSERT (i) VALUES (s.i);
+SELECT i FROM #n ORDER BY i;
+GO
+SELECT @i AS i;
+";
+
+    #[test]
+    fn sql_server_runs_each_go_batch_whole() {
+        let statements = split_script(TSQL_LOOP);
+        assert_eq!(statements.first().map(|s| s.batch), Some(0));
+        assert_eq!(statements.last().map(|s| (s.batch, s.line)), Some((2, 16)));
+        let got = units(TSQL_LOOP, &statements, true);
+        assert_eq!(got.len(), 3);
+        assert_eq!((got[0].first, got[0].statements), (0, 1));
+        // The loop batch goes as written, from its DECLARE to the MERGE's
+        // closing `;` and the SELECT after it — never cut at a `;`.
+        let batch = got[1];
+        assert_eq!(batch.line, 3);
+        assert!(
+            batch.sql.starts_with("DECLARE @i INT = 0;"),
+            "{}",
+            batch.sql
+        );
+        assert!(
+            batch.sql.ends_with("SELECT i FROM #n ORDER BY i;"),
+            "{}",
+            batch.sql
+        );
+        assert!(batch.sql.contains("VALUES (s.i);\nSELECT"), "{}", batch.sql);
+        assert_eq!(batch.statements, statements.len() - 2);
+        assert_eq!((got[2].first, got[2].line), (statements.len() - 1, 16));
+        // Every other engine still runs statement by statement.
+        let each = units(TSQL_LOOP, &statements, false);
+        assert_eq!(each.len(), statements.len());
+        assert!(each.iter().all(|u| u.statements == 1));
+    }
+
+    #[test]
+    fn a_batch_needs_what_any_of_its_statements_needs() {
+        use crate::state::McpWritePolicy;
+        let needs_full = |sql: &str| {
+            let verbs = verbs_of_script(sql);
+            !McpWritePolicy::Data.allows(verbs) && McpWritePolicy::Full.allows(verbs)
+        };
+        // A mixed batch: the EXEC makes it `full`, with or without the `;`
+        // T-SQL does not require, and hidden in control flow.
+        assert!(needs_full("SELECT * FROM t;\nEXEC dbo.load;"));
+        assert!(needs_full("SELECT * FROM t\nEXEC dbo.load"));
+        assert!(needs_full("INSERT INTO t VALUES (1)\nDROP TABLE x"));
+        assert!(needs_full("DECLARE @x INT = 1;\nIF @x = 1 DROP TABLE t;"));
+        assert!(needs_full(
+            "BEGIN TRY\n  UPDATE t SET a = 1 WHERE a = 0;\nEND TRY\n\
+             BEGIN CATCH\n  EXEC sp_rename 't', 'u';\nEND CATCH"
+        ));
+        assert!(needs_full("sp_rename 't', 'u'"));
+        assert!(needs_full("INSERT INTO t EXEC dbo.rows"));
+        assert!(needs_full("IF 1 = 1 TRUNCATE TABLE t"));
+        assert!(needs_full(
+            "UPDATE t SET a = 1 WHERE a = 0\nDBCC CHECKIDENT ('t', RESEED, 0)"
+        ));
+        assert!(needs_full(TSQL_LOOP));
+        // Names and literals that spell a keyword are not one.
+        let rows = verbs_of_script(
+            "DECLARE @drop INT = 1;\nINSERT INTO #exec SELECT [create], 'alter' FROM t \
+             WHERE note <> 'drop table';",
+        );
+        assert!(!rows.contains(Verbs::DDL), "{rows:?}");
+        assert!(McpWritePolicy::Data.allows(rows));
+        // A row write hidden behind a head that reads still needs `data`.
+        let hidden = verbs_of_script("SELECT 1\nDELETE FROM t WHERE a = 1");
+        assert!(hidden.contains(Verbs::DELETE) && !McpWritePolicy::ReadOnly.allows(hidden));
+    }
+
+    #[test]
+    fn t_sql_blocks_are_not_transaction_control() {
+        // The loop, TRY/CATCH and THROW run inside run_script's transaction.
+        assert!(check_script(&split_script(TSQL_LOOP), true).is_ok());
+        let try_catch = "BEGIN TRY\n  INSERT INTO t VALUES (1);\n  INSERT INTO t VALUES (2);\n\
+                         END TRY\nBEGIN CATCH\n  THROW;\nEND CATCH;";
+        assert!(check_script(&split_script(try_catch), true).is_ok());
+        let case = "UPDATE t SET a = CASE WHEN b = 1 THEN 2 ELSE 3 END WHERE c = 1;\n\
+                    INSERT INTO t VALUES (1);";
+        assert!(check_script(&split_script(case), true).is_ok());
+        // Transaction control is refused wherever it hides.
+        for script in [
+            "INSERT INTO t VALUES (1);\nIF @@TRANCOUNT > 0 ROLLBACK;",
+            "BEGIN TRY\n  INSERT INTO t VALUES (1);\nEND TRY\nBEGIN CATCH\n  \
+             IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;\n  THROW;\nEND CATCH",
+            "INSERT INTO t VALUES (1);\nIF 1 = 1 BEGIN TRAN;",
+            "WHILE 1 = 1\nBEGIN\n  INSERT INTO t VALUES (1);\n  COMMIT;\nEND",
+            "INSERT INTO t VALUES (1);\nBEGIN TRANSACTION;",
+            // Postgres' bare BEGIN and END are still COMMIT's relatives.
+            "INSERT INTO t VALUES (1);\nBEGIN;",
+            "INSERT INTO t VALUES (1);\nEND;",
+            "INSERT INTO t VALUES (1);\nBEGIN ISOLATION LEVEL SERIALIZABLE;",
+        ] {
+            let err = refusal(script, true);
+            assert!(err.contains("transaction control"), "{script}: {err}");
+            assert!(
+                check_script(&split_script(script), false).is_ok(),
+                "{script}"
+            );
+        }
+        // A block does not span a GO: the END after one is Postgres' COMMIT
+        // as far as the checks know, which is the strict reading.
+        assert!(refusal(
+            "WHILE 1 = 0\nBEGIN\n  INSERT INTO t VALUES (1);\nGO\nEND;",
+            true
+        )
+        .contains("transaction control"));
     }
 
     #[test]
@@ -921,150 +1328,5 @@ mod tests {
         );
         assert!(dest(&state).await.contains(&("a".into(), 1)));
         let _ = std::fs::remove_file(&path);
-    }
-
-    /// The same against a real SQL Server, where the cancel is a TDS
-    /// Attention the server acknowledges. `#[ignore]`d: it needs one. Run it
-    /// with `HUGINNDB_TEST_MSSQL_HOST`, `_PORT`, `_DATABASE`, `_USER` and
-    /// `_PASSWORD` set (SQL authentication, a database the login may create a
-    /// table in) and `cargo test --lib --features mcp -- --ignored mssql_live`.
-    #[tokio::test]
-    #[ignore = "needs a SQL Server; see the doc comment"]
-    async fn mssql_live_a_waitfor_past_its_timeout_is_cancelled_on_the_server() {
-        let env = |k: &str| std::env::var(format!("HUGINNDB_TEST_MSSQL_{k}")).ok();
-        let (Some(host), Some(database), Some(user), Some(password)) =
-            (env("HOST"), env("DATABASE"), env("USER"), env("PASSWORD"))
-        else {
-            panic!("set HUGINNDB_TEST_MSSQL_HOST, _DATABASE, _USER and _PASSWORD");
-        };
-        let profile = crate::state::ConnectionProfile {
-            driver: crate::state::Driver::MsSql,
-            host,
-            port: env("PORT").map_or(1433, |p| p.parse().unwrap()),
-            database,
-            username: user,
-            mssql: Some(crate::state::MsSqlOptions {
-                instance: None,
-                trust_server_certificate: true,
-                auth: crate::state::MsSqlAuth::Sql,
-            }),
-            ..crate::testkit::profile("mssql-live")
-        };
-        let (pool, _tunnel) = crate::db::pool::open_pool(
-            &profile,
-            &password,
-            None,
-            Default::default(),
-            Default::default(),
-        )
-        .await
-        .expect("connect to the test SQL Server");
-        let DbPool::MsSql(raw) = &pool else {
-            unreachable!()
-        };
-        let raw = raw.clone();
-        let count = || async {
-            raw.scalar("SELECT COUNT(*) FROM hdb_timeout_probe", &[])
-                .await
-                .unwrap()
-                .unwrap()
-        };
-        raw.execute_simple(
-            "IF OBJECT_ID('hdb_timeout_probe') IS NOT NULL DROP TABLE hdb_timeout_probe",
-        )
-        .await
-        .unwrap();
-        raw.execute_simple("CREATE TABLE hdb_timeout_probe (k int)")
-            .await
-            .unwrap();
-        let state = AppState::new();
-        state
-            .connections
-            .write()
-            .insert("c".into(), ActivePool::bare(pool));
-        let run = |script: &'static str, transaction: bool| {
-            let state = &state;
-            async move {
-                let started = Instant::now();
-                let err = execute_script_inner(
-                    &Recorder::default(),
-                    state,
-                    "c",
-                    script,
-                    transaction,
-                    100,
-                    timeout(2),
-                )
-                .await
-                .unwrap_err()
-                .to_string();
-                assert!(
-                    started.elapsed() < std::time::Duration::from_secs(9),
-                    "the WAITFOR was waited out instead of cancelled: {err}"
-                );
-                err
-            }
-        };
-
-        // Whether the server acknowledged the Attention or the session had to
-        // be closed (tiberius 0.13 — see `PooledClient::cancel`), what counts
-        // is what is left in the table, read from another session: the read
-        // waits on the cancelled one's locks, so it sees the final state.
-        //
-        // In run_script's own transaction: everything goes.
-        let err = run(
-            "INSERT INTO hdb_timeout_probe VALUES (1);\nWAITFOR DELAY '00:00:10';",
-            true,
-        )
-        .await;
-        eprintln!("transaction: {err}");
-        assert!(err.contains("nothing was committed"), "{err}");
-        assert_eq!(count().await, 0);
-
-        // As written: the statement before stays, the WAITFOR is stopped.
-        let err = run(
-            "INSERT INTO hdb_timeout_probe VALUES (2);\nWAITFOR DELAY '00:00:10';",
-            false,
-        )
-        .await;
-        eprintln!("as written: {err}");
-        assert!(err.contains("undone"), "{err}");
-        assert!(err.contains("before it changed stays"), "{err}");
-        assert_eq!(count().await, 1);
-
-        // As written, inside the script's own transaction, which neither an
-        // Attention nor the cancel ends by itself.
-        let err = run(
-            "BEGIN TRANSACTION;\nINSERT INTO hdb_timeout_probe VALUES (3);\n\
-             WAITFOR DELAY '00:00:10';",
-            false,
-        )
-        .await;
-        eprintln!("script's own transaction: {err}");
-        assert!(err.contains("transaction the script had opened"), "{err}");
-        assert_eq!(count().await, 1);
-
-        // The case the verdict has to be right about: one long INSERT …
-        // SELECT with no transaction around it, cut off while it is still
-        // writing. A server that went on and finished it would commit ten
-        // million rows; one that aborts on the cancel leaves none of them.
-        let err = run(
-            "INSERT INTO hdb_timeout_probe SELECT TOP (10000000) 4 \
-             FROM sys.all_columns a CROSS JOIN sys.all_columns b CROSS JOIN sys.all_columns c;",
-            false,
-        )
-        .await;
-        eprintln!("long insert: {err}");
-        let waited = Instant::now();
-        assert_eq!(
-            count().await,
-            1,
-            "the cut-off INSERT … SELECT must not stay"
-        );
-        eprintln!("the count waited {:?} for the rollback", waited.elapsed());
-
-        raw.execute_simple("DROP TABLE hdb_timeout_probe")
-            .await
-            .unwrap();
     }
 }

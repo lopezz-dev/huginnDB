@@ -143,7 +143,7 @@ Template: [`../templates/gotcha.md`](../templates/gotcha.md).
 | # | Entry | Trap | Status |
 | - | ----- | ---- | ------ |
 | 116 | Gotcha: [tiberius 0.13 bounds every query at 30 s and the handshake at 15 s by default, and its connect future is three times larger](gotcha-116-tiberius-013-default-timeouts.md) | tiberius 0.13 compiles unchanged over 0.12 but cuts any query whose server round-trip passes 30 s (TimedOut, connection desynced) unless `command_timeout(None)` is set, and its larger connect future, left inline, overflowed a 2 MiB thread stack in a debug build. | active |
-| 131 | Gotcha: [tiberius 0.13's `cancel_query` gives up before SQL Server acknowledges, and leaves the acknowledgement on the wire](gotcha-131-tiberius-cancel-query-misses-the-attention-ack.md) | cancelling a running batch with tiberius 0.13 against a real SQL Server returns `Error::Protocol` and leaves the session's replies out of step with its queries. | active |
+| 132 | Gotcha: [tiberius 0.13's `cancel_query` gives up before SQL Server acknowledges, and leaves the acknowledgement on the wire](gotcha-132-tiberius-cancel-query-misses-the-attention-ack.md) | cancelling a running batch with tiberius 0.13 against a real SQL Server returns `Error::Protocol` and leaves the session's replies out of step with its queries. | active |
 
 ### updater
 

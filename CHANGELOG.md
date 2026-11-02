@@ -34,6 +34,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Fixed
 
+- **SQL Server: `run_script` runs each `GO` batch whole, as SSMS does.** It
+  used to cut the script at every `;` as well and send each piece as its own
+  batch, so a `DECLARE`d variable was gone by the next statement and an
+  `IF` / `WHILE` / `BEGIN … END` / `BEGIN TRY … END CATCH` holding a `;`
+  reached the server in pieces it refused — while the tool's description
+  promised that variables persist. Each batch now goes in one round trip:
+  variables live for their batch and not past a `GO`, `#temp` tables and
+  `SET`s still cross batches, and a `MERGE` keeps the closing `;` it needs. In
+  transaction mode the script runs with `XACT_ABORT ON`, so a `THROW` or any
+  error rolls everything back. A failure names the batch and the line SQL
+  Server reports, counted in the script's own lines. A batch of several
+  statements returns its result sets but not its row counts (a plain T-SQL
+  batch does not carry them): it is counted in a new `uncounted_batches`
+  field and left out of `total_affected`. Postgres, MySQL and SQLite are
+  unchanged.
+- **`run_script` reads every keyword of a statement for its policy tier.**
+  T-SQL needs no `;` between statements and nests them in control flow, so
+  `SELECT 1 EXEC dbo.p`, `INSERT … DROP TABLE x` or `IF @x = 1 DROP TABLE t`
+  passed at `data` on their first keyword. A statement now needs `full` for a
+  `CREATE`, `DROP`, `ALTER`, `TRUNCATE`, `EXEC`, `GRANT`, `DBCC`, `KILL`… anywhere
+  in its code (literals, quoted names and `@variables` excluded), and a bare
+  `sp_…` call at the head of a batch is DDL too. `COMMIT` / `ROLLBACK` / `BEGIN
+  TRAN` inside an `IF` or a `CATCH` is refused in transaction mode like a bare
+  one, while a T-SQL block `BEGIN … END` or `BEGIN TRY` no longer is.
 - **Postgres: editing, filtering, deleting and inserting on a non-text column
   work again (#268).** On a table keyed by a `smallint` (or an `integer`,
   `uuid`, enum…), saving a cell, deleting a row, filtering on the key and
