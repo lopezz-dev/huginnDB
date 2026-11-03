@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **The project pins pnpm 11.28.9 instead of 11.13.0.** 11.13.0 is now flagged
+  as a broken release (its `@pnpm/exe` build shipped without a binary), so a
+  current standalone pnpm refuses to switch to it with
+  `ERR_PNPM_BROKEN_PNPM_RELEASE` and `pnpm install` / `pnpm test` /
+  `pnpm tauri:dev` stopped running for contributors. Same major, same lockfile,
+  same build approvals; nothing to do beyond pulling.
+
 ## [1.38.0] — 2026-11-02
 
 ### Added

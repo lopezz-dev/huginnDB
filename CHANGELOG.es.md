@@ -8,6 +8,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **El proyecto fija pnpm 11.28.9 en lugar de 11.13.0.** La 11.13.0 está
+  marcada ahora como versión rota (su build de `@pnpm/exe` salió sin binario),
+  así que un pnpm independiente actual se niega a cambiar a ella con
+  `ERR_PNPM_BROKEN_PNPM_RELEASE`, y `pnpm install` / `pnpm test` /
+  `pnpm tauri:dev` dejaron de funcionar para quien contribuye. Misma versión
+  mayor, mismo lockfile y mismas aprobaciones de builds; basta con hacer pull.
+
 ## [1.38.0] — 2026-11-02
 
 ### Añadido
