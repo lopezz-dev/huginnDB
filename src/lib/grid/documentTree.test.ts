@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   BSON_TYPES,
   defaultText,
+  displayValue,
   draftTypeFor,
+  LIST_TEXT_CAP,
   flattenDocument,
   isOpaqueType,
   isValidForType,
@@ -158,5 +160,20 @@ describe("pathKey", () => {
   it("joins with dots", () => {
     expect(pathKey(["customData", "format"])).toBe("customData.format");
     expect(pathKey(["tags", "2"])).toBe("tags.2");
+  });
+});
+
+describe("displayValue", () => {
+  const field = (value: string, type = "string") =>
+    ({ value, type, container: null, childCount: 0 }) as unknown as DocField;
+
+  it("quotes a string whole when it fits", () => {
+    expect(displayValue(field("hello"), "NULL")).toBe('"hello"');
+  });
+
+  it("puts at most the cap of a huge string in the row", () => {
+    // A 1.5 MB prompt used to reach the DOM whole, to be laid out and clipped.
+    const text = displayValue(field("p".repeat(1_500_000)), "NULL");
+    expect(text).toBe(`"${"p".repeat(LIST_TEXT_CAP)}…"`);
   });
 });

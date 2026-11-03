@@ -14,9 +14,9 @@ import { BitInput } from "@/components/grid/BitInput";
 import { CellInput } from "@/components/grid/CellInput";
 import { FkCombobox } from "@/components/grid/FkCombobox";
 import {
+  cellDisplayText,
   formatValue,
   rawCellText,
-  truncateForDisplay,
 } from "@/lib/grid/formatValue";
 import { defaultColumnWidth } from "@/lib/grid/columnKinds";
 import { formatComboForDisplay } from "@/lib/keybindings";
@@ -404,8 +404,13 @@ export function useGridColumns(
               />
             );
           }
-          const rawDisplay = rawCellText(v, bitColNames.has(col.name), bitDisplay);
-          const display = truncateForDisplay(rawDisplay, truncateLongTextAt);
+          const isBit = bitColNames.has(col.name);
+          const display = cellDisplayText(
+            v,
+            isBit,
+            bitDisplay,
+            truncateLongTextAt,
+          );
           const isNumeric = numericColNames.has(col.name);
           // Selected-but-not-editing: offer a direct "expand" affordance so
           // the full value can be viewed (modal / side panel per
@@ -448,7 +453,12 @@ export function useGridColumns(
                   onDoubleClick={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    openHeavyEditor(rowValues, col, rawDisplay);
+                    // The whole text only now: the cell itself never builds it.
+                    openHeavyEditor(
+                      rowValues,
+                      col,
+                      rawCellText(v, isBit, bitDisplay),
+                    );
                   }}
                 >
                   <Maximize2 className="h-3 w-3" />
