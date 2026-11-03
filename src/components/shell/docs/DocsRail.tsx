@@ -38,17 +38,51 @@ interface Props {
   onSection: (slug: string | null, anchor?: string) => void;
 }
 
+/**
+ * One child in the rail's tree, drawn with a rounded elbow from its parent's
+ * spine instead of a flat rule down the whole list: the line runs past a row
+ * only while it has a sibling below, so the last child ends in the curve and
+ * the shape says "this is where the guide ends". The elbow sits at the height
+ * of the row's first line (`h-3`), so a wrapped title still hangs off its top.
+ */
+function Branch({
+  last,
+  active,
+  children,
+}: {
+  last: boolean;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <li className="relative pb-0.5 pl-3 last:pb-0">
+      {!last && (
+        <span
+          aria-hidden
+          className="absolute bottom-0 left-0 top-0 border-l border-muted-foreground/35"
+        />
+      )}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute left-0 top-0 h-3 w-2.5 rounded-bl-md border-b border-l",
+          active ? "border-brand" : "border-muted-foreground/35",
+        )}
+      />
+      {children}
+    </li>
+  );
+}
+
 function PageRow({
   label,
   active,
   depth = 1,
-  className,
   onClick,
 }: {
   label: string;
   active: boolean;
   depth?: 1 | 2;
-  className?: string;
   onClick: () => void;
 }) {
   return (
@@ -56,13 +90,12 @@ function PageRow({
       onClick={onClick}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "rounded-md py-1 pr-2 text-left leading-snug transition-colors",
+        "rounded-md py-1 pl-1.5 pr-2 text-left leading-snug transition-colors",
         CONTROL_FOCUS_TIGHT,
-        depth === 1 ? "pl-2 text-xs" : "pl-5 text-2xs",
+        depth === 1 ? "text-xs" : "text-2xs",
         active
           ? "bg-brand/10 text-foreground"
           : "text-muted-foreground hover:text-foreground",
-        className,
       )}
     >
       {label}
@@ -133,28 +166,42 @@ export function DocsRail({
                       onClick={() => onDoc(doc.id)}
                     />
                     {open && parsed && (
-                      <div className="ml-[18px] space-y-0.5 border-l border-border/70 pl-1.5">
-                        {parsed.sections.map((s) => (
-                          <React.Fragment key={s.slug}>
-                            <PageRow
-                              label={s.title}
-                              active={!searching && s.slug === sectionSlug}
-                              onClick={() => onSection(s.slug)}
-                            />
-                            {s.slug === section?.slug &&
-                              s.subs.map((sub) => (
-                                <PageRow
-                                  key={sub.slug}
-                                  label={sub.title}
-                                  depth={2}
-                                  active={false}
-                                  className="xl:hidden"
-                                  onClick={() => onSection(s.slug, sub.slug)}
-                                />
-                              ))}
-                          </React.Fragment>
-                        ))}
-                      </div>
+                      <ul className="ml-[18px]">
+                        {parsed.sections.map((s, i) => {
+                          const current = !searching && s.slug === sectionSlug;
+                          return (
+                            <Branch
+                              key={s.slug}
+                              last={i === parsed.sections.length - 1}
+                              active={current}
+                            >
+                              <PageRow
+                                label={s.title}
+                                active={current}
+                                onClick={() => onSection(s.slug)}
+                              />
+                              {s.slug === section?.slug && s.subs.length > 0 && (
+                                <ul className="ml-1.5 mt-0.5 xl:hidden">
+                                  {s.subs.map((sub, j) => (
+                                    <Branch
+                                      key={sub.slug}
+                                      last={j === s.subs.length - 1}
+                                      active={false}
+                                    >
+                                      <PageRow
+                                        label={sub.title}
+                                        depth={2}
+                                        active={false}
+                                        onClick={() => onSection(s.slug, sub.slug)}
+                                      />
+                                    </Branch>
+                                  ))}
+                                </ul>
+                              )}
+                            </Branch>
+                          );
+                        })}
+                      </ul>
                     )}
                   </React.Fragment>
                 );

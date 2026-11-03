@@ -21,6 +21,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The documentation viewer reads more like a book's contents.** A guide's
+  pages hang off its entry in the left rail with a rounded connector per row
+  — the current page's in the accent colour — instead of a flat rule down
+  the whole list, and the guide's cover lists its pages as a numbered
+  contents list rather than a grid of bordered cards. The previous / next
+  buttons are pinned in a bar under the page instead of trailing the text,
+  so they sit in the same place whatever the page's length or the next
+  title's.
 - **Opening a MongoDB collection no longer downloads its largest fields.** A
   top-level field over 64 KB stays on the server and appears in the grid as
   its type and size (for example *Array · 1.4 MB*). The whole document is
