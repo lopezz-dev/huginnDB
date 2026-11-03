@@ -62,6 +62,32 @@ el menú contextual del nodo de la base, y pide confirmación al margen de la
 preferencia «confirmar acciones destructivas». Ejecuta `dropDatabase` contra esa
 base y solo esa.
 
+**Los valores grandes se quedan en el servidor hasta que los usas.** Al abrir
+una colección, un campo de primer nivel de más de 64 KB no se descarga con la
+página. Su celda muestra solo el tipo y el tamaño, en cursiva gris: `Array ·
+1,4 MB`, `Object · 720 KB`, `Binary · 980 KB`. Al documento no le pasa nada.
+El campo sigue ahí; solo es que todavía no se ha traído. Una colección que
+guarda ficheros o transcripciones de un LLM mandaría si no megas por página
+que nadie lee en un listado.
+
+- El valor se carga en cuanto lo necesitas. Hacer doble clic en la celda,
+  ampliarla (a pantalla completa o al panel lateral), copiar la celda o la
+  fila, duplicar la fila o pegar en ella traen primero ese documento y luego
+  siguen con el valor real. Nunca editas ni copias un marcador.
+- La vista previa de la celda muestra un botón **Cargar**. En la vista de
+  lista, el doble clic sobre el campo lo carga en el sitio.
+- Filtrar por el valor de un campo sin cargar está deshabilitado hasta que se
+  carga.
+- Una vez cargado, un campo binario se lee como `Binary(Generic, 1004161
+  bytes)`. Es como el grid enseña siempre los datos binarios: sus bytes no son
+  texto.
+- El umbral está en **Ajustes → Tabla de datos** («Dejar en el servidor los
+  valores de más de»). Con 0 se desactiva y siempre se descargan los
+  documentos completos.
+- Solo lo hace el listado del grid. La exportación, el editor de consultas,
+  el conector MCP y el panel de IA reciben siempre los documentos completos.
+  Los servidores anteriores a MongoDB 4.4 se navegan como antes.
+
 ## El editor de consultas habla `mongosh`, en un dialecto acotado
 
 El editor acepta sintaxis de shell, no SQL:

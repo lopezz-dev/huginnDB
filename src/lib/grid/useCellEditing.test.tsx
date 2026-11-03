@@ -10,6 +10,7 @@ import { act, renderHook } from "@testing-library/react";
 
 import { useCellEditing } from "./useCellEditing";
 import type { TrimmedRows } from "./trimmedCells";
+import { useCellEditor } from "@/stores/grid/cellEditor";
 import type { CellValue, ColumnMeta } from "@/types";
 
 const estado = { name: "estado", data_type: "varchar" } as ColumnMeta;
@@ -143,6 +144,12 @@ describe("useCellEditing on a row with a cut cell", () => {
     await act(async () => result.current.openCellEdit(cutRow, log));
     expect(result.current.inlineEdit).toBeNull();
     expect(result.current.editorOpen).toBe(false);
+  });
+
+  it("opens the docked side panel on the loaded value too", async () => {
+    const { result } = setupCut("side");
+    await act(async () => result.current.openHeavyEditor(cutRow, log, ""));
+    expect(useCellEditor.getState().target?.value).toBe(JSON.stringify(loadedRow[1]));
   });
 
   it("leaves a whole row alone, synchronously", () => {
