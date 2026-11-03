@@ -60,6 +60,18 @@ jobs:
           # whatever branch this dispatch was started from.
           ref: ${{ github.event.inputs.ref || github.ref }}
 
+      # Same check as release.yml, for the same reason: a canary nobody's
+      # updater can verify is a canary nobody can update to.
+      - name: Check the updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::The TAURI_SIGNING_PRIVATE_KEY secret is missing (setup steps in RELEASING.md)."
+            exit 1
+          fi
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
 
@@ -132,10 +144,16 @@ jobs:
       # Stage the huginndb-mcp sidecar exactly as the stable release does — the
       # canary bundle inherits `bundle.externalBin`, and tauri-build's build.rs
       # hard-fails without the sidecar file present for the target triple. See
-      # release.yml + ADR #22 for why the touch/rm/cp dance is
+      # .github/actions/sidecar + ADR #22 for why the touch/rm/cp dance is
       # load-bearing. The sidecar itself is built stable (its only APP_DIR use
       # is the MCP audit-log path); isolating it too isn't worth the feature
       # passthrough, see docs/CANARY.md.
+      #
+      # Inline here rather than `uses: ./.github/actions/sidecar` like ci.yml
+      # and release.yml: a local action resolves from the checked-out tree, and
+      # this workflow checks out whatever `ref` it was asked to build. A canary
+      # of a branch cut before that action existed would fail on a missing
+      # action rather than build.
       - name: Build and stage the huginndb-mcp sidecar
         shell: bash
         run: |
@@ -160,8 +178,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release delete canary --yes --cleanup-tag --repo "${{ github.repository }}" || true
 
+      # Pinned to a commit for the reason in release.yml: it receives the
+      # updater's private signing key.
       - name: Build and publish canary release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

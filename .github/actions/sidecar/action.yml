@@ -1,0 +1,75 @@
+name: Stage the huginndb-mcp sidecar
+description: >
+  Puts the `huginndb-mcp` binary where `bundle.externalBin` in tauri.conf.json
+  expects it for this runner's target triple, either as an empty placeholder
+  (enough to compile) or as the real release build (what an installer ships).
+
+# Why this exists at all (ADR #22): `tauri-build`, run by huginndb's build.rs,
+# hard-fails ANY compile of huginndb_lib — a bare `cargo check` included — when
+# the externalBin resource for the current target triple is not already on
+# disk. It checks existence only; content is irrelevant at compile time. Tauri's
+# sidecar convention names it `<name>-<target-triple>[.exe]`, and `rustc -Vv`'s
+# `host:` line gives the triple of whichever platform is building.
+#
+# `build` has a real circular dependency to break: huginndb-mcp is its own
+# workspace crate (mcp-server/, ADR #20) but compiles huginndb_lib with the
+# `mcp` feature, so the very build meant to produce the sidecar cannot start
+# until something is already at that path. Hence the placeholder first, the
+# release build, then `rm` and `cp` — removing rather than overwriting in place,
+# because `cp` onto an existing file keeps that file's mode and would ship a
+# non-executable sidecar.
+
+inputs:
+  mode:
+    description: "`placeholder` (CI: clippy and tests) or `build` (installers)."
+    required: true
+
+outputs:
+  binary:
+    description: "Path to the built huginndb-mcp binary. Only set in `build` mode."
+    value: ${{ steps.stage.outputs.binary }}
+  platform:
+    description: "MCPB platform name of this runner: win32, linux or darwin."
+    value: ${{ steps.stage.outputs.platform }}
+
+runs:
+  using: composite
+  steps:
+    - name: Stage huginndb-mcp (${{ inputs.mode }})
+      id: stage
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+        triple="$(rustc -Vv | sed -n 's/^host: //p')"
+        case "$triple" in
+          *windows*) platform=win32 ;;
+          *apple*) platform=darwin ;;
+          *) platform=linux ;;
+        esac
+        echo "platform=$platform" >> "$GITHUB_OUTPUT"
+
+        staged="src-tauri/binaries/huginndb-mcp-${triple}"
+        mkdir -p src-tauri/binaries
+        touch "${staged}.exe" "${staged}"
+
+        case "$MODE" in
+          placeholder)
+            exit 0 ;;
+          build) ;;
+          *)
+            echo "::error::Unknown sidecar mode '$MODE' (expected placeholder or build)."
+            exit 1 ;;
+        esac
+
+        cargo build --release -p huginndb-mcp --manifest-path src-tauri/Cargo.toml
+        rm -f "${staged}.exe" "${staged}"
+        if [ -f src-tauri/target/release/huginndb-mcp.exe ]; then
+          binary=src-tauri/target/release/huginndb-mcp.exe
+          cp "$binary" "${staged}.exe"
+        else
+          binary=src-tauri/target/release/huginndb-mcp
+          cp "$binary" "${staged}"
+        fi
+        echo "binary=$binary" >> "$GITHUB_OUTPUT"

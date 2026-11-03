@@ -18,9 +18,14 @@ name: ci
 # can only restore caches saved on its own ref, its base branch or the default
 # branch. Without a run on `develop` the base cache was main's, refreshed only
 # at a version cut, so each PR recompiled whatever develop had changed since.
+#
+# `main` is not here on purpose. It only ever moves by fast-forwarding to a
+# develop commit at a version cut (RELEASING.md), so a run there would test a
+# commit develop already tested and spend ~2.9 GB of the 10 GB cache budget on
+# a copy of develop's caches that no pull request needs.
 on:
   push:
-    branches: [main, develop]
+    branches: [develop]
   pull_request:
 
 # A new push to the same branch supersedes the previous run. `group` includes
@@ -201,39 +206,18 @@ jobs:
           workspaces: "src-tauri -> target"
           # Keyed per platform so the two matrix legs don't evict each other.
           key: ${{ matrix.platform }}
-          # Only pushes (develop, main) save. A PR's cache is readable by that
-          # PR alone, and at ~1.5 GB a leg a handful of them pushed the repo
-          # past its 10 GB budget, evicting the base caches every PR restores.
+          # Only pushes to develop save. A PR's cache is readable by that PR
+          # alone, and at ~1.5 GB a leg a handful of them pushed the repo past
+          # its 10 GB budget, evicting the base caches every PR restores.
           save-if: ${{ github.event_name == 'push' }}
 
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
+      - uses: ./.github/actions/linux-deps
 
-      # Load-bearing, not defensive. `tauri-build` (huginndb's build.rs) hard-
-      # fails ANY compile of huginndb_lib — a bare `cargo check` included — when
-      # the `bundle.externalBin` resource for the current target triple is not
-      # already on disk. It checks existence only; content is irrelevant at
-      # compile time. See ADR #22.
-      #
-      # Unlike release.yml, this workflow does NOT build the real sidecar: CI
-      # bundles no installer, so an empty placeholder is all `cargo clippy` and
-      # `cargo test` need. That also means the `rm` + `cp` dance from
-      # release.yml (which exists so `cp` can't inherit the placeholder's
-      # non-executable mode) has nothing to do here.
-      - name: Stage huginndb-mcp sidecar placeholder
-        shell: bash
-        run: |
-          triple="$(rustc -Vv | sed -n 's/^host: //p')"
-          mkdir -p src-tauri/binaries
-          touch "src-tauri/binaries/huginndb-mcp-${triple}.exe" \
-                "src-tauri/binaries/huginndb-mcp-${triple}"
+      # CI bundles no installer, so an empty placeholder is all `cargo clippy`
+      # and `cargo test` need; see the action for why one must exist at all.
+      - uses: ./.github/actions/sidecar
+        with:
+          mode: placeholder
 
       # `--features mcp` is not optional here: the connector's write-policy
       # enforcement and its tests live behind that feature, and it is exactly
@@ -247,3 +231,31 @@ jobs:
         run: >
           cargo test --manifest-path src-tauri/Cargo.toml
           --workspace --features mcp --locked
+
+      # When a pull request changes Cargo.lock its cache key no longer matches
+      # develop's, and rust-cache restores develop's cache as a partial match.
+      # On a partial match it first deletes every artifact in target/ whose
+      # mtime is more than a week old (cleanTargetDir with checkTimestamp, the
+      # ONE_WEEK cutoff in its cleanup.ts), and the mtime it reads is the one
+      # the cache's tar preserved: when that dependency was first compiled. A
+      # dependency that never changes is compiled once and carried from cache
+      # to cache under that date, so a week after the last cold build, any
+      # Cargo.lock change deleted all of them and the PR rebuilt ~1,080 crates
+      # (12-17 minutes on Windows) instead of the dozen it had changed.
+      #
+      # Stamping what this run is about to save as fresh means the cutoff only
+      # ever removes what no run has used for a week. Safe for cargo: registry
+      # sources never change under a fixed version, and rust-cache already
+      # leaves the workspace's own crates out of what it saves. Only the top
+      # entries of each directory are stamped, because that is what the
+      # cutoff reads. Runs after the tests and before rust-cache's post step,
+      # which is the one that saves.
+      - name: Keep the saved build artifacts inside rust-cache's one-week cutoff
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          for dir in deps build .fingerprint; do
+            path="src-tauri/target/debug/$dir"
+            [ -d "$path" ] && find "$path" -mindepth 1 -maxdepth 1 -exec touch {} +
+          done
+          exit 0

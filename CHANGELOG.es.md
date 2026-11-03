@@ -61,8 +61,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   propia del frontend). La lista es de lo que se salta, así que un fichero que
   no conoce ejecuta todo; las entradas de la build de Rust que están fuera de
   `src-tauri/` (`docs/MCP*.md` y `mcpb/`) se nombran primero para que la
-  lista no se las trague, y los push a `develop` y `main` siempre ejecutan la
-  suite completa.
+  lista no se las trague, y los push a `develop` siempre ejecutan la suite
+  completa.
+
+- **Una pull request que cambia `Cargo.lock` ya no recompila todas las
+  dependencias.** Cuando su clave de caché dejaba de coincidir con la de
+  `develop`, la acción de caché restauraba la de `develop` pero antes borraba
+  todo artefacto de más de una semana, y fecha cada artefacto por cuándo se
+  compiló esa dependencia por primera vez; así que una semana después de la
+  última build en frío, cualquier cambio de dependencias tiraba toda la caché
+  y la pata de Windows recompilaba unos 1.080 crates en 12–17 minutos en vez de
+  la docena que había cambiado. Ahora el CI marca como recientes los
+  artefactos que guarda. El CI tampoco se ejecuta ya en los push a `main`, que
+  solo avanza a un commit que `develop` ya ha probado y gastaba un tercio del
+  cupo de caché en una copia de las cachés de `develop`. Los workflows de
+  release y de canary comprueban la clave de firma del actualizador antes de
+  compilar y no después, fijan `tauri-action` a un commit en lugar de la
+  etiqueta móvil `v0` (recibe esa clave) y comparten con el CI la preparación
+  del sidecar mediante una acción compuesta en lugar de tres copias.
   
 - **El CI ya no recompila todas las dependencias cuando su caché ha sido
   desalojada.** Cada ejecución de release y de canary guardaba unos 2,2 GB de
@@ -71,8 +87,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   request, llevaban el repositorio por encima del límite de 10 GB de GitHub, lo
   que desalojaba la caché de la rama principal de la que parten las pull
   requests, y la pata de Windows pasaba entonces de 5 minutos a entre 12 y 20.
-  Ahora solo los push a `develop` y `main` guardan caché (el CI también se
-  ejecuta en `develop` por ese motivo, así que una pull request parte de lo
+  Ahora solo los push a `develop` guardan caché (el CI se ejecuta ahora en
+  `develop` por ese motivo, así que una pull request parte de lo
   último que se fusionó), la build de tests lleva tablas de líneas en lugar de
   información de depuración completa, y la pata de Windows compila en un Dev
   Drive de confianza montado en `target/`, fuera del alcance de NTFS y del

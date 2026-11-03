@@ -56,8 +56,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   Markdown files, the frontend's own config). The list is of what to skip,
   so a file it does not know runs everything; the Rust build's inputs outside
   `src-tauri/` (`docs/MCP*.md` and `mcpb/`) are named first so it cannot
-  swallow them, and pushes to `develop` and `main` always run the whole
-  suite.
+  swallow them, and pushes to `develop` always run the whole suite.
+
+- **A pull request that changes `Cargo.lock` no longer rebuilds every
+  dependency.** When its cache key stopped matching `develop`'s, the cache
+  action restored `develop`'s cache but first deleted every artifact older
+  than a week, and it dates each artifact by when that dependency was first
+  compiled — so a week after the last cold build, any dependency change threw
+  the whole cache away and the Windows leg rebuilt ~1,080 crates in 12–17
+  minutes instead of the dozen that changed. CI now stamps the artifacts it
+  saves as fresh. CI also no longer runs on pushes to `main`, which only ever
+  fast-forwards to a commit `develop` has already tested and was spending a
+  third of the cache budget on a copy of `develop`'s caches. The release and
+  canary workflows check for the updater signing key before compiling rather
+  than after, pin `tauri-action` to a commit instead of the moving `v0` tag
+  (it receives that key), and share the sidecar staging with CI through one
+  composite action instead of three copies.
   
 - **CI no longer recompiles every dependency when its cache has been
   evicted.** Release and canary runs each saved about 2.2 GB of cache that,
@@ -65,8 +79,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   with a 1.5 GB cache per pull request they pushed the repository past
   GitHub's 10 GB budget, which evicted the main-branch cache pull requests
   restore from, and the Windows leg then took 12–20 minutes instead of 5. Now
-  only pushes to `develop` and `main` save a cache (CI also runs on `develop`
-  for that reason, so a pull request starts from what was last merged), the
+  only pushes to `develop` save a cache (CI now runs on `develop` for that
+  reason, so a pull request starts from what was last merged), the
   test build carries line tables instead of full debuginfo, and the Windows
   leg builds on a trusted Dev Drive mounted at `target/`, out of reach of
   NTFS and Defender's real-time scan.
