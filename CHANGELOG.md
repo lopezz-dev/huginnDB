@@ -21,6 +21,56 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   receive whole documents. Servers older than MongoDB 4.4 are browsed as
   before.
 
+- **The grid no longer serialises a huge value just to show 200 characters of
+  it.** Each visible cell holding an object or array converted the whole value
+  to JSON on every render and only then cut it to the display limit, so a
+  document with a 1.5 MB prompt inside an array paid for 1.5 MB of text it
+  never showed. A cell now stops at the limit, and paints exactly what it
+  painted before; the full text is built only when the cell is opened in the
+  editor. In the document list, a long string is cut to 2,000 characters
+  before it reaches the row, where it was laid out whole and then clipped.
+  
+- **MongoDB replies are compressed on the wire when the server is not on this
+  machine.** The driver negotiated no compression, so every page crossed the
+  network as raw BSON. Through a customer's SSH tunnel, 2.2 MB of LLM
+  transcripts now arrive in about 50 ms instead of 170 ms, and 1.9 MB of JSON
+  configuration in 30 ms instead of 160 ms. HuginnDB offers zstd, snappy and
+  zlib, in that order, and the server picks the first one it also supports; a
+  server with compression turned off is read exactly as before. A `mongod` on
+  the same machine is left uncompressed, since there is nothing to save. A
+  `compressors=` option in the connection string still wins over all of this.
+  
+- **The project pins pnpm 11.28.9 instead of 11.13.0.** 11.13.0 is now flagged
+  as a broken release (its `@pnpm/exe` build shipped without a binary), so a
+  current standalone pnpm refuses to switch to it with
+  `ERR_PNPM_BROKEN_PNPM_RELEASE` and `pnpm install` / `pnpm test` /
+  `pnpm tauri:dev` stopped running for contributors. Same major, same lockfile,
+  same build approvals; nothing to do beyond pulling.
+
+- **A pull request that changes nothing the backend reads no longer builds
+  the backend in CI.** A frontend- or docs-only pull request used to spend
+  5–20 minutes compiling and testing Rust on Linux and Windows that it had
+  not touched. A new `changed paths` job now reads the pull request's diff and
+  skips the Rust job when every file is on a list of paths that cannot reach
+  the Rust build (`src/`, `public/`, `docs/`, `engineering/`, the root
+  Markdown files, the frontend's own config). The list is of what to skip,
+  so a file it does not know runs everything; the Rust build's inputs outside
+  `src-tauri/` (`docs/MCP*.md` and `mcpb/`) are named first so it cannot
+  swallow them, and pushes to `develop` and `main` always run the whole
+  suite.
+  
+- **CI no longer recompiles every dependency when its cache has been
+  evicted.** Release and canary runs each saved about 2.2 GB of cache that,
+  being scoped to a tag or a one-off branch, no later run could read; together
+  with a 1.5 GB cache per pull request they pushed the repository past
+  GitHub's 10 GB budget, which evicted the main-branch cache pull requests
+  restore from, and the Windows leg then took 12–20 minutes instead of 5. Now
+  only pushes to `develop` and `main` save a cache (CI also runs on `develop`
+  for that reason, so a pull request starts from what was last merged), the
+  test build carries line tables instead of full debuginfo, and the Windows
+  leg builds on a trusted Dev Drive mounted at `target/`, out of reach of
+  NTFS and Defender's real-time scan.
+
 ## [1.38.0] — 2026-11-02
 
 ### Added

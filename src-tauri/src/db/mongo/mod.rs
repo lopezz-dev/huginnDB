@@ -48,6 +48,27 @@ fn enc(value: &str) -> String {
     url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
 }
 
+/// Whether a client dialling `hosts` should offer wire compression.
+///
+/// Not for a server on this machine: over loopback, compressing costs CPU at
+/// both ends and saves nothing. A tunnelled connection always qualifies — its
+/// host list points at the tunnel's local port, but the bytes still cross the
+/// network on the other side of it.
+fn wants_compression(hosts: &[ServerAddress], tunnelled: bool) -> bool {
+    tunnelled
+        || hosts.iter().any(|h| match h {
+            ServerAddress::Tcp { host, .. } => {
+                let host = host.trim_start_matches('[').trim_end_matches(']');
+                !(host.eq_ignore_ascii_case("localhost")
+                    || host
+                        .parse::<std::net::IpAddr>()
+                        .is_ok_and(|ip| ip.is_loopback()))
+            }
+            // A Unix domain socket is local by definition.
+            _ => false,
+        })
+}
+
 /// Open a MongoDB client for `profile`.
 ///
 /// Returns the same `(DbPool, Option<SshTunnelHandle>)` shape as the SQL
@@ -214,6 +235,22 @@ pub async fn open_pool(
         handle = Some(h);
     }
 
+    // Wire compression (OP_COMPRESSED). The driver negotiates none unless asked,
+    // so every reply crossed the network as raw BSON: a browse page of 100
+    // documents holding LLM prompts was 6.9 MB, and through an SSH tunnel that
+    // took 0.4–2.8 s against 35 ms of server work. Offered in order of measured
+    // benefit over a tunnel (zstd, snappy, zlib); the server picks the first it
+    // also has enabled, and an old server that has none simply gets the
+    // uncompressed protocol it got before. A compressor list in the URI is the
+    // user's choice and is left alone.
+    if options.compressors.is_none() && wants_compression(&options.hosts, handle.is_some()) {
+        options.compressors = Some(vec![
+            mongodb::options::Compressor::Zstd { level: None },
+            mongodb::options::Compressor::Snappy,
+            mongodb::options::Compressor::Zlib { level: None },
+        ]);
+    }
+
     // The connection's default database (URI path or explicit field), used as
     // the "current db" for `db.coll.…` statements until the user picks another.
     let database = options.default_database.clone().or_else(|| {
@@ -247,4 +284,50 @@ pub async fn open_pool(
     // works at all.
     schema::ping(&conn).await?;
     Ok((DbPool::Mongo(conn), handle))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wants_compression;
+    use mongodb::options::ServerAddress;
+
+    fn tcp(host: &str) -> ServerAddress {
+        ServerAddress::Tcp {
+            host: host.to_string(),
+            port: Some(27017),
+        }
+    }
+
+    #[test]
+    fn a_server_on_this_machine_is_not_compressed() {
+        for host in [
+            "localhost",
+            "LOCALHOST",
+            "127.0.0.1",
+            "127.1.2.3",
+            "::1",
+            "[::1]",
+        ] {
+            assert!(!wants_compression(&[tcp(host)], false), "{host}");
+        }
+    }
+
+    #[test]
+    fn a_remote_server_is_compressed() {
+        assert!(wants_compression(&[tcp("db.example.com")], false));
+        assert!(wants_compression(&[tcp("10.0.0.5")], false));
+        // One remote member of a seed list is enough: the driver may route
+        // reads to it.
+        assert!(wants_compression(
+            &[tcp("localhost"), tcp("db2.example.com")],
+            false
+        ));
+    }
+
+    /// The tunnel rewrites the host list to its own loopback port, which must
+    /// not read as "local": the server is on the far side of the tunnel.
+    #[test]
+    fn a_tunnelled_server_is_compressed_despite_its_loopback_address() {
+        assert!(wants_compression(&[tcp("127.0.0.1")], true));
+    }
 }

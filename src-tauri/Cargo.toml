@@ -76,6 +76,17 @@ mongodb = { version = "3", default-features = false, features = [
     "dns-resolver",
     "bson-3",
     "compat-3-3-0",
+    # Wire compression (OP_COMPRESSED), offered by `db::mongo::open_pool` to any
+    # server that is not on this machine. Measured over a customer's SSH tunnel:
+    # a 2.2 MB read of LLM transcripts went from 171 ms to 68 ms, 1.9 MB of JSON
+    # config from 161 ms to 34 ms. All three because servers enable different
+    # subsets and the first common one wins: `zstd` (best ratio; `zstd-sys`
+    # builds the C library with the `cc` toolchain we already need), `snappy`
+    # (pure Rust `snap`), `zlib` (the `flate2` already in the tree via `russh`).
+    # Together they add ~0.7 MB to the release binary.
+    "zstd-compression",
+    "snappy-compression",
+    "zlib-compression",
 ] }
 # Same `bson` already pulled in by `mongodb` (3.x), pinned here only to turn on
 # its `serde_json-1` feature — this enables the canonical Extended JSON

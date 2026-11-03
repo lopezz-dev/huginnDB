@@ -23,6 +23,61 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   consultas, el conector MCP y el panel de IA siguen recibiendo los documentos
   completos. Los servidores anteriores a MongoDB 4.4 se navegan como antes.
 
+- **El grid ya no serializa un valor enorme solo para enseñar 200 caracteres.**
+  Cada celda visible con un objeto o un array convertía el valor entero a JSON
+  en cada render y solo después lo recortaba al límite de visualización, así
+  que un documento con un prompt de 1,5 MB dentro de un array pagaba 1,5 MB de
+  texto que nunca se veía. Ahora la celda se detiene en el límite y pinta
+  exactamente lo mismo que antes; el texto completo solo se genera al abrir la
+  celda en el editor. En la lista de documentos, un string largo se recorta a
+  2.000 caracteres antes de llegar a la fila, donde antes se maquetaba entero
+  para luego quedar oculto.
+  
+- **Las respuestas de MongoDB viajan comprimidas cuando el servidor no está en
+  esta máquina.** El driver no negociaba compresión, así que cada página
+  cruzaba la red como BSON sin comprimir. Por el túnel SSH de un cliente, 2,2
+  MB de transcripciones de un LLM llegan ahora en unos 50 ms en vez de 170 ms,
+  y 1,9 MB de configuración en JSON en 30 ms en vez de 160 ms. HuginnDB ofrece
+  zstd, snappy y zlib, en ese orden, y el servidor elige el primero que también
+  admite; un servidor con la compresión desactivada se lee igual que antes. Un
+  `mongod` en la misma máquina se deja sin comprimir, porque no hay nada que
+  ahorrar. Una opción `compressors=` en la cadena de conexión sigue mandando
+  sobre todo esto.
+  
+- **El proyecto fija pnpm 11.28.9 en lugar de 11.13.0.** La 11.13.0 está
+  marcada ahora como versión rota (su build de `@pnpm/exe` salió sin binario),
+  así que un pnpm independiente actual se niega a cambiar a ella con
+  `ERR_PNPM_BROKEN_PNPM_RELEASE`, y `pnpm install` / `pnpm test` /
+  `pnpm tauri:dev` dejaron de funcionar para quien contribuye. Misma versión
+  mayor, mismo lockfile y mismas aprobaciones de builds; basta con hacer pull.
+
+- **Una pull request que no cambia nada de lo que lee el backend ya no lo
+  compila en el CI.** Una pull request solo de frontend o de documentación
+  pasaba de 5 a 20 minutos compilando y probando en Linux y Windows un Rust
+  que no había tocado. Un job nuevo, `changed paths`, lee el diff de la pull
+  request y se salta el job de Rust cuando todos los ficheros están en una
+  lista de rutas que no pueden llegar a la build de Rust (`src/`, `public/`,
+  `docs/`, `engineering/`, los ficheros Markdown de la raíz y la configuración
+  propia del frontend). La lista es de lo que se salta, así que un fichero que
+  no conoce ejecuta todo; las entradas de la build de Rust que están fuera de
+  `src-tauri/` (`docs/MCP*.md` y `mcpb/`) se nombran primero para que la
+  lista no se las trague, y los push a `develop` y `main` siempre ejecutan la
+  suite completa.
+  
+- **El CI ya no recompila todas las dependencias cuando su caché ha sido
+  desalojada.** Cada ejecución de release y de canary guardaba unos 2,2 GB de
+  caché que, al quedar ligada a un tag o a una rama de un solo uso, ninguna
+  ejecución posterior podía leer; junto con 1,5 GB de caché por cada pull
+  request, llevaban el repositorio por encima del límite de 10 GB de GitHub, lo
+  que desalojaba la caché de la rama principal de la que parten las pull
+  requests, y la pata de Windows pasaba entonces de 5 minutos a entre 12 y 20.
+  Ahora solo los push a `develop` y `main` guardan caché (el CI también se
+  ejecuta en `develop` por ese motivo, así que una pull request parte de lo
+  último que se fusionó), la build de tests lleva tablas de líneas en lugar de
+  información de depuración completa, y la pata de Windows compila en un Dev
+  Drive de confianza montado en `target/`, fuera del alcance de NTFS y del
+  análisis en tiempo real de Defender.
+
 ## [1.38.0] — 2026-11-02
 
 ### Añadido
