@@ -8,6 +8,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **Las respuestas de MongoDB viajan comprimidas cuando el servidor no está en
+  esta máquina.** El driver no negociaba compresión, así que cada página
+  cruzaba la red como BSON sin comprimir. Por el túnel SSH de un cliente, 2,2
+  MB de transcripciones de un LLM llegan ahora en unos 50 ms en vez de 170 ms,
+  y 1,9 MB de configuración en JSON en 30 ms en vez de 160 ms. HuginnDB ofrece
+  zstd, snappy y zlib, en ese orden, y el servidor elige el primero que también
+  admite; un servidor con la compresión desactivada se lee igual que antes. Un
+  `mongod` en la misma máquina se deja sin comprimir, porque no hay nada que
+  ahorrar. Una opción `compressors=` en la cadena de conexión sigue mandando
+  sobre todo esto.
+
 ## [1.38.0] — 2026-11-02
 
 ### Añadido
