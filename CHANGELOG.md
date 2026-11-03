@@ -16,6 +16,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   painted before; the full text is built only when the cell is opened in the
   editor. In the document list, a long string is cut to 2,000 characters
   before it reaches the row, where it was laid out whole and then clipped.
+  
+- **MongoDB replies are compressed on the wire when the server is not on this
+  machine.** The driver negotiated no compression, so every page crossed the
+  network as raw BSON. Through a customer's SSH tunnel, 2.2 MB of LLM
+  transcripts now arrive in about 50 ms instead of 170 ms, and 1.9 MB of JSON
+  configuration in 30 ms instead of 160 ms. HuginnDB offers zstd, snappy and
+  zlib, in that order, and the server picks the first one it also supports; a
+  server with compression turned off is read exactly as before. A `mongod` on
+  the same machine is left uncompressed, since there is nothing to save. A
+  `compressors=` option in the connection string still wins over all of this.
+  
+- **The project pins pnpm 11.28.9 instead of 11.13.0.** 11.13.0 is now flagged
+  as a broken release (its `@pnpm/exe` build shipped without a binary), so a
+  current standalone pnpm refuses to switch to it with
+  `ERR_PNPM_BROKEN_PNPM_RELEASE` and `pnpm install` / `pnpm test` /
+  `pnpm tauri:dev` stopped running for contributors. Same major, same lockfile,
+  same build approvals; nothing to do beyond pulling.
 
 ## [1.38.0] — 2026-11-02
 
