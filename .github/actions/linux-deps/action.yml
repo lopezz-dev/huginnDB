@@ -1,0 +1,19 @@
+name: Install Linux build dependencies
+description: >
+  The system packages Tauri's Linux backend links against (WebKitGTK 4.1, the
+  tray indicator, librsvg) plus patchelf for the AppImage. A no-op on any other
+  runner, so callers can use it unconditionally.
+
+runs:
+  using: composite
+  steps:
+    - name: Install Linux build dependencies
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          libappindicator3-dev \
+          librsvg2-dev \
+          patchelf

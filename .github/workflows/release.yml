@@ -72,6 +72,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Fails in seconds instead of after a full release compile. Without the
+      # private key tauri-action signs nothing, and an installed HuginnDB
+      # refuses an update it cannot verify, so a release built without it is
+      # one no existing install can move to.
+      - name: Check the updater signing key
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::The TAURI_SIGNING_PRIVATE_KEY secret is missing (setup steps in RELEASING.md)."
+            exit 1
+          fi
+
       - name: Install pnpm
         # Version is intentionally not pinned here — pnpm/action-setup
         # reads `packageManager` from package.json. Specifying both
@@ -100,15 +114,7 @@ jobs:
           # 10 GB budget and evicted the develop/main caches CI depends on.
           save-if: false
 
-      - name: Install Linux build dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf
+      - uses: ./.github/actions/linux-deps
 
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile
@@ -134,40 +140,13 @@ jobs:
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Stages the `huginndb-mcp` sidecar so tauri-action's build below finds
-      # it at the `bundle.externalBin` path in tauri.conf.json and ships it
-      # inside the installer, next to the main executable. Built from a
-      # separate workspace crate (mcp-server/) on purpose — see ADR #20 in
-      # CLAUDE.md for why it isn't a second `[[bin]]` in the app's own
-      # Cargo.toml. Tauri's sidecar convention needs the binary named
-      # `<name>-<target-triple>[.exe]`; `rustc -Vv`'s `host:` line gives the
-      # triple for whichever platform is currently building.
-      #
-      # The placeholder touch below is load-bearing, not defensive: tauri-build
-      # (huginndb's build.rs) hard-fails ANY compile of huginndb_lib — even a
-      # bare `cargo check`, even just as a dependency of huginndb-mcp itself —
-      # if the externalBin resource for the current target triple doesn't
-      # already exist on disk (existence only; content doesn't matter yet).
-      # Since building huginndb-mcp requires compiling huginndb_lib (with the
-      # `mcp` feature) first, that's a real circular dependency: the very
-      # `cargo build -p huginndb-mcp` step meant to produce the sidecar can't
-      # even start on a clean checkout without something already at that path.
-      # `rm` before the final `cp` (not overwriting in place) matters too —
-      # `cp` onto an existing file keeps that file's mode, so overwriting the
-      # placeholder in place would silently ship a non-executable sidecar.
+      # Ships inside the installer, next to the main executable; the action
+      # explains the placeholder-then-build order it needs.
       - name: Build and stage the huginndb-mcp sidecar
-        shell: bash
-        run: |
-          triple="$(rustc -Vv | sed -n 's/^host: //p')"
-          mkdir -p src-tauri/binaries
-          touch "src-tauri/binaries/huginndb-mcp-${triple}.exe" "src-tauri/binaries/huginndb-mcp-${triple}"
-          cargo build --release -p huginndb-mcp --manifest-path src-tauri/Cargo.toml
-          rm -f "src-tauri/binaries/huginndb-mcp-${triple}.exe" "src-tauri/binaries/huginndb-mcp-${triple}"
-          if [ -f src-tauri/target/release/huginndb-mcp.exe ]; then
-            cp src-tauri/target/release/huginndb-mcp.exe "src-tauri/binaries/huginndb-mcp-${triple}.exe"
-          else
-            cp src-tauri/target/release/huginndb-mcp "src-tauri/binaries/huginndb-mcp-${triple}"
-          fi
+        id: sidecar
+        uses: ./.github/actions/sidecar
+        with:
+          mode: build
 
       # `retryAttempts` matters now that the matrix has more than one leg.
       # tauri-action does NOT clobber `latest.json` when a second platform
@@ -182,8 +161,13 @@ jobs:
       # latest.json), so raising the attempt count is the intended mitigation.
       # If intermittent 404s still show up, serialise with `max-parallel: 1`
       # or move latest.json generation into a final `needs:`-gated job.
+      #
+      # Pinned to a commit (action-v0.6.2, what `@v0` resolved to) rather than
+      # the moving `v0` tag: this step receives the updater's private signing
+      # key, and a tag can be re-pointed at different code without any change
+      # to this file. Bumping it is a deliberate edit of the SHA.
       - name: Build and publish draft release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -218,13 +202,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f src-tauri/target/release/huginndb-mcp.exe ]; then
-            platform=win32
-            binary=src-tauri/target/release/huginndb-mcp.exe
-          else
-            platform=linux
-            binary=src-tauri/target/release/huginndb-mcp
-          fi
-          scripts/build-mcpb.sh "$binary" "$platform"
+          scripts/build-mcpb.sh "${{ steps.sidecar.outputs.binary }}" "${{ steps.sidecar.outputs.platform }}"
           gh release upload "${{ steps.resolve_tag.outputs.tag }}" \
             mcpb/build/*.mcpb --clobber
