@@ -9,6 +9,8 @@ name: ci
 #   frontend — TypeScript only
 #   rust     — clippy + tests, on both target platforms
 #
+# A fourth, `changes`, decides whether a pull request needs `rust` at all.
+#
 # Release bundling lives in release.yml / canary.yml; nothing here builds an
 # installer or touches the signing keys.
 
@@ -93,8 +95,73 @@ jobs:
       - name: Tests
         run: pnpm test
 
+  # Most pull requests touch only the frontend or the docs, and each of them
+  # still spent 5-20 minutes compiling and testing a backend it did not change.
+  # This job lists what a pull request changed and lets `rust` run only when
+  # something it reads is among them.
+  #
+  # The list says what CANNOT reach the Rust build, not what can, so anything
+  # unknown runs it: a new top-level file, a new directory, a new `include_str!`
+  # into a path not named here. The Rust inputs outside src-tauri/ are named
+  # first so the broader patterns below can't swallow them — today that is
+  # docs/MCP*.md (`include_str!` in commands/connection.rs) and mcpb/ (read by
+  # a test in mcp/mod.rs). If one is missed, the push to develop that the merge
+  # produces always runs everything, so the miss surfaces one merge late
+  # rather than never.
+  changes:
+    name: changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+    steps:
+      # Depth 2 is the pull request's merge commit plus its first parent, the
+      # base branch tip it was merged onto, which is exactly the diff to read.
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+
+      - name: Decide whether the Rust job runs
+        id: filter
+        shell: bash
+        run: |
+          # Pushes always run it: they are the post-merge safety net described
+          # above, and the only runs that save the Rust cache.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A diff that cannot be read runs everything rather than nothing.
+          if ! files="$(git diff --name-only HEAD^1 HEAD)" || [ -z "$files" ]; then
+            echo "rust=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          rust=false
+          while IFS= read -r f; do
+            case "$f" in
+              src-tauri/*|mcpb/*|docs/MCP.md|docs/MCP.es.md|.github/*)
+                rust=true ;;
+              src/*|public/*|docs/*|engineering/*|brand/*|scripts/*|.claude/*) ;;
+              index.html|package.json|pnpm-lock.yaml|pnpm-workspace.yaml) ;;
+              tsconfig.json|tsconfig.node.json|vite.config.ts|vitest.config.ts) ;;
+              tailwind.config.js|postcss.config.js) ;;
+              *.md) ;;
+              *)
+                rust=true ;;
+            esac
+            [ "$rust" = true ] && echo "Rust input changed: $f" && break
+          done <<< "$files"
+
+          echo "rust=$rust" >> "$GITHUB_OUTPUT"
+          [ "$rust" = false ] && echo "No Rust input changed; the Rust job is skipped."
+          exit 0
+
   rust:
     name: clippy + tests (${{ matrix.platform }})
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     strategy:
       # Report both platforms' failures in one run instead of masking the
       # second behind the first.

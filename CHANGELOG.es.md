@@ -28,6 +28,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `pnpm tauri:dev` dejaron de funcionar para quien contribuye. Misma versión
   mayor, mismo lockfile y mismas aprobaciones de builds; basta con hacer pull.
 
+- **Una pull request que no cambia nada de lo que lee el backend ya no lo
+  compila en el CI.** Una pull request solo de frontend o de documentación
+  pasaba de 5 a 20 minutos compilando y probando en Linux y Windows un Rust
+  que no había tocado. Un job nuevo, `changed paths`, lee el diff de la pull
+  request y se salta el job de Rust cuando todos los ficheros están en una
+  lista de rutas que no pueden llegar a la build de Rust (`src/`, `public/`,
+  `docs/`, `engineering/`, los ficheros Markdown de la raíz y la configuración
+  propia del frontend). La lista es de lo que se salta, así que un fichero que
+  no conoce ejecuta todo; las entradas de la build de Rust que están fuera de
+  `src-tauri/` (`docs/MCP*.md` y `mcpb/`) se nombran primero para que la
+  lista no se las trague, y los push a `develop` y `main` siempre ejecutan la
+  suite completa.
+  
 - **El CI ya no recompila todas las dependencias cuando su caché ha sido
   desalojada.** Cada ejecución de release y de canary guardaba unos 2,2 GB de
   caché que, al quedar ligada a un tag o a una rama de un solo uso, ninguna

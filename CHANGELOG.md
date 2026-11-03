@@ -25,6 +25,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `pnpm tauri:dev` stopped running for contributors. Same major, same lockfile,
   same build approvals; nothing to do beyond pulling.
 
+- **A pull request that changes nothing the backend reads no longer builds
+  the backend in CI.** A frontend- or docs-only pull request used to spend
+  5–20 minutes compiling and testing Rust on Linux and Windows that it had
+  not touched. A new `changed paths` job now reads the pull request's diff and
+  skips the Rust job when every file is on a list of paths that cannot reach
+  the Rust build (`src/`, `public/`, `docs/`, `engineering/`, the root
+  Markdown files, the frontend's own config). The list is of what to skip,
+  so a file it does not know runs everything; the Rust build's inputs outside
+  `src-tauri/` (`docs/MCP*.md` and `mcpb/`) are named first so it cannot
+  swallow them, and pushes to `develop` and `main` always run the whole
+  suite.
+  
 - **CI no longer recompiles every dependency when its cache has been
   evicted.** Release and canary runs each saved about 2.2 GB of cache that,
   being scoped to a tag or a one-off branch, no later run could read; together
