@@ -268,7 +268,9 @@ impl LockPolicy {
     }
 
     /// Whether the app locks with the session: the policy's answer when it
-    /// gives one, the person's otherwise.
+    /// gives one, the person's otherwise. Read only by `session_watch`, which
+    /// has no watcher on macOS.
+    #[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
     pub fn with_session(&self, chosen: bool) -> bool {
         self.lock_with_session.unwrap_or(chosen)
     }
