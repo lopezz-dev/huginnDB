@@ -53,3 +53,88 @@ export function rawCellText(
 export function truncateForDisplay(text: string, at: number): string {
   return at > 0 && text.length > at ? `${text.slice(0, at)}…` : text;
 }
+
+/**
+ * What a grid cell paints for `v`: `truncateForDisplay(rawCellText(…), at)`,
+ * character for character, without building the whole text first.
+ *
+ * The composition it replaces serialised the entire value and then kept 200
+ * characters of it, on every render of every visible cell. A MongoDB document
+ * holding a 1.5 MB prompt inside an array made that 1.5 MB of `JSON.stringify`
+ * per paint, for text nobody would see. Here an object stops being serialised
+ * one character past the cap, which is all `truncateForDisplay` needs to decide
+ * whether to add the ellipsis.
+ */
+export function cellDisplayText(
+  v: CellValue,
+  isBit: boolean,
+  bitDisplay: GridPrefs["bitDisplay"],
+  at: number,
+): string {
+  if (at <= 0 || typeof v !== "object" || v === null) {
+    return truncateForDisplay(rawCellText(v, isBit, bitDisplay), at);
+  }
+  return truncateForDisplay(jsonPrefix(v, at + 1), at);
+}
+
+/** Signals that the prefix is full; never escapes `jsonPrefix`. */
+const FULL = Symbol("full");
+
+/**
+ * The first `limit` characters of `JSON.stringify(value)`, or all of it when
+ * it is shorter. `value` is what `fetch_table_data` sends: plain JSON (no
+ * `toJSON`, no cycles), so `JSON.stringify`'s rules are followed only as far
+ * as plain JSON reaches them.
+ */
+export function jsonPrefix(value: object, limit: number): string {
+  let out = "";
+  const push = (s: string) => {
+    out += s;
+    if (out.length >= limit) throw FULL;
+  };
+  const write = (x: unknown): void => {
+    if (typeof x === "string") {
+      // Escaping only ever lengthens a string, so `limit - out.length + 1`
+      // source characters produce at least as many output characters as the
+      // prefix still needs. A cut between the two halves of a surrogate pair
+      // would serialise the lone half as an escape the whole string never
+      // contains, so the cut steps back over it.
+      const room = limit - out.length + 1;
+      if (x.length <= room) return push(JSON.stringify(x));
+      let cut = x.slice(0, room);
+      const last = cut.charCodeAt(cut.length - 1);
+      if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1);
+      return push(JSON.stringify(cut).slice(0, -1));
+    }
+    if (x === null || typeof x !== "object") {
+      // Numbers (NaN and Infinity become `null`), booleans, null.
+      return push(JSON.stringify(x) ?? "null");
+    }
+    if (Array.isArray(x)) {
+      push("[");
+      x.forEach((item, i) => {
+        if (i > 0) push(",");
+        // An array keeps a slot for `undefined`; an object drops the key.
+        write(item === undefined ? null : item);
+      });
+      return push("]");
+    }
+    push("{");
+    let first = true;
+    for (const key of Object.keys(x)) {
+      const item = (x as Record<string, unknown>)[key];
+      if (item === undefined) continue;
+      if (!first) push(",");
+      first = false;
+      push(`${JSON.stringify(key)}:`);
+      write(item);
+    }
+    push("}");
+  };
+  try {
+    write(value);
+  } catch (e) {
+    if (e !== FULL) throw e;
+  }
+  return out.slice(0, limit);
+}

@@ -25,6 +25,7 @@
  */
 
 import type { BsonTypeTree, CellValue } from "@/types";
+import { truncateForDisplay } from "@/lib/grid/formatValue";
 
 /**
  * BSON type vocabulary, using the backend's own lowercase names (see
@@ -317,10 +318,18 @@ export function displayValue(field: DocField, nullDisplay: string): string {
     return type === "undefined" ? "undefined" : nullDisplay;
   }
   if (typeof value === "string" && type !== "objectId" && type !== "date") {
-    return `"${value}"`;
+    return `"${truncateForDisplay(value, LIST_TEXT_CAP)}"`;
   }
   return String(value);
 }
+
+/**
+ * How much of a string a field row puts in the DOM. The row is one line,
+ * clipped by CSS, so a value past this is never seen — but it is still laid
+ * out, and a 1.5 MB prompt was. Far wider than any screen; the full value is
+ * one click away in the editor, which reads the field, not this text.
+ */
+export const LIST_TEXT_CAP = 2000;
 
 /**
  * The type label shown in a field row's right gutter. A SQL top-level field

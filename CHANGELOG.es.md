@@ -8,6 +8,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **El grid ya no serializa un valor enorme solo para enseñar 200 caracteres.**
+  Cada celda visible con un objeto o un array convertía el valor entero a JSON
+  en cada render y solo después lo recortaba al límite de visualización, así
+  que un documento con un prompt de 1,5 MB dentro de un array pagaba 1,5 MB de
+  texto que nunca se veía. Ahora la celda se detiene en el límite y pinta
+  exactamente lo mismo que antes; el texto completo solo se genera al abrir la
+  celda en el editor. En la lista de documentos, un string largo se recorta a
+  2.000 caracteres antes de llegar a la fila, donde antes se maquetaba entero
+  para luego quedar oculto.
+
 ## [1.38.0] — 2026-11-02
 
 ### Añadido

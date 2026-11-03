@@ -92,11 +92,7 @@ import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/clipboard";
 import { notify } from "@/lib/notify";
 import { toBulk } from "@/lib/grid/copyFormats";
-import {
-  formatValue,
-  rawCellText,
-  truncateForDisplay,
-} from "@/lib/grid/formatValue";
+import { cellDisplayText, formatValue } from "@/lib/grid/formatValue";
 import {
   GRID_GUTTER_WIDTH,
   MAX_AUTOFIT_WIDTH,
@@ -941,17 +937,15 @@ export function DataGrid({
       columnIndexByName,
       rows: visibleRows,
       // The fit has to reproduce what the cell paints, NULL placeholder and
-      // length cap included — hence the same two helpers the `cell` renderer
-      // below calls, rather than a second copy of the rule.
+      // length cap included — hence the same helper the `cell` renderer calls,
+      // rather than a second copy of the rule.
       cellText: (v, idx) =>
         v === null
           ? nullDisplay
-          : truncateForDisplay(
-              rawCellText(
-                v as CellValue,
-                bitColNames.has(result.columns[idx].name),
-                bitDisplay,
-              ),
+          : cellDisplayText(
+              v as CellValue,
+              bitColNames.has(result.columns[idx].name),
+              bitDisplay,
               truncateLongTextAt,
             ),
       // gap before the type (4) + the sort glyph and its gap (16) + one key

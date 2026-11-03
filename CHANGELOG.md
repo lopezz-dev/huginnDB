@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **The grid no longer serialises a huge value just to show 200 characters of
+  it.** Each visible cell holding an object or array converted the whole value
+  to JSON on every render and only then cut it to the display limit, so a
+  document with a 1.5 MB prompt inside an array paid for 1.5 MB of text it
+  never showed. A cell now stops at the limit, and paints exactly what it
+  painted before; the full text is built only when the cell is opened in the
+  editor. In the document list, a long string is cut to 2,000 characters
+  before it reaches the row, where it was laid out whole and then clipped.
+
 ## [1.38.0] — 2026-11-02
 
 ### Added
