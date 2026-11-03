@@ -36,6 +36,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `src-tauri/` (`docs/MCP*.md` and `mcpb/`) are named first so it cannot
   swallow them, and pushes to `develop` and `main` always run the whole
   suite.
+  
+- **CI no longer recompiles every dependency when its cache has been
+  evicted.** Release and canary runs each saved about 2.2 GB of cache that,
+  being scoped to a tag or a one-off branch, no later run could read; together
+  with a 1.5 GB cache per pull request they pushed the repository past
+  GitHub's 10 GB budget, which evicted the main-branch cache pull requests
+  restore from, and the Windows leg then took 12–20 minutes instead of 5. Now
+  only pushes to `develop` and `main` save a cache (CI also runs on `develop`
+  for that reason, so a pull request starts from what was last merged), the
+  test build carries line tables instead of full debuginfo, and the Windows
+  leg builds on a trusted Dev Drive mounted at `target/`, out of reach of
+  NTFS and Defender's real-time scan.
 
 ## [1.38.0] — 2026-11-02
 

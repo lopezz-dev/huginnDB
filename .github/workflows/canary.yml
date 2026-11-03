@@ -76,6 +76,11 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
+          # Restore only, for the reason in release.yml: the saved cache would
+          # be scoped to the branch the canary was dispatched from, which CI's
+          # pull_request runs cannot read, and it would crowd out the ones
+          # they can.
+          save-if: false
 
       - name: Install JS dependencies
         run: pnpm install --frozen-lockfile

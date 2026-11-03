@@ -40,6 +40,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `src-tauri/` (`docs/MCP*.md` y `mcpb/`) se nombran primero para que la
   lista no se las trague, y los push a `develop` y `main` siempre ejecutan la
   suite completa.
+  
+- **El CI ya no recompila todas las dependencias cuando su caché ha sido
+  desalojada.** Cada ejecución de release y de canary guardaba unos 2,2 GB de
+  caché que, al quedar ligada a un tag o a una rama de un solo uso, ninguna
+  ejecución posterior podía leer; junto con 1,5 GB de caché por cada pull
+  request, llevaban el repositorio por encima del límite de 10 GB de GitHub, lo
+  que desalojaba la caché de la rama principal de la que parten las pull
+  requests, y la pata de Windows pasaba entonces de 5 minutos a entre 12 y 20.
+  Ahora solo los push a `develop` y `main` guardan caché (el CI también se
+  ejecuta en `develop` por ese motivo, así que una pull request parte de lo
+  último que se fusionó), la build de tests lleva tablas de líneas en lugar de
+  información de depuración completa, y la pata de Windows compila en un Dev
+  Drive de confianza montado en `target/`, fuera del alcance de NTFS y del
+  análisis en tiempo real de Defender.
 
 ## [1.38.0] — 2026-11-02
 
