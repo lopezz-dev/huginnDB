@@ -93,10 +93,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   GitHub's 10 GB budget, which evicted the main-branch cache pull requests
   restore from, and the Windows leg then took 12–20 minutes instead of 5. Now
   only pushes to `develop` save a cache (CI now runs on `develop` for that
-  reason, so a pull request starts from what was last merged), the
-  test build carries line tables instead of full debuginfo, and the Windows
-  leg builds on a trusted Dev Drive mounted at `target/`, out of reach of
-  NTFS and Defender's real-time scan.
+  reason, so a pull request starts from what was last merged), and the test
+  build carries line tables instead of full debuginfo.
 
 ## [1.38.0] — 2026-11-02
 

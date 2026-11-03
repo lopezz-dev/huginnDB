@@ -189,23 +189,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Windows builds on NTFS with Defender scanning every object file cargo
-      # writes, which is most of why this leg ran twice as long as Linux. A
-      # Dev Drive (ReFS, trusted so Defender runs in performance mode) mounted
-      # at the target directory moves exactly that IO off it, and mounting it
-      # there — rather than copying the workspace onto the drive — leaves every
-      # path below, the cache's included, unchanged. It must come before the
-      # cache restore so the restored artifacts land on the drive. The runner is
-      # ephemeral and builds only this checkout, so trusting the drive costs
-      # nothing it would otherwise protect.
-      - name: Mount Dev Drive at the target directory
-        if: runner.os == 'Windows'
-        uses: samypr100/setup-dev-drive@v4
-        with:
-          drive-size: 12GB
-          mount-path: src-tauri/target
-          trusted-dev-drive: true
-
+      # No Dev Drive on the Windows leg, though one was tried (#306) to move
+      # cargo's IO off NTFS and Defender. Mounted at src-tauri/target, the
+      # volume root brings a `System Volume Information` directory nobody can
+      # read, and rust-cache walks target/ before restoring: it failed with
+      # EPERM on every Windows run, so that leg neither restored nor saved a
+      # cache and every run built cold. Measured cold against cold, the drive
+      # saved nothing (12.1 vs 12.4 minutes), so it went rather than being
+      # mounted elsewhere.
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:

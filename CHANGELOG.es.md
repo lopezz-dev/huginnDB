@@ -103,10 +103,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   requests, y la pata de Windows pasaba entonces de 5 minutos a entre 12 y 20.
   Ahora solo los push a `develop` guardan caché (el CI se ejecuta ahora en
   `develop` por ese motivo, así que una pull request parte de lo
-  último que se fusionó), la build de tests lleva tablas de líneas en lugar de
-  información de depuración completa, y la pata de Windows compila en un Dev
-  Drive de confianza montado en `target/`, fuera del alcance de NTFS y del
-  análisis en tiempo real de Defender.
+  último que se fusionó), y la build de tests lleva tablas de líneas en lugar
+  de información de depuración completa.
 
 ## [1.38.0] — 2026-11-02
 
