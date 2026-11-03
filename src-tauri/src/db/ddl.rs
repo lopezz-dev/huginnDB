@@ -502,6 +502,103 @@ fn build_alter(
     }
 }
 
+/// How the primary key changes between `orig` and `desired`.
+struct PkChange<'a> {
+    /// Whether `orig` has a key, which has to be dropped first.
+    had: bool,
+    /// The key's columns afterwards, in table order; empty when it goes away.
+    desired: Vec<&'a str>,
+}
+
+/// The primary-key change, or `None` when there is none.
+///
+/// Both keys are compared by the names the columns will have, in table order —
+/// so renaming a key column is not a key change, and neither is moving one.
+fn primary_key_change<'a>(
+    orig: &TableStructure,
+    desired: &'a TableStructure,
+) -> Option<PkChange<'a>> {
+    let renamed: std::collections::HashMap<&str, &str> = desired
+        .columns
+        .iter()
+        .filter_map(|c| c.original_name.as_deref().map(|o| (o, c.name.as_str())))
+        .collect();
+    // A dropped key column maps to "", which no desired column is called.
+    let mut orig_pk: Vec<&str> = orig
+        .columns
+        .iter()
+        .filter(|c| c.is_primary_key)
+        .map(|c| renamed.get(c.name.as_str()).copied().unwrap_or(""))
+        .collect();
+    let mut desired_pk: Vec<&str> = desired
+        .columns
+        .iter()
+        .filter(|c| c.is_primary_key)
+        .map(|c| c.name.as_str())
+        .collect();
+    let had = !orig_pk.is_empty();
+    // Order only matters for the statement; membership decides the change.
+    let desired_in_order = desired_pk.clone();
+    orig_pk.sort_unstable();
+    desired_pk.sort_unstable();
+    (orig_pk != desired_pk).then_some(PkChange {
+        had,
+        desired: desired_in_order,
+    })
+}
+
+/// Drop a Postgres table's primary key, whatever it is called.
+///
+/// `TableStructure` does not carry the constraint's name, and `<table>_pkey`
+/// is only the name Postgres picks at CREATE time: a table renamed since keeps
+/// its old one. So the statement looks it up in `pg_constraint` and drops it
+/// with dynamic SQL — one `DO` block, shown in the preview exactly as it runs.
+/// No key (a dropped key column already took it) is a no-op.
+fn pg_drop_primary_key(qt: &str) -> String {
+    // `qt` is double-quoted identifiers; `validate_ident` lets a single quote
+    // through, so it is doubled for the string literal.
+    let rel = qt.replace('\'', "''");
+    let mut tag = "$huginndb$".to_string();
+    while qt.contains(&tag) {
+        tag.insert(1, '_');
+    }
+    format!(
+        "DO {tag} DECLARE pk name; BEGIN \
+         SELECT conname INTO pk FROM pg_constraint \
+         WHERE conrelid = '{rel}'::regclass AND contype = 'p'; \
+         IF pk IS NOT NULL THEN \
+         EXECUTE format('ALTER TABLE %s DROP CONSTRAINT %I', '{rel}'::regclass, pk); \
+         END IF; END {tag}"
+    )
+}
+
+/// Refuse, with the reason, a MySQL key change that would leave an
+/// AUTO_INCREMENT column unindexed.
+///
+/// InnoDB requires the AUTO_INCREMENT column to be the first column of some
+/// index. When it is the key that provided one, unticking it (or moving it
+/// behind another key column) makes the server refuse the ALTER with "there can
+/// be only one auto column and it must be defined as a key", which does not
+/// say which box to change.
+fn mysql_check_auto_increment_keyed(desired: &TableStructure, pk: &[&str]) -> AppResult<()> {
+    for c in desired.columns.iter().filter(|c| c.auto_increment) {
+        let leads_key = pk.first() == Some(&c.name.as_str());
+        let leads_index = desired
+            .indexes
+            .iter()
+            .any(|i| i.columns.first() == Some(&c.name));
+        if !leads_key && !leads_index {
+            return Err(AppError::InvalidInput(format!(
+                "MySQL needs the AUTO_INCREMENT column {:?} to be the first column of the \
+                 primary key or of an index. Keep it in the key, add an index on it, or \
+                 untick AUTO_INCREMENT",
+                c.name
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn build_alter_pg_mysql(
     dialect: Dialect,
     orig: &TableStructure,
@@ -538,6 +635,16 @@ fn build_alter_pg_mysql(
         }
     }
 
+    // Steps 2 and 3 are collected as actions first: whether each becomes its
+    // own statement depends on whether the primary key changes (see below).
+    let pk = primary_key_change(orig, desired);
+    if dialect == Dialect::Mysql {
+        if let Some(pk) = &pk {
+            mysql_check_auto_increment_keyed(desired, &pk.desired)?;
+        }
+    }
+    let mut specs = Vec::new();
+
     // 2. Dropped columns (present in orig, no desired column claims them).
     let claimed: std::collections::HashSet<&str> = desired
         .columns
@@ -546,10 +653,7 @@ fn build_alter_pg_mysql(
         .collect();
     for oc in &orig.columns {
         if !claimed.contains(oc.name.as_str()) {
-            out.push(format!(
-                "ALTER TABLE {qt} DROP COLUMN {}",
-                dialect.quote_ident(&oc.name)
-            ));
+            specs.push(format!("DROP COLUMN {}", dialect.quote_ident(&oc.name)));
         }
     }
 
@@ -571,17 +675,61 @@ fn build_alter_pg_mysql(
                     clause.push(' ');
                     clause.push_str(pos);
                 }
-                out.push(format!("ALTER TABLE {qt} ADD COLUMN {clause}"));
+                specs.push(format!("ADD COLUMN {clause}"));
             }
             Some(orig_name) => {
                 let prev = orig_by_name.get(orig_name.as_str());
                 if let Some(prev) = prev {
                     let position = positions.get(&c.name).map(String::as_str);
                     if column_changed(prev, c) || position.is_some() {
-                        out.extend(alter_column_stmts(dialect, &qt, c, position));
+                        specs.extend(alter_column_specs(dialect, c, position));
                     }
                 }
             }
+        }
+    }
+
+    // The primary key. `column_changed` has always noticed a ticked or
+    // unticked PK box, but nothing used to say so to the server: the preview
+    // showed a column change, apply succeeded, and the key stayed as it was.
+    let add_pk = pk.as_ref().filter(|pk| !pk.desired.is_empty()).map(|pk| {
+        let cols = pk
+            .desired
+            .iter()
+            .map(|c| dialect.quote_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("ADD PRIMARY KEY ({cols})")
+    });
+    let drop_pk = pk.as_ref().is_some_and(|pk| pk.had);
+    match (&pk, dialect) {
+        // MySQL validates every action of one ALTER TABLE against the table it
+        // leaves behind, and each statement on its own against the table in
+        // between. In between is where it fails: an AUTO_INCREMENT column left
+        // without a key ("there can be only one auto column and it must be
+        // defined as a key"), a key over a column still nullable, or a DROP
+        // PRIMARY KEY after DROP COLUMN already took the key with it. So when
+        // the key changes, the key and every column action share one statement.
+        (Some(_), Dialect::Mysql) => {
+            let mut all = Vec::with_capacity(specs.len() + 2);
+            if drop_pk {
+                all.push("DROP PRIMARY KEY".to_string());
+            }
+            all.extend(specs);
+            all.extend(add_pk);
+            out.push(format!("ALTER TABLE {qt} {}", all.join(", ")));
+        }
+        // Postgres runs the whole list in one transaction (`db::exec`), so
+        // separate statements are as safe, and they read better in the preview.
+        // The old key goes first — before a column it covers is dropped or
+        // made nullable — and the new one last, once every column it names
+        // exists and is NOT NULL.
+        _ => {
+            if drop_pk {
+                out.push(pg_drop_primary_key(&qt));
+            }
+            out.extend(specs.into_iter().map(|s| format!("ALTER TABLE {qt} {s}")));
+            out.extend(add_pk.map(|s| format!("ALTER TABLE {qt} {s}")));
         }
     }
 
@@ -756,27 +904,8 @@ fn build_alter_mssql(orig: &TableStructure, desired: &TableStructure) -> AppResu
             }
         }
     }
-    // The key compared by the names the columns will have, in table order —
-    // so renaming a key column is not a key change.
-    let renamed: std::collections::HashMap<&str, &str> = desired
-        .columns
-        .iter()
-        .filter_map(|c| c.original_name.as_deref().map(|o| (o, c.name.as_str())))
-        .collect();
-    let orig_pk: Vec<&str> = orig
-        .columns
-        .iter()
-        .filter(|c| c.is_primary_key)
-        .map(|c| renamed.get(c.name.as_str()).copied().unwrap_or(""))
-        .collect();
-    let desired_pk: Vec<&str> = desired
-        .columns
-        .iter()
-        .filter(|c| c.is_primary_key)
-        .map(|c| c.name.as_str())
-        .collect();
-    let pk_changed = orig_pk != desired_pk;
-    if pk_changed && !orig_pk.is_empty() {
+    let pk = primary_key_change(orig, desired);
+    if pk.as_ref().is_some_and(|pk| pk.had) {
         out.push(mssql_drop_primary_key(&qt));
     }
 
@@ -835,8 +964,9 @@ fn build_alter_mssql(orig: &TableStructure, desired: &TableStructure) -> AppResu
     }
 
     // 6. What is new, once every column it may name exists.
-    if pk_changed && !desired_pk.is_empty() {
-        let cols = desired_pk
+    if let Some(pk) = pk.as_ref().filter(|pk| !pk.desired.is_empty()) {
+        let cols = pk
+            .desired
             .iter()
             .map(|c| dialect.quote_ident(c))
             .collect::<Vec<_>>()
@@ -943,15 +1073,14 @@ fn column_changed(a: &ColumnDef, b: &ColumnDef) -> bool {
         || a.auto_increment != b.auto_increment
 }
 
+/// The `ALTER TABLE` actions (everything after `ALTER TABLE <table> `) that
+/// change one existing column. The caller decides whether each becomes its own
+/// statement or all of them share one — see [`build_alter_pg_mysql`].
+///
 /// `position`, when given, is a MySQL `FIRST` / `AFTER <col>` clause to
 /// append after the column definition — always `None` on the Postgres arm,
 /// which has no equivalent.
-fn alter_column_stmts(
-    dialect: Dialect,
-    qt: &str,
-    c: &ColumnDef,
-    position: Option<&str>,
-) -> Vec<String> {
+fn alter_column_specs(dialect: Dialect, c: &ColumnDef, position: Option<&str>) -> Vec<String> {
     match dialect {
         Dialect::Mysql => {
             // MySQL carries the whole new definition in one MODIFY.
@@ -960,25 +1089,23 @@ fn alter_column_stmts(
                 clause.push(' ');
                 clause.push_str(pos);
             }
-            vec![format!("ALTER TABLE {qt} MODIFY COLUMN {clause}")]
+            vec![format!("MODIFY COLUMN {clause}")]
         }
         Dialect::Postgres => {
             let col = dialect.quote_ident(&c.name);
-            let mut v = vec![format!(
-                "ALTER TABLE {qt} ALTER COLUMN {col} TYPE {}",
-                c.data_type.trim()
-            )];
-            if c.nullable {
-                v.push(format!("ALTER TABLE {qt} ALTER COLUMN {col} DROP NOT NULL"));
+            let mut v = vec![format!("ALTER COLUMN {col} TYPE {}", c.data_type.trim())];
+            // A key column is NOT NULL whatever its checkbox says, as in
+            // `column_clause`; a DROP NOT NULL on it would be refused.
+            if c.nullable && !c.is_primary_key {
+                v.push(format!("ALTER COLUMN {col} DROP NOT NULL"));
             } else {
-                v.push(format!("ALTER TABLE {qt} ALTER COLUMN {col} SET NOT NULL"));
+                v.push(format!("ALTER COLUMN {col} SET NOT NULL"));
             }
             match &c.default {
-                Some(d) if !d.trim().is_empty() => v.push(format!(
-                    "ALTER TABLE {qt} ALTER COLUMN {col} SET DEFAULT {}",
-                    d.trim()
-                )),
-                _ => v.push(format!("ALTER TABLE {qt} ALTER COLUMN {col} DROP DEFAULT")),
+                Some(d) if !d.trim().is_empty() => {
+                    v.push(format!("ALTER COLUMN {col} SET DEFAULT {}", d.trim()))
+                }
+                _ => v.push(format!("ALTER COLUMN {col} DROP DEFAULT")),
             }
             v
         }
@@ -1551,6 +1678,159 @@ mod tests {
         let desired = table("t", vec![existing("b", "int"), existing("a", "int")]);
         let stmts = build_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
         assert!(stmts.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Primary-key changes (Postgres, MySQL)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn postgres_key_change_drops_the_old_key_first_and_adds_the_new_one_last() {
+        let orig = table("t", vec![pk(existing("a", "int")), existing("b", "int")]);
+        let desired = table(
+            "t",
+            vec![pk(existing("a", "int")), pk(existing("b", "int"))],
+        );
+        let stmts = build_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
+        // The constraint's name is looked up, not guessed as `t_pkey`.
+        assert!(stmts[0].starts_with("DO $huginndb$"));
+        assert!(stmts[0].contains("conrelid = '\"t\"'::regclass AND contype = 'p'"));
+        // `b` is NOT NULL before it joins the key, though its box says nullable.
+        assert_eq!(
+            &stmts[1..],
+            [
+                "ALTER TABLE \"t\" ALTER COLUMN \"b\" TYPE int",
+                "ALTER TABLE \"t\" ALTER COLUMN \"b\" SET NOT NULL",
+                "ALTER TABLE \"t\" ALTER COLUMN \"b\" DROP DEFAULT",
+                "ALTER TABLE \"t\" ADD PRIMARY KEY (\"a\", \"b\")",
+            ]
+        );
+    }
+
+    #[test]
+    fn postgres_unticking_the_key_drops_it_and_adds_none() {
+        let orig = table("t", vec![pk(existing("id", "int"))]);
+        let desired = table("t", vec![existing("id", "int")]);
+        let stmts = build_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
+        assert!(stmts[0].starts_with("DO "));
+        // Only after the key is gone can the column lose NOT NULL.
+        assert_eq!(
+            stmts[2],
+            "ALTER TABLE \"t\" ALTER COLUMN \"id\" DROP NOT NULL"
+        );
+        assert!(!stmts.iter().any(|s| s.contains("ADD PRIMARY KEY")));
+    }
+
+    #[test]
+    fn postgres_new_key_column_on_a_keyless_table_has_nothing_to_drop() {
+        let orig = table("t", vec![existing("a", "int")]);
+        let desired = table("t", vec![existing("a", "int"), pk(col("id", "int"))]);
+        let stmts = build_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
+        assert_eq!(
+            stmts,
+            [
+                "ALTER TABLE \"t\" ADD COLUMN \"id\" int NOT NULL",
+                "ALTER TABLE \"t\" ADD PRIMARY KEY (\"id\")",
+            ]
+        );
+    }
+
+    #[test]
+    fn renaming_or_moving_a_key_column_is_not_a_key_change() {
+        let orig = table("t", vec![pk(existing("id", "int")), existing("x", "int")]);
+        let mut renamed = pk(existing("id", "int"));
+        renamed.name = "order_id".into();
+        let desired = table("t", vec![existing("x", "int"), renamed]);
+        for dialect in [Dialect::Postgres, Dialect::Mysql] {
+            let stmts = build_ddl(dialect, Some(&orig), &desired).unwrap();
+            assert!(
+                !stmts
+                    .iter()
+                    .any(|s| s.contains("PRIMARY KEY") || s.starts_with("DO ")),
+                "{dialect:?}: {stmts:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn postgres_key_drop_escapes_the_table_name() {
+        let orig = table("o'brien", vec![pk(existing("id", "int"))]);
+        let desired = table("o'brien", vec![existing("id", "int")]);
+        let stmts = build_ddl(Dialect::Postgres, Some(&orig), &desired).unwrap();
+        assert!(stmts[0].contains("'\"o''brien\"'::regclass"));
+        assert!(pg_drop_primary_key("\"a$huginndb$b\"").starts_with("DO $_huginndb$"));
+    }
+
+    #[test]
+    fn sqlite_key_change_rebuilds_the_table() {
+        let orig = table("t", vec![pk(existing("a", "int")), existing("b", "int")]);
+        let desired = table(
+            "t",
+            vec![pk(existing("a", "int")), pk(existing("b", "int"))],
+        );
+        assert!(sqlite_rebuild_required(Some(&orig), &desired));
+        let stmts = build_ddl(Dialect::Sqlite, Some(&orig), &desired).unwrap();
+        assert!(
+            stmts
+                .iter()
+                .any(|s| s.contains("PRIMARY KEY (\"a\", \"b\")")),
+            "{stmts:?}"
+        );
+    }
+
+    #[test]
+    fn mysql_key_change_is_one_statement() {
+        let orig = table("t", vec![pk(existing("a", "int")), existing("b", "int")]);
+        let desired = table(
+            "t",
+            vec![pk(existing("a", "int")), pk(existing("b", "int"))],
+        );
+        let stmts = build_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
+        assert_eq!(
+            stmts,
+            [
+                "ALTER TABLE `t` DROP PRIMARY KEY, MODIFY COLUMN `b` int NOT NULL, \
+              ADD PRIMARY KEY (`a`, `b`)"
+            ]
+        );
+    }
+
+    #[test]
+    fn mysql_key_change_folds_a_dropped_key_column_into_the_same_statement() {
+        // Separately, DROP COLUMN `a` would take the key with it and the
+        // DROP PRIMARY KEY after it would find none.
+        let orig = table("t", vec![pk(existing("a", "int")), existing("b", "int")]);
+        let desired = table("t", vec![pk(existing("b", "int"))]);
+        let stmts = build_ddl(Dialect::Mysql, Some(&orig), &desired).unwrap();
+        assert_eq!(stmts.len(), 1);
+        assert!(stmts[0].starts_with("ALTER TABLE `t` DROP PRIMARY KEY, DROP COLUMN `a`, "));
+        assert!(stmts[0].ends_with("ADD PRIMARY KEY (`b`)"));
+    }
+
+    #[test]
+    fn mysql_refuses_to_leave_an_auto_increment_column_unindexed() {
+        let mut id = pk(existing("id", "int"));
+        id.auto_increment = true;
+        let orig = table("t", vec![id.clone()]);
+        let mut unkeyed = id.clone();
+        unkeyed.is_primary_key = false;
+        let err = build_ddl(
+            Dialect::Mysql,
+            Some(&orig),
+            &table("t", vec![unkeyed.clone()]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("AUTO_INCREMENT column \"id\""), "{err}");
+
+        // An index that leads with it keeps it legal.
+        let mut indexed = table("t", vec![unkeyed]);
+        indexed.indexes.push(IndexDef {
+            name: Some("ix_id".into()),
+            columns: vec!["id".into()],
+            unique: false,
+        });
+        assert!(build_ddl(Dialect::Mysql, Some(&orig), &indexed).is_ok());
     }
 
     // -----------------------------------------------------------------------
