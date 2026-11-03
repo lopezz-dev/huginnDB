@@ -94,6 +94,11 @@ export interface GridRowCallbacks {
   selectedRows: () => CellValue[][];
   applyRowSelectionClick: (rowKey: string | null, e: React.MouseEvent) => void;
   toggleRowKey: (key: string) => void;
+  /** Run with the row whole, loading it first when the page cut any of its
+   *  cells (ADR #133). Every copy goes through it. */
+  withFullRow: (row: CellValue[], run: (row: CellValue[]) => void) => void;
+  /** Whether a cell is one the page left on the server. */
+  isTrimmedCell: (row: CellValue[], column: string) => boolean;
 }
 
 /**
@@ -604,6 +609,9 @@ export const GridRow = memo(function GridRow({
                           <ContextMenuSeparator />
                           <ContextMenuAction
                             icon={Filter}
+                            disabled={selectedRows.some((r) =>
+                              callbacksRef.current.isTrimmedCell(r, meta.name),
+                            )}
                             label={t("dataGrid.ctxFilterInSelected", {
                               column: meta.name,
                               count:
@@ -622,6 +630,9 @@ export const GridRow = memo(function GridRow({
                           />
                           <ContextMenuAction
                             icon={FilterX}
+                            disabled={selectedRows.some((r) =>
+                              callbacksRef.current.isTrimmedCell(r, meta.name),
+                            )}
                             label={t("dataGrid.ctxFilterNotInSelected", {
                               column: meta.name,
                               count:
@@ -658,7 +669,10 @@ export const GridRow = memo(function GridRow({
                     <>
                       <ContextMenuLabel>
                         {meta.name}
-                        {value === null ? " · NULL" : ""}
+                        {value === null &&
+                        !callbacksRef.current.isTrimmedCell(rowValues, meta.name)
+                          ? " · NULL"
+                          : ""}
                       </ContextMenuLabel>
                       {isFkCell && value !== null && value !== undefined && (
                         <>
@@ -674,15 +688,21 @@ export const GridRow = memo(function GridRow({
                         icon={Copy}
                         label={t("dataGrid.ctxCopy")}
                         onSelect={() =>
-                          callbacksRef.current.copyToClipboard(formatValue(value))
+                          callbacksRef.current.withFullRow(rowValues, (r) =>
+                            callbacksRef.current.copyToClipboard(
+                              formatValue(r[colIdx]),
+                            ),
+                          )
                         }
                       />
                       <ContextMenuAction
                         icon={ClipboardCopy}
                         label={t("dataGrid.ctxCopyWithColumn")}
                         onSelect={() =>
-                          callbacksRef.current.copyToClipboard(
-                            `${meta.name} = ${sqlLiteral(value, driver)}`,
+                          callbacksRef.current.withFullRow(rowValues, (r) =>
+                            callbacksRef.current.copyToClipboard(
+                              `${meta.name} = ${sqlLiteral(r[colIdx], driver)}`,
+                            ),
                           )
                         }
                       />
@@ -700,8 +720,10 @@ export const GridRow = memo(function GridRow({
                         <ContextMenuSubContent>
                           <ContextMenuItem
                             onSelect={() =>
-                              callbacksRef.current.copyToClipboard(
-                                rowToJson(rowValues, resultColumns),
+                              callbacksRef.current.withFullRow(rowValues, (r) =>
+                                callbacksRef.current.copyToClipboard(
+                                  rowToJson(r, resultColumns),
+                                ),
                               )
                             }
                           >
@@ -709,12 +731,9 @@ export const GridRow = memo(function GridRow({
                           </ContextMenuItem>
                           <ContextMenuItem
                             onSelect={() =>
-                              callbacksRef.current.copyToClipboard(
-                                rowToSqlInsert(
-                                  rowValues,
-                                  resultColumns,
-                                  driver,
-                                  tableName,
+                              callbacksRef.current.withFullRow(rowValues, (r) =>
+                                callbacksRef.current.copyToClipboard(
+                                  rowToSqlInsert(r, resultColumns, driver, tableName),
                                 ),
                               )
                             }
@@ -723,13 +742,15 @@ export const GridRow = memo(function GridRow({
                           </ContextMenuItem>
                           <ContextMenuItem
                             onSelect={() =>
-                              callbacksRef.current.copyToClipboard(
-                                rowToSqlUpdate(
-                                  rowValues,
-                                  resultColumns,
-                                  driver,
-                                  tableName,
-                                  pkColumnNames,
+                              callbacksRef.current.withFullRow(rowValues, (r) =>
+                                callbacksRef.current.copyToClipboard(
+                                  rowToSqlUpdate(
+                                    r,
+                                    resultColumns,
+                                    driver,
+                                    tableName,
+                                    pkColumnNames,
+                                  ),
                                 ),
                               )
                             }
@@ -752,7 +773,11 @@ export const GridRow = memo(function GridRow({
                       {editable && onCellSave && (
                         <ContextMenuAction
                           icon={Eraser}
-                          disabled={value === null}
+                          // A cut cell holds a stand-in `null`, not a NULL.
+                          disabled={
+                            value === null &&
+                            !callbacksRef.current.isTrimmedCell(rowValues, meta.name)
+                          }
                           locked={columnLock?.(meta.name) ?? null}
                           label={t("cellEditor.setNull")}
                           onSelect={() =>
@@ -768,6 +793,12 @@ export const GridRow = memo(function GridRow({
                           <ContextMenuSeparator />
                           <ContextMenuAction
                             icon={Filter}
+                            // Filtering by a value the page never received
+                            // would filter by its stand-in `null`.
+                            disabled={callbacksRef.current.isTrimmedCell(
+                              rowValues,
+                              meta.name,
+                            )}
                             label={t("dataGrid.ctxFilterBy")}
                             onSelect={() =>
                               onAddFilter(
@@ -783,6 +814,10 @@ export const GridRow = memo(function GridRow({
                           />
                           <ContextMenuAction
                             icon={FilterX}
+                            disabled={callbacksRef.current.isTrimmedCell(
+                              rowValues,
+                              meta.name,
+                            )}
                             label={t("dataGrid.ctxFilterExcluding")}
                             onSelect={() =>
                               onAddFilter(

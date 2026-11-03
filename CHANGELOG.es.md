@@ -8,6 +8,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **Abrir una colección de MongoDB ya no descarga sus campos más grandes.**
+  Un campo de primer nivel de más de 64 KB se queda en el servidor y aparece
+  en el grid como su tipo y su tamaño (por ejemplo *Array · 1,4 MB*). El
+  documento entero se carga en cuanto la fila se edita, se abre en el editor,
+  se copia o se duplica, así que ninguna de esas acciones ve nunca una fila
+  incompleta. Filtrar por el valor de esa celda queda deshabilitado hasta
+  cargarla. Los casos que lo motivaron, por el túnel SSH de un cliente: una
+  página de transcripciones de un LLM (6,9 MB, 0,4–2,8 s) y una página de 10
+  ficheros guardados (2,3 s → 66 ms). El umbral está en Ajustes → Grid, y 0
+  desactiva el recorte. Solo recorta el listado del grid: la exportación, las
+  consultas, el conector MCP y el panel de IA siguen recibiendo los documentos
+  completos. Los servidores anteriores a MongoDB 4.4 se navegan como antes.
+
 ## [1.38.0] — 2026-11-02
 
 ### Añadido

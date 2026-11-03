@@ -22,6 +22,7 @@ import {
   selectGridPrefs,
 } from "@/stores/preferences/preferences";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import type { CellValue } from "@/types";
 
@@ -57,6 +58,12 @@ interface Props {
    *  the value is a query string. Absent for grids with no connection
    *  identity, which then format as standard SQL. */
   connectionId?: string;
+  /**
+   * Set when the cell was left on the server (ADR #133): `value` is only its
+   * stand-in `null`. The panel then shows `label` (its type and size) and a
+   * button that loads the row, after which it is handed the real value.
+   */
+  trimmed?: { label: string; onLoad: () => void };
 }
 
 export function CellPreview({
@@ -67,6 +74,7 @@ export function CellPreview({
   onSave,
   onSetNull,
   connectionId,
+  trimmed,
 }: Props) {
   /** String representation of the raw cell value. */
   const rawText = useMemo(() => {
@@ -159,7 +167,21 @@ export function CellPreview({
 
       {/* Content: formatted value */}
       <div className="max-h-48 overflow-auto p-3">
-        {isNull ? (
+        {trimmed ? (
+          <div className="flex items-center gap-2 text-xs">
+            <span className="font-mono italic text-muted-foreground">
+              {trimmed.label}
+            </span>
+            <Button
+              variant="outline"
+              size="xs"
+              className="ml-auto"
+              onClick={trimmed.onLoad}
+            >
+              {t("dataGrid.trimmed.load")}
+            </Button>
+          </div>
+        ) : isNull ? (
           <span className="font-mono text-xs italic text-muted-foreground">
             {nullDisplay}
           </span>

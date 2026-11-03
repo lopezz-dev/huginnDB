@@ -304,6 +304,14 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     value: num((p) => p.grid.truncateLongTextAt),
   },
   {
+    prefId: "grid.trimLargeValuesKb",
+    section: "grid",
+    labelKey: "settings.grid.trimLargeValuesKb.label",
+    descKey: "settings.grid.trimLargeValuesKb.desc",
+    keywords: "mongodb large values trim kb recortar valores grandes documento",
+    value: num((p) => p.grid.trimLargeValuesKb),
+  },
+  {
     prefId: "grid.zebraStripes",
     section: "grid",
     labelKey: "settings.grid.zebraStripes.label",

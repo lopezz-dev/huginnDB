@@ -10,7 +10,7 @@
 use crate::commands::query::{
     nonblank, shed_to_batch_budget, BatchResult, ColumnFilter, ColumnMeta, CountMode, CountResult,
     FilterOp, Projection, QueryResult, RowValue, SortSpec, StmtOutcome, TableFilter, TableQuery,
-    MAX_ADHOC_QUERY_ROWS,
+    TrimmedCell, MAX_ADHOC_QUERY_ROWS,
 };
 use crate::error::{AppError, AppResult};
 use crate::log_bus::{log_sql_sink, LogSink};
@@ -888,6 +888,27 @@ pub async fn fetch_collection_data(conn: &MongoConn, q: &TableQuery) -> AppResul
         None
     };
 
+    // Trimmed first, when asked for. Any command error falls back to the plain
+    // `find`: a server older than 4.4 has no `$bsonSize`, and a document whose
+    // keys `$arrayToObject` refuses would otherwise make the collection
+    // unbrowsable. A fault of the user's own filter fails the `find` the same
+    // way and surfaces from there, so nothing is hidden by the retry.
+    if let Some(above) = q.trim_above.filter(|n| *n > 0) {
+        match fetch_trimmed(&coll, q, filter.clone(), collation.clone(), above).await {
+            Ok((docs, cuts)) => {
+                let mut result = docs_to_result(docs, start.elapsed().as_millis() as u64, false);
+                let trimmed = apply_cuts(&mut result, cuts);
+                let mut result = result.with_trimmed(trimmed);
+                seed_id_column(&mut result);
+                result.total = total;
+                return Ok(result);
+            }
+            Err(AppError::Mongo(e)) if matches!(*e.kind, mongodb::error::ErrorKind::Command(_)) => {
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
     let mut action = coll
         .find(filter)
         .limit(q.limit.max(0))
@@ -911,6 +932,165 @@ pub async fn fetch_collection_data(conn: &MongoConn, q: &TableQuery) -> AppResul
     seed_id_column(&mut result);
     result.total = total;
     Ok(result)
+}
+
+/// A field [`fetch_trimmed`] left out of one document: its key, its BSON type
+/// as `$type` names it, and its size in bytes.
+type Cut = (String, String, u64);
+
+/// The browse's `find` as the equivalent pipeline, with two stages appended
+/// after `$limit` that swap every top-level field over `above` bytes for
+/// `null` and report what they swapped (ADR #133).
+///
+/// `$match`/`$sort`/`$skip`/`$limit` are the find's own filter, sort, skip and
+/// limit, which the server runs as the same plan, and the projection becomes
+/// a `$project` before the trim. The trim stages run on at most one page of
+/// documents, after every decision about *which* documents was made, so they
+/// change what crosses the wire and nothing else. `_id` is never cut: every
+/// write and every reload addresses the document through it.
+///
+/// Each output document is `{ d: <document with cut fields null>, t: [cuts] }`
+/// — a wrapper rather than a marker field inside the document, so no user key
+/// can collide with it.
+async fn fetch_trimmed(
+    coll: &mongodb::Collection<Document>,
+    q: &TableQuery,
+    filter: Document,
+    collation: Option<mongodb::options::Collation>,
+    above: u32,
+) -> AppResult<(Vec<Document>, Vec<Vec<Cut>>)> {
+    let mut pipeline = vec![doc! { "$match": filter }];
+    if let Some(sort) = sort_doc(&q.order) {
+        pipeline.push(doc! { "$sort": sort });
+    }
+    if q.offset > 0 {
+        pipeline.push(doc! { "$skip": q.offset });
+    }
+    // `find`'s limit of 0 means "no limit"; `$limit` rejects it.
+    if q.limit > 0 {
+        pipeline.push(doc! { "$limit": q.limit });
+    }
+    if let Some(p) = projection_doc(q.projection.as_ref()) {
+        pipeline.push(doc! { "$project": p });
+    }
+    pipeline.extend(trim_stages(above));
+
+    let mut action = coll.aggregate(pipeline);
+    if let Some(c) = collation {
+        action = action.collation(c);
+    }
+    if let Some(h) = nonblank(&q.hint) {
+        action = action.hint(mongodb::options::Hint::Name(h.to_string()));
+    }
+    let mut cursor = action.await?;
+    let wrapped = collect(&mut cursor).await?;
+
+    let mut docs = Vec::with_capacity(wrapped.len());
+    let mut cuts = Vec::with_capacity(wrapped.len());
+    for mut w in wrapped {
+        let d = match w.remove("d") {
+            Some(Bson::Document(d)) => d,
+            _ => Document::new(),
+        };
+        let t = match w.remove("t") {
+            Some(Bson::Array(t)) => t,
+            _ => Vec::new(),
+        };
+        let row_cuts = t
+            .into_iter()
+            .filter_map(|c| match c {
+                Bson::Document(c) => Some((
+                    c.get_str("k").ok()?.to_string(),
+                    c.get_str("t").unwrap_or("null").to_string(),
+                    match c.get("s") {
+                        Some(Bson::Int32(n)) => *n as u64,
+                        Some(Bson::Int64(n)) => *n as u64,
+                        _ => 0,
+                    },
+                )),
+                _ => None,
+            })
+            .collect();
+        docs.push(d);
+        cuts.push(row_cuts);
+    }
+    Ok((docs, cuts))
+}
+
+/// The two stages that cut a document's oversized top-level fields.
+///
+/// The first lists every field with its size, so `$bsonSize` runs once per
+/// field; `{ v: <value> }` is how a value that is not a document gets a BSON
+/// size (a few bytes of wrapper over the value's own). The second rebuilds
+/// the document with the cut fields `null`, keeping its key order, beside the
+/// list of what was cut.
+fn trim_stages(above: u32) -> [Document; 2] {
+    let cut = doc! {
+        "$and": [
+            { "$gt": ["$$this.s", above as i64] },
+            { "$ne": ["$$this.k", "_id"] },
+        ]
+    };
+    [
+        doc! { "$replaceWith": { "f": { "$map": {
+            "input": { "$objectToArray": "$$ROOT" },
+            "in": { "k": "$$this.k", "v": "$$this.v", "s": { "$bsonSize": { "v": "$$this.v" } } },
+        } } } },
+        doc! { "$replaceWith": {
+            "d": { "$arrayToObject": { "$map": {
+                "input": "$f",
+                "in": { "k": "$$this.k", "v": { "$cond": [cut.clone(), Bson::Null, "$$this.v"] } },
+            } } },
+            "t": { "$map": {
+                "input": { "$filter": { "input": "$f", "cond": cut } },
+                "in": { "k": "$$this.k", "t": { "$type": "$$this.v" }, "s": "$$this.s" },
+            } },
+        } },
+    ]
+}
+
+/// Record [`fetch_trimmed`]'s cuts on the shaped result: each cut cell keeps
+/// its `null` in `rows`, gets its real type in `row_types` instead of the
+/// `"null"` the shaping saw, and is listed in the returned cells. A column
+/// that only ever held cut values takes their type rather than `"null"`.
+fn apply_cuts(result: &mut QueryResult, cuts: Vec<Vec<Cut>>) -> Vec<TrimmedCell> {
+    let mut trimmed = Vec::new();
+    for (row, row_cuts) in cuts.into_iter().enumerate() {
+        for (key, ty, bytes) in row_cuts {
+            let Some(column) = result.columns.iter().position(|c| c.name == key) else {
+                continue;
+            };
+            let ty = type_name_of_dollar_type(&ty);
+            if let Some(cell) = result
+                .row_types
+                .as_mut()
+                .and_then(|t| t.get_mut(row))
+                .and_then(|r| r.get_mut(column))
+            {
+                *cell = Value::String(ty.to_string());
+            }
+            let meta = &mut result.columns[column];
+            if meta.data_type == "null" {
+                meta.data_type = ty.to_string();
+            } else if meta.data_type != ty && meta.data_type != "mixed" {
+                meta.data_type = "mixed".to_string();
+            }
+            trimmed.push(TrimmedCell { row, column, bytes });
+        }
+    }
+    trimmed
+}
+
+/// Translate a `$type` name into the label [`bson_type_name`] gives the same
+/// type, so a cut cell is labelled like any other.
+fn type_name_of_dollar_type(t: &str) -> &str {
+    match t {
+        "object" => "document",
+        "binData" => "binary",
+        "javascriptWithScope" => "javascript",
+        "decimal" => "decimal128",
+        other => other,
+    }
 }
 
 /// Give an empty browse page its `_id` column.
@@ -1521,6 +1701,7 @@ mod tests {
             collation: None,
             hint: None,
             with_count: false,
+            trim_above: None,
         }
     }
 
@@ -1626,6 +1807,90 @@ mod tests {
         // documents pasted without an array around them must not silently
         // insert only the first.
         assert!(parse_insert_source(r#"{ "a": 1 } { "b": 2 }"#).is_err());
+    }
+
+    // -- trimmed browse (ADR #133) -----------------------------------------
+
+    /// The trim stages run after `$limit` and never touch `_id`; the pipeline
+    /// that reaches the server is the find's own stages plus these two.
+    #[test]
+    fn trim_stages_cut_by_size_and_spare_the_id() {
+        let [sizes, rebuild] = trim_stages(65_536);
+        assert!(sizes.get_document("$replaceWith").is_ok());
+        let text = format!("{rebuild}");
+        assert!(text.contains("65536"), "{text}");
+        assert!(text.contains(r#""$ne": ["$$this.k", "_id"]"#), "{text}");
+    }
+
+    #[test]
+    fn a_cut_cell_keeps_its_null_and_gets_its_real_type() {
+        let docs = vec![
+            doc_with(&[
+                ("_id", Bson::Int32(1)),
+                ("big", Bson::Null),
+                ("n", Bson::Int32(1)),
+            ]),
+            doc_with(&[
+                ("_id", Bson::Int32(2)),
+                ("big", Bson::Array(vec![Bson::Int32(1)])),
+                ("n", Bson::Int32(2)),
+            ]),
+        ];
+        let mut result = docs_to_result(docs, 0, false);
+        let trimmed = apply_cuts(
+            &mut result,
+            vec![vec![("big".into(), "array".into(), 1_500_000)], vec![]],
+        );
+        assert_eq!(
+            trimmed,
+            vec![TrimmedCell {
+                row: 0,
+                column: 1,
+                bytes: 1_500_000
+            }]
+        );
+        assert_eq!(result.rows[0][1], Value::Null);
+        assert_eq!(
+            result.row_types.as_ref().unwrap()[0][1],
+            Value::from("array")
+        );
+        // Untouched cells keep what the shaping gave them.
+        assert_eq!(result.rows[1][1], serde_json::json!([1]));
+        assert_eq!(result.columns[1].data_type, "array");
+    }
+
+    #[test]
+    fn a_column_of_only_cut_values_is_typed_by_them() {
+        let docs = vec![doc_with(&[("_id", Bson::Int32(1)), ("blob", Bson::Null)])];
+        let mut result = docs_to_result(docs, 0, false);
+        apply_cuts(
+            &mut result,
+            vec![vec![("blob".into(), "binData".into(), 9)]],
+        );
+        assert_eq!(result.columns[1].data_type, "binary");
+    }
+
+    #[test]
+    fn dollar_type_names_map_onto_the_grid_labels() {
+        for (dollar, ours) in [
+            ("object", "document"),
+            ("binData", "binary"),
+            ("decimal", "decimal128"),
+            ("javascriptWithScope", "javascript"),
+            ("array", "array"),
+            ("string", "string"),
+            ("long", "long"),
+        ] {
+            assert_eq!(type_name_of_dollar_type(dollar), ours);
+        }
+    }
+
+    #[test]
+    fn an_empty_cut_list_leaves_the_result_unmarked() {
+        let result = QueryResult::rows(vec![], vec![], 0).with_trimmed(vec![]);
+        assert!(result.trimmed.is_none());
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(!json.contains("trimmed"), "{json}");
     }
 
     #[test]

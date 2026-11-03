@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { formatValue } from "@/lib/grid/formatValue";
+import { editText } from "@/lib/grid/documentTree";
+import type { TrimmedRows } from "@/lib/grid/trimmedCells";
 import {
   useCellEditor,
   type CellBindingContext,
@@ -74,6 +76,12 @@ export interface CellEditingOptions {
   columnLock?: (column: string) => string | null;
   onCellSave: CellSave | undefined;
   onFieldSave: FieldSave | undefined;
+  /**
+   * Cells the page left on the server (ADR #133). Every opener loads such a
+   * row before it shows anything, and takes the value from the loaded row:
+   * what the caller computed from the incomplete one is the stand-in `null`.
+   */
+  trimmed?: TrimmedRows;
 }
 
 /**
@@ -118,7 +126,46 @@ export function useCellEditing(opts: CellEditingOptions) {
     columnLock,
     onCellSave,
     onFieldSave,
+    trimmed,
   } = opts;
+
+  /**
+   * Run `open` with `rowValues` whole. A row with nothing cut runs at once,
+   * with the caller's own value; a cut one runs after the load, with the
+   * value re-read from the loaded row — at `field`'s path for a list-view
+   * field, as `editText` renders it there. A failed load was already
+   * reported; the editor simply does not open.
+   */
+  function withFullRow(
+    rowValues: CellValue[],
+    column: ColumnMeta,
+    value: string,
+    field: FieldRef | undefined,
+    open: (row: CellValue[], value: string) => void,
+  ) {
+    if (!trimmed?.of(rowValues)) {
+      open(rowValues, value);
+      return;
+    }
+    trimmed.hydrate(rowValues).then(
+      (row) => {
+        if (field) {
+          let v: unknown = row[columnIndexByName.get(field.path[0]) ?? -1];
+          for (const key of field.path.slice(1)) {
+            v =
+              v === null || typeof v !== "object"
+                ? undefined
+                : (v as Record<string, unknown>)[key];
+          }
+          open(row, editText((v ?? null) as CellValue, field.type));
+          return;
+        }
+        const cur = row[columnIndexByName.get(column.name) ?? -1];
+        open(row, cur === null || cur === undefined ? "" : formatValue(cur));
+      },
+      () => {},
+    );
+  }
 
   /** Full Monaco editor (opened via CellPreview F11 or double-click). */
   const [editorOpen, setEditorOpen] = useState(false);
@@ -182,14 +229,27 @@ export function useCellEditing(opts: CellEditingOptions) {
     value: string,
     field?: FieldRef,
   ) {
-    setEditorTarget({ rowValues, column, value, field });
-    setEditorOpen(true);
+    withFullRow(rowValues, column, value, field, (row, v) => {
+      setEditorTarget({ rowValues: row, column, value: v, field });
+      setEditorOpen(true);
+    });
   }
 
   /** Open the cell in the docked right-side editor (JetBrains-style). Shares
    *  the same commit path as the modal (`onCellSave`), or read-only when the
    *  grid isn't editable. */
   function openSidePanelEditor(
+    original: CellValue[],
+    column: ColumnMeta,
+    value: string,
+    field?: FieldRef,
+  ) {
+    withFullRow(original, column, value, field, (rowValues, value) =>
+      openSidePanelEditorNow(rowValues, column, value, field),
+    );
+  }
+
+  function openSidePanelEditorNow(
     rowValues: CellValue[],
     column: ColumnMeta,
     value: string,
@@ -236,7 +296,18 @@ export function useCellEditing(opts: CellEditingOptions) {
    * - editable cell → inline `CellInput` (with an expand-to-modal affordance);
    * - read-only result grid → the Monaco modal as a viewer.
    */
-  function openCellEdit(rowValues: CellValue[], column: ColumnMeta) {
+  function openCellEdit(original: CellValue[], column: ColumnMeta) {
+    if (trimmed?.of(original)) {
+      trimmed.hydrate(original).then(
+        (row) => openCellEditNow(row, column),
+        () => {},
+      );
+      return;
+    }
+    openCellEditNow(original, column);
+  }
+
+  function openCellEditNow(rowValues: CellValue[], column: ColumnMeta) {
     const info = columnInfoByName.get(column.name);
     // A column the policy locks opens as a viewer, like a read-only grid.
     const writable = !!(editable && onCellSave && !columnLock?.(column.name));
@@ -250,7 +321,9 @@ export function useCellEditing(opts: CellEditingOptions) {
       setInlineEdit({ rowValues, column, value: fmt, original: fmt });
       return;
     }
-    openModalEditor(rowValues, column, fmt ?? "");
+    // Already whole: straight to the modal, not through `openModalEditor`.
+    setEditorTarget({ rowValues, column, value: fmt ?? "" });
+    setEditorOpen(true);
   }
 
   return {

@@ -4145,6 +4145,7 @@ mod tests {
                 collation: None,
                 hint: None,
                 with_count: true,
+                trim_above: None,
             },
         )
         .await
@@ -4250,6 +4251,7 @@ mod tests {
                 collation: None,
                 hint: None,
                 with_count: true,
+                trim_above: None,
             },
         )
         .await

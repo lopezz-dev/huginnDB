@@ -46,6 +46,11 @@ import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Spinner } from "@/components/ui/spinner";
 import { NativeSelect } from "@/components/ui/native-select";
 import { notify } from "@/lib/notify";
+import {
+  indexTrimmed,
+  mergeLoadedRow,
+  type TrimmedRows,
+} from "@/lib/grid/trimmedCells";
 import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
@@ -468,6 +473,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * Subscribed as a primitive so the selector stays reference-stable.
    */
   const rowHeight = usePreferences((s) => selectGridPrefs(s).rowHeight);
+  const trimLargeValuesKb = usePreferences(
+    (s) => selectGridPrefs(s).trimLargeValuesKb,
+  );
   const updateGrid = usePreferences((s) => s.updateGrid);
   const isMongo = driver === "mongodb";
   const zoomRows = useCallback(
@@ -648,6 +656,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // for a connection.
   const fetchPromiseRef = useRef<Promise<void> | null>(null);
 
+  // Leave oversized fields on the server (ADR #133). MongoDB only: a SQL
+  // browse has no per-field size to go by, and the backend ignores it there.
+  const trimAbove =
+    isMongo && trimLargeValuesKb > 0 ? trimLargeValuesKb * 1024 : undefined;
+
   const fetchData = useCallback(async () => {
     const reqKey = JSON.stringify({
       connectionId,
@@ -662,6 +675,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       raw,
       collation,
       hint,
+      trimAbove,
     });
     if (inflightKeyRef.current === reqKey) return;
     inflightKeyRef.current = reqKey;
@@ -686,6 +700,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         collation,
         hint,
         withCount: false,
+        trimAbove,
       });
       setResult(r);
       setResultOffset(offset);
@@ -709,7 +724,72 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     raw,
     collation,
     hint,
+    trimAbove,
   ]);
+
+  // The cells this page left on the server, and how a row gets them back
+  // (ADR #133). `resultRef` because a load resolves after renders that may
+  // have replaced the page: the row is merged into whatever page is current
+  // then, found by identity, or by `_id` if a refetch rebuilt every array.
+  const resultRef = useRef(result);
+  resultRef.current = result;
+  const trimmedIndex = useMemo(() => indexTrimmed(result), [result]);
+  const loadingRowsRef = useRef(new Map<CellValue[], Promise<CellValue[]>>());
+  const trimmedRows: TrimmedRows = useMemo(
+    () => ({
+      of: (row) => trimmedIndex.get(row),
+      hydrate: (row) => {
+        if (!trimmedIndex.get(row)) return Promise.resolve(row);
+        const pending = loadingRowsRef.current.get(row);
+        if (pending) return pending;
+        const page = resultRef.current;
+        const idIndex = page?.columns.findIndex((c) => c.name === "_id") ?? -1;
+        const load = (async () => {
+          try {
+            if (idIndex < 0) throw new Error(t("dataGrid.trimmed.noId"));
+            const id = row[idIndex];
+            const loaded = await api.fetchTableData({
+              connectionId,
+              schema,
+              table,
+              limit: 1,
+              offset: 0,
+              filters: [{ column: "_id", op: "eq", value: id }],
+              withCount: false,
+            });
+            if (loaded.rows.length === 0) {
+              throw new Error(t("dataGrid.trimmed.gone"));
+            }
+            const current = resultRef.current;
+            if (!current) return row;
+            let at = current.rows.indexOf(row);
+            if (at < 0) {
+              const key = JSON.stringify(id);
+              at = current.rows.findIndex(
+                (r) => JSON.stringify(r[idIndex]) === key,
+              );
+            }
+            if (at < 0) return row;
+            const merged = mergeLoadedRow(current, at, loaded);
+            resultRef.current = merged;
+            setResult(merged);
+            return merged.rows[at];
+          } catch (e) {
+            notify.error(t("dataGrid.trimmed.loadFailed"), {
+              description: String(e instanceof Error ? e.message : e),
+            });
+            throw e;
+          } finally {
+            loadingRowsRef.current.delete(row);
+          }
+        })();
+        loadingRowsRef.current.set(row, load);
+        return load;
+      },
+    }),
+    // `t` is stable per language; the rest name the relation the load reads.
+    [trimmedIndex, connectionId, schema, table, t],
+  );
 
   // Fetch the row total independently of the data page. Keyed only on the
   // predicate (filters + committed search) — not on sort/offset/pageSize — so
@@ -1224,8 +1304,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     setDraft(emptyDraft(cols.map((c) => c.name)));
   }
 
-  function onDuplicateRow(rowValues: CellValue[]) {
+  async function onDuplicateRow(original: CellValue[]) {
     if (!result || !cols || draft) return;
+    // A copy of a cut cell would insert the `null` that stands in for it.
+    const rowValues = await trimmedRows.hydrate(original).catch(() => null);
+    if (!rowValues) return;
     setDraft(
       duplicateDraft(
         result.columns.map((c) => c.name),
@@ -1324,12 +1407,19 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * by their row's key, new rows from its overflow, and what it leaves out —
    * and ask before sending any of it.
    */
-  function onPasteBlock(paste: GridPaste) {
+  async function onPasteBlock(paste: GridPaste) {
     if (!result) return;
+    // The plan compares each target cell with what is there to skip the ones
+    // that would not change; a cut cell's stand-in `null` is not what is
+    // there.
+    const rows = await Promise.all(paste.rows.map(trimmedRows.hydrate)).catch(
+      () => null,
+    );
+    if (!rows) return;
     setPendingPaste(
       planPaste({
         block: parsePasteBlock(paste.text),
-        rows: paste.rows,
+        rows,
         columns: paste.columns,
         columnIndexByName: new Map(result.columns.map((c, i) => [c.name, i])),
         pkColumns: pkColumnNames,
@@ -2019,6 +2109,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         {result ? (
           <DataGrid
             result={result}
+            trimmed={trimmedRows}
             editable={hasPk && !updateLock}
             columnLock={columnLock}
             draftColumnLock={draftColumnLock}

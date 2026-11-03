@@ -738,6 +738,13 @@
     },
     "expandEditorWithSchema": "Editar en Monaco — esquema «{{name}}» vinculado",
     "saveFailed": "No se pudo guardar el cambio",
+    "trimmed": {
+      "cellTitle": "Demasiado grande para cargarlo con la página. Abre, copia o duplica la fila para cargar el documento entero.",
+      "load": "Cargar",
+      "loadFailed": "No se ha podido cargar el documento entero",
+      "gone": "El documento ya no existe: se borró o cambió su _id desde que se cargó la página.",
+      "noId": "Esta página no tiene la columna _id, así que el documento no se puede volver a leer."
+    },
     "rowsCopied": "{{count}} filas copiadas",
     "autoValue": "auto",
     "autoValueHint": "Generado automáticamente por la base de datos",
@@ -1531,6 +1538,10 @@
       "truncateLongTextAt": {
         "label": "Truncar texto a (caracteres)",
         "desc": "Limita cuántos caracteres muestra una celda en la cuadrícula; el valor completo sigue disponible en la vista previa/editor. 0 lo desactiva."
+      },
+      "trimLargeValuesKb": {
+        "label": "Dejar en el servidor los valores de más de (KB)",
+        "desc": "MongoDB: al abrir una colección, un campo de primer nivel más grande que esto no se descarga; se muestra su tipo y su tamaño, y el documento entero se trae al editar, copiar o duplicar esa fila. 0 descarga siempre los documentos completos."
       },
       "zebraStripes": {
         "label": "Filas alternadas",

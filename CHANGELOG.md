@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **Opening a MongoDB collection no longer downloads its largest fields.** A
+  top-level field over 64 KB stays on the server and appears in the grid as
+  its type and size (for example *Array · 1.4 MB*). The whole document is
+  loaded the moment the row is edited, opened in the editor, copied or
+  duplicated, so none of those ever sees an incomplete row. Filtering by such
+  a cell's value is disabled until it is loaded. Over a customer's SSH
+  tunnel, a page of LLM transcripts (6.9 MB, 0.4–2.8 s) and a page of 10
+  stored files (2.3 s → 66 ms) were the cases that motivated it. The
+  threshold is in Settings → Grid, and 0 turns trimming off. Only the grid's
+  listing trims: export, queries, the MCP connector and the AI panel still
+  receive whole documents. Servers older than MongoDB 4.4 are browsed as
+  before.
+
 ## [1.38.0] — 2026-11-02
 
 ### Added

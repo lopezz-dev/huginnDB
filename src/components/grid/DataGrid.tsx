@@ -113,6 +113,7 @@ import { useStableCallback } from "@/lib/useStableCallback";
 import { useSavedCellFlash } from "@/lib/grid/useSavedCellFlash";
 import { removeSortLevel, toggleSortLevel } from "@/lib/grid/sortSpec";
 import { useCellEditing } from "@/lib/grid/useCellEditing";
+import { describeTrimmed, type TrimmedRows } from "@/lib/grid/trimmedCells";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 import type { Driver } from "@/types";
 
@@ -296,6 +297,12 @@ interface Props {
   onDuplicateRow?: (rowValues: CellValue[]) => void;
   onDeleteRow?: (rowValues: CellValue[]) => void;
   /**
+   * MongoDB browse: the cells the page left on the server and how a row gets
+   * them back (ADR #133). Everything here that edits, copies or filters by a
+   * row's values loads it first; a cut cell is shown as its type and size.
+   */
+  trimmed?: TrimmedRows;
+  /**
    * Delete several rows at once (the multi-selection path). Receives one
    * values array per selected row. Wired only when the table has a PK; the
    * parent shows the same confirmation dialog used for single-row delete.
@@ -475,6 +482,7 @@ export function DataGrid({
   onReload,
   onDuplicateRow,
   onDeleteRow,
+  trimmed,
   onBulkDelete,
   onFieldSave: onFieldSaveProp,
   onFieldDelete,
@@ -861,7 +869,26 @@ export function DataGrid({
     // editor's, which keeps the panel open and prints the driver message there.
     onCellSave: onCellSaveQuiet,
     onFieldSave: onFieldSaveQuiet,
+    trimmed,
   });
+
+  /**
+   * Run `run` on `row` whole: at once when nothing in it was cut, after the
+   * load otherwise. A failed load was already reported and `run` is skipped
+   * — the copy or filter it was about to make would have carried a stand-in.
+   */
+  function withFullRow(row: CellValue[], run: (row: CellValue[]) => void) {
+    if (!trimmed?.of(row)) {
+      run(row);
+      return;
+    }
+    trimmed.hydrate(row).then(run, () => {});
+  }
+
+  /** Whether `column` of `row` is a cut cell. */
+  function isTrimmedCell(row: CellValue[], column: string) {
+    return !!trimmed?.of(row)?.has(column);
+  }
 
   // Whether the open heavy editor's column is one the policy locks: it then
   // shows the value read-only. A list-view field is judged by its top-level
@@ -1076,8 +1103,8 @@ export function DataGrid({
    * render (not via effect) keeps `cell` seeing live state while its own
    * function identity — and therefore the mounted DOM — stays put.
    */
-  const interactiveRef = useRef({ fkEditCell, inlineEdit, selectedCell });
-  interactiveRef.current = { fkEditCell, inlineEdit, selectedCell };
+  const interactiveRef = useRef({ fkEditCell, inlineEdit, selectedCell, trimmed });
+  interactiveRef.current = { fkEditCell, inlineEdit, selectedCell, trimmed };
 
   // Same idea, for `GridRow` (below): these are plain function declarations
   // recreated on every `DataGrid` render, so passing them as ordinary props
@@ -1097,8 +1124,15 @@ export function DataGrid({
     rows: CellValue[][],
     fmt: "json" | "insert" | "update",
   ) {
-    copyToClipboard(bulkCopy(rows, fmt));
-    notify.success(t("dataGrid.rowsCopied", { count: rows.length }));
+    const copy = (whole: CellValue[][]) => {
+      copyToClipboard(bulkCopy(whole, fmt));
+      notify.success(t("dataGrid.rowsCopied", { count: whole.length }));
+    };
+    if (!trimmed || !rows.some((r) => trimmed.of(r))) {
+      copy(rows);
+      return;
+    }
+    Promise.all(rows.map(trimmed.hydrate)).then(copy, () => {});
   }
 
   const rowCallbacksRef = useRef<GridRowCallbacks>({
@@ -1111,6 +1145,8 @@ export function DataGrid({
     selectedRows: () => selectedRows,
     applyRowSelectionClick,
     toggleRowKey,
+    withFullRow,
+    isTrimmedCell,
   });
   rowCallbacksRef.current = {
     openCellEdit,
@@ -1122,6 +1158,8 @@ export function DataGrid({
     selectedRows: () => selectedRows,
     applyRowSelectionClick,
     toggleRowKey,
+    withFullRow,
+    isTrimmedCell,
   };
 
   // Resolve the relation's schema bindings once, when the grid mounts for a
@@ -1295,6 +1333,7 @@ export function DataGrid({
     columnLock,
     onPasteBlock,
     onCellSave,
+    withFullRow: trimmed ? withFullRow : undefined,
   });
 
   /** Serialise several rows for the bulk "Copy N rows as ▸" menu. */
@@ -1408,6 +1447,7 @@ export function DataGrid({
                   )
                 }
                 copyToClipboard={copyToClipboard}
+                trimmed={trimmed}
                 emptyLabel={t("dataGrid.noRows")}
                 // Resolved here, against the very array passed as `rows` above
                 // and in the same render, so the index cannot be carried across
@@ -1863,6 +1903,20 @@ export function DataGrid({
           columnName={selectedCell.column.name}
           value={selectedCell.value}
           connectionId={connectionId}
+          trimmed={(() => {
+            const cut = trimmed
+              ?.of(selectedCell.rowValues)
+              ?.get(selectedCell.column.name);
+            return cut
+              ? {
+                  label: describeTrimmed(cut),
+                  // The selection follows the row to its loaded array (it is
+                  // re-found by key), so the panel then shows the value.
+                  onLoad: () =>
+                    void trimmed!.hydrate(selectedCell.rowValues).catch(() => {}),
+                }
+              : undefined;
+          })()}
           onClose={() => setSelectedCell(null)}
           onFullscreen={() => {
             openHeavyEditor(
@@ -1873,7 +1927,11 @@ export function DataGrid({
             setSelectedCell(null);
           }}
           onSave={
-            editable && onCellSave && !columnLock?.(selectedCell.column.name)
+            // A cut cell's preview holds no text to save.
+            editable &&
+            onCellSave &&
+            !columnLock?.(selectedCell.column.name) &&
+            !isTrimmedCell(selectedCell.rowValues, selectedCell.column.name)
               ? async (v) => {
                   await onCellSave(
                     selectedCell.rowValues,

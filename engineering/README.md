@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-132 entries: 105 ADRs, 18 gotchas, 9 conventions.
+133 entries: 106 ADRs, 18 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -172,4 +172,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 130 | ADR | [A long MCP call is timed out where it runs, and always reports what became of its work](adr/adr-130-a-long-mcp-call-is-timed-out-where-it-runs-and-always-reports-its-outcome.md) | accepted | 2026-11-02 |
 | 131 | ADR | [on SQL Server, run_script runs each GO batch whole and still checks every statement](adr/adr-131-on-sql-server-run-script-runs-go-batches-and-checks-statements.md) | accepted | 2026-11-02 |
 | 132 | Gotcha | [tiberius 0.13's `cancel_query` gives up before SQL Server acknowledges, and leaves the acknowledgement on the wire](gotchas/gotcha-132-tiberius-cancel-query-misses-the-attention-ack.md) | active | 2026-11-02 |
+| 133 | ADR | [a MongoDB browse leaves oversized fields on the server until their row is used](adr/adr-133-a-mongodb-browse-leaves-oversized-fields-on-the-server.md) | accepted | 2026-11-03 |
 <!-- index:end -->
