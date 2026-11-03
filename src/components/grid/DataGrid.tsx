@@ -113,7 +113,11 @@ import { useStableCallback } from "@/lib/useStableCallback";
 import { useSavedCellFlash } from "@/lib/grid/useSavedCellFlash";
 import { removeSortLevel, toggleSortLevel } from "@/lib/grid/sortSpec";
 import { useCellEditing } from "@/lib/grid/useCellEditing";
-import { describeTrimmed, type TrimmedRows } from "@/lib/grid/trimmedCells";
+import {
+  describeTrimmed,
+  isUnloadable,
+  type TrimmedRows,
+} from "@/lib/grid/trimmedCells";
 import { useJsonSchemas, relationKey } from "@/stores/jsonSchemas";
 import type { Driver } from "@/types";
 
@@ -1907,15 +1911,21 @@ export function DataGrid({
             const cut = trimmed
               ?.of(selectedCell.rowValues)
               ?.get(selectedCell.column.name);
-            return cut
-              ? {
-                  label: describeTrimmed(cut),
-                  // The selection follows the row to its loaded array (it is
-                  // re-found by key), so the panel then shows the value.
-                  onLoad: () =>
-                    void trimmed!.hydrate(selectedCell.rowValues).catch(() => {}),
-                }
-              : undefined;
+            if (!cut) return undefined;
+            // Loading a binary would only show what the label already says.
+            if (isUnloadable(cut)) {
+              return {
+                label: describeTrimmed(cut),
+                note: t("dataGrid.trimmed.binaryNote"),
+              };
+            }
+            return {
+              label: describeTrimmed(cut),
+              // The selection follows the row to its loaded array (it is
+              // re-found by key), so the panel then shows the value.
+              onLoad: () =>
+                void trimmed!.hydrate(selectedCell.rowValues).catch(() => {}),
+            };
           })()}
           onClose={() => setSelectedCell(null)}
           onFullscreen={() => {

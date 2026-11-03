@@ -410,19 +410,12 @@ export function useGridColumns(
               />
             );
           }
-          if (cut) {
-            // Not the NULL it is in `rows`: a value too large to have been
-            // sent. Opening it loads the row (see `useCellEditing`).
-            return (
-              <span
-                className="truncate font-mono italic text-muted-foreground"
-                title={t("dataGrid.trimmed.cellTitle")}
-              >
-                {describeTrimmed(cut)}
-              </span>
-            );
-          }
-          const rawDisplay = rawCellText(v, bitColNames.has(col.name), bitDisplay);
+          // A cut cell holds a stand-in `null`, so it has no text of its own:
+          // the expand button below loads the row and re-reads the value
+          // (see `useCellEditing`), whatever is passed here.
+          const rawDisplay = cut
+            ? ""
+            : rawCellText(v, bitColNames.has(col.name), bitDisplay);
           const display = truncateForDisplay(rawDisplay, truncateLongTextAt);
           const isNumeric = numericColNames.has(col.name);
           // Selected-but-not-editing: offer a direct "expand" affordance so
@@ -438,7 +431,16 @@ export function useGridColumns(
                   isNumeric ? "text-numeric" : ""
                 }`}
               >
-                {v === null ? (
+                {cut ? (
+                  // Not the NULL it is in `rows`: a value too large to have
+                  // been sent with the page.
+                  <span
+                    className="italic text-muted-foreground"
+                    title={t("dataGrid.trimmed.cellTitle")}
+                  >
+                    {describeTrimmed(cut)}
+                  </span>
+                ) : v === null ? (
                   <span className="italic text-muted-foreground">
                     {nullDisplay}
                   </span>

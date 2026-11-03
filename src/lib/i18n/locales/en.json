@@ -739,6 +739,10 @@
     "expandEditorWithSchema": "Edit in Monaco — schema \"{{name}}\" attached",
     "saveFailed": "Could not save the change",
     "trimmed": {
+      "loading": "Loading the whole document…",
+      "binaryTitle": "Binary data isn't shown as text",
+      "binaryDesc": "{{label}}. The grid never shows the bytes of a binary field, so it isn't downloaded: it would only show its type and size, which you already see.",
+      "binaryNote": "Binary data isn't shown as text, so it isn't downloaded.",
       "cellTitle": "Too large to load with the page. Open, copy or duplicate the row to load the whole document.",
       "load": "Load",
       "loadFailed": "Couldn't load the whole document",

@@ -147,6 +147,9 @@ export function useCellEditing(opts: CellEditingOptions) {
       open(rowValues, value);
       return;
     }
+    if (trimmed.explainUnloadable(rowValues, field?.path[0] ?? column.name)) {
+      return;
+    }
     trimmed.hydrate(rowValues).then(
       (row) => {
         if (field) {
@@ -297,6 +300,7 @@ export function useCellEditing(opts: CellEditingOptions) {
    * - read-only result grid → the Monaco modal as a viewer.
    */
   function openCellEdit(original: CellValue[], column: ColumnMeta) {
+    if (trimmed?.explainUnloadable(original, column.name)) return;
     if (trimmed?.of(original)) {
       trimmed.hydrate(original).then(
         (row) => openCellEditNow(row, column),

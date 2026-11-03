@@ -78,9 +78,13 @@ que nadie lee en un listado.
   lista, el doble clic sobre el campo lo carga en el sitio.
 - Filtrar por el valor de un campo sin cargar está deshabilitado hasta que se
   carga.
-- Una vez cargado, un campo binario se lee como `Binary(Generic, 1004161
-  bytes)`. Es como el grid enseña siempre los datos binarios: sus bytes no son
-  texto.
+- **Los campos binarios no se descargan así.** El grid nunca ha mostrado los
+  bytes de un dato binario, solo `Binary(Generic, 1004161 bytes)`, que es lo
+  que ya dice la etiqueta. Ampliarlo o hacer doble clic lo explica en vez de
+  bajar megas para enseñar lo mismo. Copiar o duplicar la fila sí cargan el
+  documento.
+- Una carga que tarda más de un instante muestra el aviso «Cargando el
+  documento entero…».
 - El umbral está en **Ajustes → Tabla de datos** («Dejar en el servidor los
   valores de más de»). Con 0 se desactiva y siempre se descargan los
   documentos completos.

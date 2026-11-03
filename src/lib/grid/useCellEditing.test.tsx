@@ -70,6 +70,7 @@ describe("useCellEditing on a row with a cut cell", () => {
         ? new Map([["log", { bytes: 1_500_000, type: "array" }]])
         : undefined,
     hydrate: async (r) => (r === cutRow ? loadedRow : r),
+    explainUnloadable: () => false,
   };
 
   function setupCut(mode: "modal" | "side" = "modal") {
@@ -150,6 +151,41 @@ describe("useCellEditing on a row with a cut cell", () => {
     const { result } = setupCut("side");
     await act(async () => result.current.openHeavyEditor(cutRow, log, ""));
     expect(useCellEditor.getState().target?.value).toBe(JSON.stringify(loadedRow[1]));
+  });
+
+  it("opens nothing, and loads nothing, for a value loading would not reveal", async () => {
+    let loads = 0;
+    const binary: TrimmedRows = {
+      ...trimmed,
+      hydrate: async (r) => {
+        loads++;
+        return r;
+      },
+      explainUnloadable: () => true,
+    };
+    const { result } = renderHook(() =>
+      useCellEditing({
+        editable: true,
+        connectionId: "mongo",
+        tableSchema: undefined,
+        tableName: "documentEntityFile",
+        tabId: "t1",
+        cellEditorMode: "modal",
+        columnInfoByName: new Map(),
+        columnIndexByName: new Map([
+          ["_id", 0],
+          ["log", 1],
+        ]),
+        onCellSave: async () => {},
+        onFieldSave: undefined,
+        trimmed: binary,
+      }),
+    );
+    await act(async () => result.current.openCellEdit(cutRow, log));
+    await act(async () => result.current.openHeavyEditor(cutRow, log, ""));
+    expect(loads).toBe(0);
+    expect(result.current.inlineEdit).toBeNull();
+    expect(result.current.editorOpen).toBe(false);
   });
 
   it("leaves a whole row alone, synchronously", () => {

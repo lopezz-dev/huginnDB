@@ -739,6 +739,10 @@
     "expandEditorWithSchema": "Editar en Monaco — esquema «{{name}}» vinculado",
     "saveFailed": "No se pudo guardar el cambio",
     "trimmed": {
+      "loading": "Cargando el documento entero…",
+      "binaryTitle": "Los datos binarios no se muestran como texto",
+      "binaryDesc": "{{label}}. El grid nunca muestra los bytes de un campo binario, así que no se descarga: solo enseñaría su tipo y tamaño, que ya estás viendo.",
+      "binaryNote": "Los datos binarios no se muestran como texto, así que no se descargan.",
       "cellTitle": "Demasiado grande para cargarlo con la página. Abre, copia o duplica la fila para cargar el documento entero.",
       "load": "Cargar",
       "loadFailed": "No se ha podido cargar el documento entero",

@@ -14,7 +14,11 @@
  */
 
 import { formatBytes } from "@/lib/utils";
-import { draftTypeFor, typeLabel } from "@/lib/grid/documentTree";
+import {
+  draftTypeFor,
+  isOpaqueType,
+  typeLabel,
+} from "@/lib/grid/documentTree";
 import type { BsonTypeTree, CellValue, QueryResult } from "@/types";
 
 /** One cut cell, as the grid needs it. */
@@ -39,6 +43,19 @@ export interface TrimmedRows {
    * the page loaded, or the server gone.
    */
   hydrate(row: CellValue[]): Promise<CellValue[]>;
+  /**
+   * When `column` of `row` is a cut value that loading would not reveal — a
+   * `Binary` reaches the grid only as `Binary(Generic, N bytes)`, the same
+   * thing its label already says — tell the user so and return `true`. The
+   * caller then opens nothing: downloading megabytes to show a summary the
+   * page already has is the cost this whole mechanism exists to avoid.
+   */
+  explainUnloadable(row: CellValue[], column: string): boolean;
+}
+
+/** Whether loading `info`'s value would show nothing its label does not. */
+export function isUnloadable(info: TrimmedInfo): boolean {
+  return isOpaqueType(info.type);
 }
 
 /**

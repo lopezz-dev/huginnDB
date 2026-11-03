@@ -72,8 +72,13 @@ megabytes per page that nobody reads in a list.
   the field loads it in place.
 - Filtering by the value of a field that has not been loaded is disabled
   until it is loaded.
-- Once loaded, a binary field reads as `Binary(Generic, 1004161 bytes)`. That
-  is how the grid always shows binary data: its bytes are not text.
+- **Binary fields are never downloaded this way.** The grid has never shown
+  the bytes of binary data, only `Binary(Generic, 1004161 bytes)`, which is
+  what the label already says. Expanding or double-clicking one explains that
+  instead of fetching megabytes to show the same thing. Copying or
+  duplicating the row still loads the document.
+- A load that takes more than a moment shows a "Loading the whole document…"
+  card.
 - The threshold is in **Settings → Data grid** ("Leave values over this size on
   the server"). 0 turns this off and always downloads whole documents.
 - Only the grid's listing does this. Export, the query editor, the MCP

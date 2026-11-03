@@ -1052,7 +1052,9 @@ const DocumentCard = memo(function DocumentCard({
 
   function startEdit(f: DocField) {
     if (f.trimmed) {
-      withFullRow(() => {});
+      if (!callbacksRef.current.trimmed?.explainUnloadable(rowValues, f.path[0])) {
+        withFullRow(() => {});
+      }
       return;
     }
     if (!canEdit(f)) return;

@@ -47,7 +47,9 @@ import { Spinner } from "@/components/ui/spinner";
 import { NativeSelect } from "@/components/ui/native-select";
 import { notify } from "@/lib/notify";
 import {
+  describeTrimmed,
   indexTrimmed,
+  isUnloadable,
   mergeLoadedRow,
   type TrimmedRows,
 } from "@/lib/grid/trimmedCells";
@@ -738,6 +740,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   const trimmedRows: TrimmedRows = useMemo(
     () => ({
       of: (row) => trimmedIndex.get(row),
+      explainUnloadable: (row, column) => {
+        const cut = trimmedIndex.get(row)?.get(column);
+        if (!cut || !isUnloadable(cut)) return false;
+        notify.info(t("dataGrid.trimmed.binaryTitle"), {
+          description: t("dataGrid.trimmed.binaryDesc", {
+            label: describeTrimmed(cut),
+          }),
+        });
+        return true;
+      },
       hydrate: (row) => {
         if (!trimmedIndex.get(row)) return Promise.resolve(row);
         const pending = loadingRowsRef.current.get(row);
@@ -745,6 +757,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         const page = resultRef.current;
         const idIndex = page?.columns.findIndex((c) => c.name === "_id") ?? -1;
         const load = (async () => {
+          // A large document over a slow tunnel takes seconds; say so rather
+          // than leave the click looking ignored. Not for the quick ones —
+          // a card that flashes for 100 ms is noise.
+          let progress: ReturnType<typeof notify.progress> | null = null;
+          const slow = setTimeout(() => {
+            progress = notify.progress(t("dataGrid.trimmed.loading"));
+          }, 300);
           try {
             if (idIndex < 0) throw new Error(t("dataGrid.trimmed.noId"));
             const id = row[idIndex];
@@ -775,11 +794,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             setResult(merged);
             return merged.rows[at];
           } catch (e) {
-            notify.error(t("dataGrid.trimmed.loadFailed"), {
-              description: String(e instanceof Error ? e.message : e),
-            });
+            const description = String(e instanceof Error ? e.message : e);
+            const failed = progress as ReturnType<typeof notify.progress> | null;
+            if (failed) {
+              failed.error(t("dataGrid.trimmed.loadFailed"), { description });
+              progress = null;
+            } else {
+              notify.error(t("dataGrid.trimmed.loadFailed"), { description });
+            }
             throw e;
           } finally {
+            clearTimeout(slow);
+            (progress as ReturnType<typeof notify.progress> | null)?.dismiss();
             loadingRowsRef.current.delete(row);
           }
         })();

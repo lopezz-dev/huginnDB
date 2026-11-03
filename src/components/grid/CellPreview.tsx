@@ -63,7 +63,7 @@ interface Props {
    * stand-in `null`. The panel then shows `label` (its type and size) and a
    * button that loads the row, after which it is handed the real value.
    */
-  trimmed?: { label: string; onLoad: () => void };
+  trimmed?: { label: string; onLoad?: () => void; note?: string };
 }
 
 export function CellPreview({
@@ -168,18 +168,25 @@ export function CellPreview({
       {/* Content: formatted value */}
       <div className="max-h-48 overflow-auto p-3">
         {trimmed ? (
-          <div className="flex items-center gap-2 text-xs">
-            <span className="font-mono italic text-muted-foreground">
-              {trimmed.label}
-            </span>
-            <Button
-              variant="outline"
-              size="xs"
-              className="ml-auto"
-              onClick={trimmed.onLoad}
-            >
-              {t("dataGrid.trimmed.load")}
-            </Button>
+          <div className="flex flex-col gap-1.5 text-xs">
+            <div className="flex items-center gap-2">
+              <span className="font-mono italic text-muted-foreground">
+                {trimmed.label}
+              </span>
+              {trimmed.onLoad && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className="ml-auto"
+                  onClick={trimmed.onLoad}
+                >
+                  {t("dataGrid.trimmed.load")}
+                </Button>
+              )}
+            </div>
+            {trimmed.note && (
+              <span className="text-muted-foreground">{trimmed.note}</span>
+            )}
           </div>
         ) : isNull ? (
           <span className="font-mono text-xs italic text-muted-foreground">

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { describeTrimmed, indexTrimmed, mergeLoadedRow } from "./trimmedCells";
+import {
+  describeTrimmed,
+  indexTrimmed,
+  isUnloadable,
+  mergeLoadedRow,
+} from "./trimmedCells";
 import type { QueryResult } from "@/types";
 
 function page(): QueryResult {
@@ -76,5 +81,14 @@ describe("describeTrimmed", () => {
   it("reads as the picker's type label and a size", () => {
     expect(describeTrimmed({ bytes: 1_550_000, type: "array" })).toBe("Array · 1.5 MB");
     expect(describeTrimmed({ bytes: 737_280, type: "document" })).toBe("Object · 720.0 KB");
+  });
+});
+
+describe("isUnloadable", () => {
+  it("is true only for types the grid shows as a summary", () => {
+    expect(isUnloadable({ bytes: 1, type: "binary" })).toBe(true);
+    expect(isUnloadable({ bytes: 1, type: "array" })).toBe(false);
+    expect(isUnloadable({ bytes: 1, type: "document" })).toBe(false);
+    expect(isUnloadable({ bytes: 1, type: "string" })).toBe(false);
   });
 });
