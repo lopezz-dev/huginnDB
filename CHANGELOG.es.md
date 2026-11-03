@@ -8,6 +8,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Una versión para macOS en Apple Silicon.** Cada release publica ahora un
+  `.dmg` junto a los instaladores de Windows y Linux, con el conector
+  `huginndb-mcp` dentro de la app y su propio `.mcpb`, y las copias instaladas
+  se actualizan solas como en las demás plataformas. Lleva firma ad hoc, no
+  una firma de Apple Developer ID, así que macOS bloquea el primer arranque
+  hasta que eliges **Abrir igualmente** en Ajustes del Sistema → Privacidad y
+  seguridad (el README tiene los pasos y una alternativa de una línea); las
+  actualizaciones instaladas desde la propia app no vuelven a bloquearse. Los
+  Mac con Intel no están cubiertos. El CI también compila y prueba en macOS
+  tras cada merge, así que un cambio que lo rompa se ve el mismo día y no en
+  la siguiente release.
+
 ### Cambiado
 
 - **Abrir una colección de MongoDB ya no descarga sus campos más grandes.**
