@@ -95,6 +95,10 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
+          # Restore only. A cache saved by a tag run is scoped to that tag, so
+          # no later run can read it, yet each one took ~2.2 GB of the repo's
+          # 10 GB budget and evicted the develop/main caches CI depends on.
+          save-if: false
 
       - name: Install Linux build dependencies
         if: matrix.platform == 'ubuntu-22.04'
