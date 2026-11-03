@@ -162,6 +162,10 @@ pub struct GridPrefs {
     pub row_height: u16,
     pub null_display: String,
     pub truncate_long_text_at: u32,
+    /// MongoDB collection browse: a top-level field larger than this many KB
+    /// is left on the server and shown as its type and size until the row is
+    /// used (ADR #133). `0` sends every document whole.
+    pub trim_large_values_kb: u32,
     pub zebra_stripes: bool,
     pub sticky_header: bool,
     pub default_page_size: u32,
@@ -819,6 +823,7 @@ impl Default for GridPrefs {
             row_height: 26,
             null_display: "NULL".into(),
             truncate_long_text_at: 200,
+            trim_large_values_kb: 64,
             zebra_stripes: true,
             sticky_header: true,
             default_page_size: 100,

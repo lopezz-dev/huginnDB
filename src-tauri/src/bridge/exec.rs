@@ -322,6 +322,8 @@ pub async fn execute(
                     // The bridge's own `with_count` is an `Option<bool>` on
                     // the wire; `None` kept the pre-struct default of "count".
                     with_count: with_count.unwrap_or(true),
+                    // Whole documents: trimming is the grid's, not the AI's.
+                    trim_above: None,
                 },
             )
             .await?,

@@ -19,6 +19,7 @@ import {
   rawCellText,
 } from "@/lib/grid/formatValue";
 import { defaultColumnWidth } from "@/lib/grid/columnKinds";
+import { describeTrimmed, type TrimmedRows } from "@/lib/grid/trimmedCells";
 import { formatComboForDisplay } from "@/lib/keybindings";
 import type { FkEdit, InlineEdit } from "@/lib/grid/useCellEditing";
 import type {
@@ -47,6 +48,9 @@ export interface InteractiveCellState {
   fkEditCell: FkEdit | null;
   inlineEdit: InlineEdit | null;
   selectedCell: SelectedCellLike | null;
+  /** Cells the page left on the server (ADR #133). Changes when a row is
+   *  loaded, which is exactly when a rebuild of every column must not happen. */
+  trimmed?: TrimmedRows;
 }
 
 /** How a value becomes text, and how wide a cell may get. */
@@ -299,7 +303,9 @@ export function useGridColumns(
           const rowValues = info.row.original as CellValue[];
           const colInfo = columnInfoByName.get(col.name);
           // Read live, not from the outer closure — see `interactiveRef` above.
-          const { fkEditCell, inlineEdit, selectedCell } = interactiveRef.current;
+          const { fkEditCell, inlineEdit, selectedCell, trimmed } =
+            interactiveRef.current;
+          const cut = trimmed?.of(rowValues)?.get(col.name);
           // FK edit identity is the row's value array (referential
           // identity from TanStack's row.original) — stable across
           // sort / filter reshuffles between activation and commit.
@@ -405,12 +411,12 @@ export function useGridColumns(
             );
           }
           const isBit = bitColNames.has(col.name);
-          const display = cellDisplayText(
-            v,
-            isBit,
-            bitDisplay,
-            truncateLongTextAt,
-          );
+          // A cut cell holds a stand-in `null`, so it has no text of its own:
+          // its label is drawn below, and the expand button loads the row and
+          // re-reads the value (see `useCellEditing`).
+          const display = cut
+            ? ""
+            : cellDisplayText(v, isBit, bitDisplay, truncateLongTextAt);
           const isNumeric = numericColNames.has(col.name);
           // Selected-but-not-editing: offer a direct "expand" affordance so
           // the full value can be viewed (modal / side panel per
@@ -425,7 +431,16 @@ export function useGridColumns(
                   isNumeric ? "text-numeric" : ""
                 }`}
               >
-                {v === null ? (
+                {cut ? (
+                  // Not the NULL it is in `rows`: a value too large to have
+                  // been sent with the page.
+                  <span
+                    className="italic text-muted-foreground"
+                    title={t("dataGrid.trimmed.cellTitle")}
+                  >
+                    {describeTrimmed(cut)}
+                  </span>
+                ) : v === null ? (
                   <span className="italic text-muted-foreground">
                     {nullDisplay}
                   </span>

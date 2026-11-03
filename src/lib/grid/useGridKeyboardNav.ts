@@ -76,6 +76,12 @@ export interface GridKeyboardNavOptions {
   bitDisplay: GridPrefs["bitDisplay"];
   /** User-rebindable combo for "expand selected cell". */
   expandCellCombo: string;
+  /**
+   * Run with the row whole (ADR #133): Ctrl+C on a cell the page left on the
+   * server copies the loaded value, not its stand-in `null`. Absent on grids
+   * whose rows are always whole.
+   */
+  withFullRow?: (row: CellValue[], run: (row: CellValue[]) => void) => void;
   editable: boolean | undefined;
   /** Why the policy locks a column (ADR #113): pasting into it does nothing. */
   columnLock?: (column: string) => string | null;
@@ -129,6 +135,7 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
     columnLock,
     onPasteBlock,
     onCellSave,
+    withFullRow,
   } = opts;
 
   /**
@@ -194,7 +201,15 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
     const cell = resolveTargetCell();
     if (!cell) return;
     if (key === "c") {
-      void copyToClipboard(formatValue(cell.value));
+      if (withFullRow) {
+        const at = grid.columnIndexByName.get(cell.column.name) ?? -1;
+        withFullRow(
+          cell.rowValues,
+          (row) => void copyToClipboard(formatValue(row[at])),
+        );
+      } else {
+        void copyToClipboard(formatValue(cell.value));
+      }
       return;
     }
     const info = columnInfoByName.get(cell.column.name);

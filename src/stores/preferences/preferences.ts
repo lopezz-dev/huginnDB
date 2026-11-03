@@ -66,6 +66,7 @@ export const DEFAULT_PREFS: Preferences = {
     rowHeight: 26,
     nullDisplay: "NULL",
     truncateLongTextAt: 200,
+    trimLargeValuesKb: 64,
     zebraStripes: true,
     stickyHeader: true,
     defaultPageSize: 100,

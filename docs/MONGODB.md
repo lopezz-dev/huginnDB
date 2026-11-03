@@ -55,6 +55,36 @@ so and offers the dialog, rather than rendering nothing.
 context menu, and asks for confirmation regardless of the "confirm destructive
 actions" preference. It runs `dropDatabase` against that database only.
 
+**Large values are left on the server until you use them.** When a
+collection opens, a top-level field larger than 64 KB is not downloaded with
+the page. Its cell shows only its type and size, in grey italics: `Array ·
+1.4 MB`, `Object · 720 KB`, `Binary · 980 KB`. Nothing is wrong with the
+document. The field is still there; it just has not been fetched yet. A
+collection that stores files or LLM transcripts would otherwise send
+megabytes per page that nobody reads in a list.
+
+- The value is loaded the moment you need it. Double-clicking the cell,
+  expanding it (to full screen or to the side panel), copying the cell or
+  the row, duplicating the row or pasting into it all fetch that one document
+  first, and then carry on with the real value. You never edit or copy a
+  placeholder.
+- The cell preview shows a **Load** button. In the list view, double-clicking
+  the field loads it in place.
+- Filtering by the value of a field that has not been loaded is disabled
+  until it is loaded.
+- **Binary fields are never downloaded this way.** The grid has never shown
+  the bytes of binary data, only `Binary(Generic, 1004161 bytes)`, which is
+  what the label already says. Expanding or double-clicking one explains that
+  instead of fetching megabytes to show the same thing. Copying or
+  duplicating the row still loads the document.
+- A load that takes more than a moment shows a "Loading the whole document…"
+  card.
+- The threshold is in **Settings → Data grid** ("Leave values over this size on
+  the server"). 0 turns this off and always downloads whole documents.
+- Only the grid's listing does this. Export, the query editor, the MCP
+  connector and the AI panel always get whole documents. Servers older than
+  MongoDB 4.4 are browsed as before.
+
 ## The query editor speaks `mongosh`, in a bounded dialect
 
 The editor takes shell syntax, not SQL:

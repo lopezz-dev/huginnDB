@@ -778,6 +778,13 @@ pub struct TableQuery {
     /// `Option<bool>::unwrap_or(true)`.
     #[serde(default = "with_count_default")]
     pub with_count: bool,
+    /// MongoDB only: replace any top-level field whose BSON size is over this
+    /// many bytes with a placeholder in the page, rather than sending it. The
+    /// grid's listing sets it from `GridPrefs::trim_large_values_kb`; every
+    /// other caller (the MCP connector, the AI panel, export) leaves it `None`
+    /// and gets whole documents. See [`QueryResult::trimmed`] and ADR #133.
+    #[serde(default)]
+    pub trim_above: Option<u32>,
 }
 
 fn with_count_default() -> bool {
@@ -894,6 +901,24 @@ pub struct QueryResult {
     /// it was before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub row_types: Option<Vec<Vec<Value>>>,
+    /// MongoDB browse only, when [`TableQuery::trim_above`] is set: the cells
+    /// that were too large to send. Each one's value in `rows` is `null` and
+    /// its entry in `row_types` is the real BSON type name; the value itself
+    /// was never read off the server. The grid has to load the document before
+    /// anything edits or copies that row — see ADR #133.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trimmed: Option<Vec<TrimmedCell>>,
+}
+
+/// One cell of a browse page that [`TableQuery::trim_above`] left out.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TrimmedCell {
+    /// Index into [`QueryResult::rows`].
+    pub row: usize,
+    /// Index into [`QueryResult::columns`].
+    pub column: usize,
+    /// The field's BSON size on the server, in bytes.
+    pub bytes: u64,
 }
 
 impl QueryResult {
@@ -919,6 +944,7 @@ impl QueryResult {
             total: None,
             truncated: false,
             row_types: None,
+            trimmed: None,
         }
     }
 
@@ -932,6 +958,7 @@ impl QueryResult {
             total: None,
             truncated: false,
             row_types: None,
+            trimmed: None,
         }
     }
 
@@ -951,6 +978,14 @@ impl QueryResult {
     /// with `rows`.
     pub fn with_row_types(mut self, row_types: Vec<Vec<Value>>) -> Self {
         self.row_types = Some(row_types);
+        self
+    }
+
+    /// The cells a MongoDB browse left out (see [`QueryResult::trimmed`]).
+    /// `None` when there were none, so a page without large values serialises
+    /// exactly as before.
+    pub fn with_trimmed(mut self, trimmed: Vec<TrimmedCell>) -> Self {
+        self.trimmed = (!trimmed.is_empty()).then_some(trimmed);
         self
     }
 }

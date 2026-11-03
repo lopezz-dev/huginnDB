@@ -93,6 +93,7 @@ import {
 } from "@/components/ui/select";
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import { toJson as rowToJson } from "@/lib/grid/copyFormats";
+import { describeTrimmed, type TrimmedRows } from "@/lib/grid/trimmedCells";
 import { formatValue } from "@/lib/grid/formatValue";
 import { rowNumber } from "@/lib/grid/pagination";
 import { removeSortLevel, sortLevelOf, sortOnly } from "@/lib/grid/sortSpec";
@@ -194,6 +195,12 @@ interface DocumentListViewProps {
     type: string,
   ) => void;
   copyToClipboard: (text: string) => void;
+  /**
+   * Fields the page left on the server, and how a document gets them back
+   * (ADR #133). A cut field shows its type and size; copying loads the
+   * document first, and a double-click on the field loads it in place.
+   */
+  trimmed?: TrimmedRows;
   emptyLabel: string;
   /**
    * The grid's scroll container, owned by `DataGrid` and shared with the table
@@ -290,6 +297,7 @@ interface DocumentCardCallbacks {
   onAddFilter?: (f: ColumnFilter) => void;
   /** Read at call time by "remove from the sort", like every callback here. */
   sort: SortSpec[];
+  trimmed?: TrimmedRows;
 }
 
 /** Field-row copy, precomputed once per language rather than once per field
@@ -305,6 +313,7 @@ interface DocFieldLabels {
   collapseAll: string;
   expandEditor: string;
   opaqueType: string;
+  trimmedField: string;
   changeType: string;
 }
 
@@ -330,6 +339,7 @@ export function DocumentListView({
   onDeleteRow,
   onExpandField,
   copyToClipboard,
+  trimmed,
   emptyLabel,
   scrollRef,
   flashedRowIndex,
@@ -367,6 +377,7 @@ export function DocumentListView({
       collapseAll: t("dataGrid.list.collapseAll"),
       expandEditor: t("dataGrid.expandEditor"),
       opaqueType: t("dataGrid.list.opaqueType"),
+      trimmedField: t("dataGrid.trimmed.cellTitle"),
       changeType: t("dataGrid.list.changeType"),
     }),
     [i18n.language],
@@ -381,6 +392,7 @@ export function DocumentListView({
     onSortChange,
     onAddFilter,
     sort: sort ?? NO_SORT,
+    trimmed,
   });
   callbacksRef.current = {
     onFieldSave,
@@ -391,6 +403,7 @@ export function DocumentListView({
     onSortChange,
     onAddFilter,
     sort: sort ?? NO_SORT,
+    trimmed,
   };
 
   /**
@@ -926,10 +939,27 @@ const DocumentCard = memo(function DocumentCard({
     [toggled, base],
   );
 
-  const fields = useMemo(
-    () => flattenDocument(columns, rowValues, types, isExpanded),
-    [columns, rowValues, types, isExpanded],
-  );
+  // Read through the ref like every callback here; a page's cuts change only
+  // together with the row arrays they belong to, which `rowValues` tracks.
+  const cuts = callbacksRef.current.trimmed?.of(rowValues);
+  const fields = useMemo(() => {
+    const flat = flattenDocument(columns, rowValues, types, isExpanded);
+    if (!cuts) return flat;
+    return flat.map((f) => {
+      const cut = f.path.length === 1 ? cuts.get(f.path[0]) : undefined;
+      return cut ? { ...f, editable: false, trimmed: describeTrimmed(cut) } : f;
+    });
+  }, [columns, rowValues, types, isExpanded, cuts]);
+
+  /** Run with this document whole — see `TrimmedRows.hydrate`. */
+  function withFullRow(run: (row: CellValue[]) => void) {
+    const trimmedRows = callbacksRef.current.trimmed;
+    if (!trimmedRows?.of(rowValues)) {
+      run(rowValues);
+      return;
+    }
+    trimmedRows.hydrate(rowValues).then(run, () => {});
+  }
 
   /** Column catalog type by name, for `typeTextFor` — memoized once per
    *  column list instead of a `columns.find()` per field per render (O(fields
@@ -1021,6 +1051,12 @@ const DocumentCard = memo(function DocumentCard({
   }
 
   function startEdit(f: DocField) {
+    if (f.trimmed) {
+      if (!callbacksRef.current.trimmed?.explainUnloadable(rowValues, f.path[0])) {
+        withFullRow(() => {});
+      }
+      return;
+    }
     if (!canEdit(f)) return;
     setEdit({
       key: pathKey(f.path),
@@ -1233,7 +1269,16 @@ const DocumentCard = memo(function DocumentCard({
           : { column, op: exclude ? "ne" : "eq", value: f.value },
       );
     },
-    copyValue: (f) => callbacksRef.current.copyToClipboard(formatValue(f.value)),
+    copyValue: (f) => {
+      if (!f.trimmed) {
+        callbacksRef.current.copyToClipboard(formatValue(f.value));
+        return;
+      }
+      withFullRow((row) => {
+        const at = columns.findIndex((c) => c.name === f.path[0]);
+        callbacksRef.current.copyToClipboard(formatValue(row[at] ?? null));
+      });
+    },
   };
   const actionsRef = useRef<FieldRowActions>(actions);
   actionsRef.current = actions;
@@ -1282,8 +1327,8 @@ const DocumentCard = memo(function DocumentCard({
             icon={Copy}
             label={labels.ctxCopy}
             onClick={() =>
-              callbacksRef.current.copyToClipboard(
-                rowToJson(rowValues, columns),
+              withFullRow((row) =>
+                callbacksRef.current.copyToClipboard(rowToJson(row, columns)),
               )
             }
           />
@@ -1324,12 +1369,12 @@ const DocumentCard = memo(function DocumentCard({
                 isFlashing={key === flashedPath}
                 editText={edit?.text ?? null}
                 canEdit={canEdit(f)}
-                canMutate={canMutate(f)}
+                canMutate={canMutate(f) && !f.trimmed}
                 canExpand={hasExpandField && isAddressable(f)}
                 typeMenuOpen={typeMenu === key}
                 sortable={canSort && browseColumn(f) !== null}
                 sortDesc={sortDescOf(f)}
-                filterable={canFilter && browseColumn(f) !== null}
+                filterable={canFilter && browseColumn(f) !== null && !f.trimmed}
                 labels={labels}
                 actionsRef={actionsRef}
               />
@@ -1494,20 +1539,26 @@ const FieldRow = memo(function FieldRow({
             className={cn(
               "min-w-0 flex-1 truncate",
               canEdit && "cursor-text",
-              isNull
+              isNull || f.trimmed
                 ? "italic text-muted-foreground"
                 : f.container
                   ? "text-muted-foreground"
                   : valueClass(f.type),
             )}
-            title={f.editable ? undefined : labels.opaqueType}
+            title={
+              f.trimmed
+                ? labels.trimmedField
+                : f.editable
+                  ? undefined
+                  : labels.opaqueType
+            }
             onDoubleClick={() =>
               f.container
                 ? actionsRef.current.toggleFold(pathKey(f.path))
                 : actionsRef.current.startEdit(f)
             }
           >
-            {displayValue(f, nullDisplay)}
+            {f.trimmed ?? displayValue(f, nullDisplay)}
           </span>
         )}
         {canExpand && (
@@ -1609,7 +1660,7 @@ function FieldMenuItems({
     <>
       <ContextMenuLabel>
         {field}
-        {isNull ? " · NULL" : ""}
+        {f.trimmed ? ` · ${f.trimmed}` : isNull ? " · NULL" : ""}
       </ContextMenuLabel>
       {sortable && (
         <>

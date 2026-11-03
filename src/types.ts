@@ -656,6 +656,23 @@ export interface QueryResult {
    * server-side and never truncates.
    */
   truncated?: boolean;
+  /**
+   * MongoDB browse only, when the query set `trimAbove`: the cells left on the
+   * server for being too large. Each one's value in {@link rows} is `null` and
+   * its {@link row_types} entry is the real type name. See
+   * `lib/grid/trimmedCells.ts` and ADR #133.
+   */
+  trimmed?: TrimmedCell[];
+}
+
+/** A cell a MongoDB browse did not send (see {@link QueryResult.trimmed}). */
+export interface TrimmedCell {
+  /** Index into `rows`. */
+  row: number;
+  /** Index into `columns`. */
+  column: number;
+  /** The field's BSON size on the server, in bytes. */
+  bytes: number;
 }
 
 /** Mirror of a BSON value's type structure (see {@link QueryResult.row_types}):
@@ -921,6 +938,9 @@ export interface TableQuery extends TableScan {
    *  render); the headless MCP `browse_table` tool uses the inline count.
    *  Defaults to `true` on the backend when omitted. */
   withCount?: boolean;
+  /** MongoDB only: leave top-level fields over this many bytes on the server
+   *  (see {@link QueryResult.trimmed}). Only the grid's own browse sets it. */
+  trimAbove?: number;
 }
 
 /** One column/value pair used when building an INSERT. */
@@ -1687,6 +1707,9 @@ export interface GridPrefs {
   rowHeight: number;
   nullDisplay: string;
   truncateLongTextAt: number;
+  /** MongoDB browse: a top-level field over this many KB stays on the server
+   *  until its row is used (ADR #133). `0` sends documents whole. */
+  trimLargeValuesKb: number;
   zebraStripes: boolean;
   stickyHeader: boolean;
   defaultPageSize: number;

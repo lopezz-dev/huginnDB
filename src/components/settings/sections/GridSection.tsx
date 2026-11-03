@@ -122,6 +122,28 @@ export function GridSection() {
             className="h-8 w-24 text-right font-mono text-xs"
           />
         </PrefRow>
+
+        <PrefRow
+          label={t("settings.grid.trimLargeValuesKb.label")}
+          prefId="grid.trimLargeValuesKb"
+          description={t("settings.grid.trimLargeValuesKb.desc")}
+          htmlFor="prefs-grid-trim-large"
+        >
+          <Input
+            id="prefs-grid-trim-large"
+            type="number"
+            min={0}
+            max={16384}
+            value={grid.trimLargeValuesKb}
+            onChange={(e) => {
+              const n = Number.parseInt(e.target.value, 10);
+              if (Number.isFinite(n) && n >= 0) {
+                updateGrid({ trimLargeValuesKb: n });
+              }
+            }}
+            className="h-8 w-24 text-right font-mono text-xs"
+          />
+        </PrefRow>
       </PrefGroup>
 
       <PrefGroup title={t("settings.rowGroups.display")}>

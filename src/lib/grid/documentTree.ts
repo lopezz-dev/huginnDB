@@ -195,6 +195,13 @@ export interface DocField {
   /** False when the value's display form isn't round-trippable — see
    *  {@link isOpaqueType}. */
   editable: boolean;
+  /**
+   * Set on a top-level field the page left on the server (ADR #133): what the
+   * row shows instead of the value (`Array · 1.4 MB`). Its `value` is only a
+   * stand-in `null`, so the field is neither edited, retyped nor filtered by
+   * until the document is loaded.
+   */
+  trimmed?: string;
 }
 
 /** Stable key for a field row inside one document: its path, joined. */
