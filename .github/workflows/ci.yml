@@ -12,9 +12,13 @@ name: ci
 # Release bundling lives in release.yml / canary.yml; nothing here builds an
 # installer or touches the signing keys.
 
+# `develop` is here for the cache, not for the gate: every PR targets it and
+# can only restore caches saved on its own ref, its base branch or the default
+# branch. Without a run on `develop` the base cache was main's, refreshed only
+# at a version cut, so each PR recompiled whatever develop had changed since.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
 
 # A new push to the same branch supersedes the previous run. `group` includes
@@ -34,6 +38,11 @@ env:
   # would turn CI red with no change to this repo. Bumping this is a
   # deliberate one-line commit that carries whatever fixes the new lints want.
   RUST_VERSION: "1.95.0"
+  # Full debuginfo is the most expensive part of an MSVC link (the PDBs) and
+  # roughly doubles `target/`, which is what the cache uploads and restores.
+  # Line tables keep file:line in a failing test's panic and backtrace, which
+  # is all CI reads; `cargo test` inherits this through the test profile.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   fmt:
@@ -96,6 +105,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Windows builds on NTFS with Defender scanning every object file cargo
+      # writes, which is most of why this leg ran twice as long as Linux. A
+      # Dev Drive (ReFS, trusted so Defender runs in performance mode) mounted
+      # at the target directory moves exactly that IO off it, and mounting it
+      # there — rather than copying the workspace onto the drive — leaves every
+      # path below, the cache's included, unchanged. It must come before the
+      # cache restore so the restored artifacts land on the drive. The runner is
+      # ephemeral and builds only this checkout, so trusting the drive costs
+      # nothing it would otherwise protect.
+      - name: Mount Dev Drive at the target directory
+        if: runner.os == 'Windows'
+        uses: samypr100/setup-dev-drive@v4
+        with:
+          drive-size: 12GB
+          mount-path: src-tauri/target
+          trusted-dev-drive: true
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@master
         with:
@@ -108,6 +134,10 @@ jobs:
           workspaces: "src-tauri -> target"
           # Keyed per platform so the two matrix legs don't evict each other.
           key: ${{ matrix.platform }}
+          # Only pushes (develop, main) save. A PR's cache is readable by that
+          # PR alone, and at ~1.5 GB a leg a handful of them pushed the repo
+          # past its 10 GB budget, evicting the base caches every PR restores.
+          save-if: ${{ github.event_name == 'push' }}
 
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
