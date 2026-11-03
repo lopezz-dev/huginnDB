@@ -7,7 +7,7 @@ name: ci
 # Deliberately split into three jobs so a failure names its own cause:
 #   fmt      — seconds, compiles nothing, fails fast on a formatting slip
 #   frontend — TypeScript only
-#   rust     — clippy + tests, on both target platforms
+#   rust     — clippy + tests on Linux and Windows (and macOS, see the matrix)
 #
 # A fourth, `changes`, decides whether a pull request needs `rust` at all.
 #
@@ -171,8 +171,20 @@ jobs:
       # Report both platforms' failures in one run instead of masking the
       # second behind the first.
       fail-fast: false
+      # macOS is checked after merge, not before: every push to develop runs
+      # it, and a pull request runs it only when it carries the `ci:macos`
+      # label, for changes to macOS-specific code. Keeping it off the default
+      # gate is what keeps the wait for a merge where it was. The label is read
+      # from the event that started the run, so it takes effect from the next
+      # push (or on opening the pull request with it), not on a re-run.
       matrix:
-        platform: [ubuntu-22.04, windows-2022]
+        platform: >-
+          ${{ fromJSON(
+            (github.event_name == 'push' ||
+             contains(github.event.pull_request.labels.*.name, 'ci:macos'))
+            && '["ubuntu-22.04", "windows-2022", "macos-15"]'
+            || '["ubuntu-22.04", "windows-2022"]'
+          ) }}
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -204,7 +216,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: "src-tauri -> target"
-          # Keyed per platform so the two matrix legs don't evict each other.
+          # Keyed per platform so the matrix legs don't evict each other.
           key: ${{ matrix.platform }}
           # Only pushes to develop save. A PR's cache is readable by that PR
           # alone, and at ~1.5 GB a leg a handful of them pushed the repo past

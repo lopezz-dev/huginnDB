@@ -66,6 +66,21 @@ jobs:
           # is that the AppImage then requires a distro with glibc >= 2.39.
           - platform: ubuntu-22.04
             args: ""
+          # Apple Silicon only (aarch64-apple-darwin, this runner's host), so
+          # the sidecar is built once exactly as on the other two legs; a
+          # universal binary would need it built twice and joined with `lipo`
+          # for Intel Macs nobody has asked for. Pinned rather than
+          # macos-latest for the reason the other two legs are: an image change
+          # should be a deliberate edit, not something a release discovers.
+          #
+          # Unsigned unless the Apple secrets below exist: the `.app` carries an
+          # ad-hoc signature (`bundle.macOS.signingIdentity: "-"` in
+          # tauri.conf.json), which arm64 needs to run at all, but no Developer
+          # ID, so Gatekeeper asks once on first open (README → macOS). The
+          # updater does not depend on it: it verifies our own minisign
+          # signature, the same as on Windows and Linux.
+          - platform: macos-15
+            args: ""
 
     runs-on: ${{ matrix.platform }}
 
@@ -147,6 +162,30 @@ jobs:
         uses: ./.github/actions/sidecar
         with:
           mode: build
+
+      # Signing and notarisation turn on by adding the secrets, with no change
+      # to this file: tauri-action reads these variables from the environment.
+      # Until then the .dmg ships ad-hoc signed and the run says so. Taken
+      # from Muninn's release workflow. Kept right before tauri-action so the
+      # setup steps above never see these variables in their environment.
+      - name: Apple signing and notarisation (when the secrets exist)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            for v in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              echo "$v=${!v}" >> "$GITHUB_ENV"
+            done
+          else
+            echo "::warning::No Apple signing secrets: the .dmg is published ad-hoc signed, without a Developer ID or notarisation."
+          fi
 
       # `retryAttempts` matters now that the matrix has more than one leg.
       # tauri-action does NOT clobber `latest.json` when a second platform

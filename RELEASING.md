@@ -1,6 +1,6 @@
 # Releasing HuginnDB
 
-Cutting a release is a matter of bumping the version, pushing a tag, reviewing the draft release that the CI workflow produces, and clicking **Publish**. The actual installer is built by GitHub Actions, not on the maintainer's machine — a Windows `-setup.exe` (NSIS; see ADR #21 for why not MSI/WiX), plus a Linux `.deb`/`.AppImage` if that leg of the build matrix is enabled.
+Cutting a release is a matter of bumping the version, pushing a tag, reviewing the draft release that the CI workflow produces, and clicking **Publish**. The actual installer is built by GitHub Actions, not on the maintainer's machine — a Windows `-setup.exe` (NSIS; see ADR #21 for why not MSI/WiX), a Linux `.deb`/`.AppImage`/`.rpm` and an Apple Silicon macOS `.dmg`. The macOS build is ad-hoc signed: adding the `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID` repository secrets turns on Developer ID signing and notarization with no change to the workflow; without them the run warns and publishes the ad-hoc build.
 
 ## One-time setup — signing keys
 

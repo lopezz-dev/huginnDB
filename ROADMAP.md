@@ -130,9 +130,14 @@ in a roadmap and now don't:
    write and maintain a `PKGBUILD` for the AUR, which is an external
    packaging/publishing step (an aur.archlinux.org account + SSH key), not a
    change to this repo's build.
-8. **macOS bundle with code signing.** The build is expected to work but is
-   unverified, and there's no Apple Developer signing/notarization yet
-   (parallels the Windows SmartScreen situation documented in the README).
+8. **macOS code signing, and Intel Macs.** An Apple Silicon `.dmg` ships with
+   every release and CI builds and tests on macOS after each merge, but it is
+   ad-hoc signed only: no Apple Developer ID or notarization yet (parallels
+   the Windows SmartScreen situation documented in the README). Signing turns
+   on by adding the `APPLE_*` secrets that `release.yml` already reads; it
+   needs a paid Apple Developer account. Intel Macs would need a universal
+   build, with the `huginndb-mcp` sidecar built for both architectures and
+   joined with `lipo`.
 9. **Visual query builder** — low priority. Monaco is fast enough that most
    users probably don't want one; only pursue if there's real demand. The query
    panel (see *Shipped milestones*) already covers the single-relation case —

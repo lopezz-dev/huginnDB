@@ -76,7 +76,7 @@ No two of these tools are chasing the same thing, and all four below are genuine
 |                          | **HuginnDB**                                                   | DBeaver (CE)                                              | TablePlus                                                       | HeidiSQL                                          | DataGrip                                                        |
 | ------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------ |
 | **License / price**      | MIT, free                                                         | Apache-2.0 (CE) free; paid tiers from ~$110/yr for more drivers/SSO | Proprietary; free tier capped (2 tabs/windows/filters), ~$99 perpetual license | GPL-2.0, free                                       | Paid (~$99/yr); free for non-commercial use since Oct 2025           |
-| **Platforms**            | Windows, Linux (macOS unverified)                                 | Windows, macOS, Linux                                        | Windows, macOS, Linux                                               | Windows-native (Linux via Wine; no native macOS)     | Windows, macOS, Linux                                                |
+| **Platforms**            | Windows, Linux, macOS (Apple Silicon, unsigned)                   | Windows, macOS, Linux                                        | Windows, macOS, Linux                                               | Windows-native (Linux via Wine; no native macOS)     | Windows, macOS, Linux                                                |
 | **MongoDB**              | ✅ native                                                          | ❌ in Community — only paid Lite/Enterprise/Ultimate         | ✅ (Beta)                                                            | ❌                                                     | ✅                                                                    |
 | **SQL Server**           | ✅                                                                  | ✅ (JDBC)                                                     | ✅                                                                    | ✅                                                     | ✅                                                                    |
 | **Per-cell editor**      | Full Monaco pane — JSON/XML/SQL highlighting, live validation, `F11` fullscreen | Inline / basic value viewer                                  | Inline / basic value viewer                                          | Inline / basic value viewer                          | Inline / basic value viewer                                          |
@@ -98,7 +98,7 @@ HuginnDB is split into two cooperating processes: a Tauri webview (React + TypeS
 
 ## Status
 
-**Stable**, SemVer since `1.0`, currently `1.16.x`. Read/write workflows are feature-complete for every supported driver. Known gaps: no automated frontend tests yet, macOS builds unverified, Windows binaries not code-signed yet. Windows and Linux (`x86_64`: `.deb`, `.AppImage`, `.rpm`) artifacts are published per release; arm64 and Flatpak/Snap/AUR are not — see [ROADMAP.md](ROADMAP.md).
+**Stable**, SemVer since `1.0`, currently `1.16.x`. Read/write workflows are feature-complete for every supported driver. Known gaps: no automated frontend tests yet, Windows and macOS binaries not code-signed yet. Windows, Linux (`x86_64`: `.deb`, `.AppImage`, `.rpm`) and macOS (Apple Silicon: `.dmg`) artifacts are published per release; Linux arm64, Intel Macs and Flatpak/Snap/AUR are not — see [ROADMAP.md](ROADMAP.md).
 
 ## Install
 
@@ -111,6 +111,14 @@ sudo apt install ./HuginnDB_<version>_amd64.deb        # Debian/Ubuntu/Mint/Pop!
 # or, no install step:
 chmod +x HuginnDB_<version>_amd64.AppImage && ./HuginnDB_<version>_amd64.AppImage
 ```
+
+**macOS** (Apple Silicon) — open the `.dmg` and drag HuginnDB to Applications. The app is not signed with an Apple Developer ID yet, so the first launch is blocked with a warning that Apple cannot check it (not a malware flag). Open **System Settings → Privacy & Security**, and next to the HuginnDB message click **Open Anyway**; or, from a terminal, clear the download flag once:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/HuginnDB.app
+```
+
+It asks only the first time: updates installed from inside the app are not flagged.
 
 <details>
 <summary>Building from source</summary>
@@ -145,7 +153,7 @@ sudo apt install -y \
 
 Equivalent packages exist on Fedora, Arch, and Alpine — see the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
 
-**macOS** — `xcode-select --install`. Not a primary target yet; build should work, please file an issue if not.
+**macOS** — `xcode-select --install`. CI builds and tests on Apple Silicon after every merge; please file an issue if a local build fails.
 
 ```bash
 git clone https://github.com/lopezz-dev/huginnDB.git

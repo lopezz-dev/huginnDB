@@ -14,7 +14,9 @@
 //! - **Linux:** logind over D-Bus. The session's `LockedHint` turning true is
 //!   what GNOME, KDE and most lockers set; the `Lock` signal is what
 //!   `loginctl lock-session` sends. Either locks.
-//! - **macOS:** nothing yet; the platform is not a target.
+//! - **macOS:** nothing yet. [`watching`] stays false, Settings says the
+//!   session lock is not watched, and the decision below is compiled but never
+//!   called there.
 //!
 //! Each watcher only reports the event. Whether to act — the preference is on
 //! and the vault is open — is decided in one place, [`on_event`].
@@ -55,10 +57,12 @@ pub fn spawn(app: AppHandle) {
 /// The one decision: lock when the user wants it and there is something open
 /// to lock. A session event while the lock is off, or already locked, does
 /// nothing.
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 fn should_lock(with_session: bool, vault_open: bool) -> bool {
     with_session && vault_open
 }
 
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
 fn on_event(event: SessionEvent) {
     let Some(app) = APP.get() else { return };
     let state = app.state::<AppState>();
