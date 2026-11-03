@@ -7,8 +7,8 @@
  *
  * - **Home.** The viewer opens on a grid of every guide with what it is for,
  *   rather than inside whichever guide happened to be first.
- * - **A guide opens on its cover** (the prose before its first `##`, plus a card
- *   per section); picking a section shows that section alone. Paging rather than
+ * - **A guide opens on its cover** (the prose before its first `##`, plus a numbered
+ *   list of its sections); picking a section shows that section alone. Paging rather than
  *   one long scroll because `docs/MCP.md` is 600+ lines, and finding what a tool
  *   requires meant scrolling blind past five client configurations.
  * - **Search** (`lib/appInfo/docSearch`) replaces the page with the passages that
@@ -36,7 +36,7 @@
 
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpen, ExternalLink, FileText, Settings2 } from "lucide-react";
+import { BookOpen, ChevronRight, ExternalLink, Settings2 } from "lucide-react";
 import { DOCS, getDoc, getDocBody, type DocEntry } from "@/lib/appInfo/docs";
 import { locate, parseDoc, type ParsedDoc } from "@/lib/appInfo/docOutline";
 import { searchDocs, type DocHit } from "@/lib/appInfo/docSearch";
@@ -377,72 +377,89 @@ export function DocsDialog() {
                 />
 
                 <div className="flex min-h-0 min-w-0 flex-1">
-                  {/* Keyed so switching page mounts fresh — which also resets
-                      the scroll offset, something the single-pane version never
-                      did. */}
-                  <div
-                    key={`${active.id}:${section?.slug ?? "cover"}`}
-                    ref={setScroller}
-                    className="min-w-0 flex-1 overflow-y-auto px-6 pb-8"
-                  >
-                    <div className="mx-auto max-w-3xl">
-                      {section ? (
-                        <>
-                          <ScrollToAnchor
-                            anchor={pendingAnchor}
-                            onConsumed={clearAnchor}
-                          />
-                          <Markdown
-                            source={withoutHeading(section.body, 2)}
-                            navigator={navigator}
-                            className="[&>*:first-child]:mt-0"
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <Markdown
-                            source={withoutHeading(parsed.cover, 1)}
-                            navigator={navigator}
-                            className="[&>*:first-child]:mt-0"
-                          />
-                          {parsed.sections.length > 0 && (
-                            <>
-                              <h3 className="mb-2 mt-8 border-b pb-1 text-base font-semibold text-foreground">
-                                {t("docs.coverSections")}
-                              </h3>
-                              <div className="grid gap-2 sm:grid-cols-2">
-                                {parsed.sections.map((s) => (
-                                  <TreeRow
-                                    key={s.slug}
-                                    onClick={() => setSection(s.slug)}
-                                    className={cn(
-                                      "items-start gap-2 rounded-md border p-3 text-left transition-colors hover:border-brand/60",
-                                      CONTROL_FOCUS_TIGHT,
-                                    )}
-                                  >
-                                    <FileText
-                                      aria-hidden
-                                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                                    />
-                                    <span className="min-w-0">
-                                      <span className="block text-sm font-medium text-foreground">
-                                        {s.title}
-                                      </span>
-                                      {s.subs.length > 0 && (
-                                        <span className="mt-0.5 block text-2xs leading-snug text-muted-foreground">
-                                          {s.subs.map((x) => x.title).join(" · ")}
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    {/* Keyed so switching page mounts fresh — which also resets
+                        the scroll offset, something the single-pane version never
+                        did. */}
+                    <div
+                      key={`${active.id}:${section?.slug ?? "cover"}`}
+                      ref={setScroller}
+                      className="min-h-0 flex-1 overflow-y-auto px-6 pb-8"
+                    >
+                      <div className="mx-auto max-w-3xl">
+                        {section ? (
+                          <>
+                            <ScrollToAnchor
+                              anchor={pendingAnchor}
+                              onConsumed={clearAnchor}
+                            />
+                            <Markdown
+                              source={withoutHeading(section.body, 2)}
+                              navigator={navigator}
+                              className="[&>*:first-child]:mt-0"
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <Markdown
+                              source={withoutHeading(parsed.cover, 1)}
+                              navigator={navigator}
+                              className="[&>*:first-child]:mt-0"
+                            />
+                            {parsed.sections.length > 0 && (
+                              <>
+                                <h3 className="mb-2 mt-8 border-b pb-1 text-base font-semibold text-foreground">
+                                  {t("docs.coverSections")}
+                                </h3>
+                                {/* A numbered contents list rather than a grid of
+                                    bordered cards: a guide's pages are read in
+                                    order, and nine boxes before the first line of
+                                    prose made the cover look like a dashboard. */}
+                                <ol className="divide-y divide-border/50">
+                                  {parsed.sections.map((s, i) => (
+                                    <li key={s.slug}>
+                                      <TreeRow
+                                        onClick={() => setSection(s.slug)}
+                                        className={cn(
+                                          "group items-baseline gap-3 rounded-md px-2 py-2.5 text-left transition-colors",
+                                          CONTROL_FOCUS_TIGHT,
+                                        )}
+                                      >
+                                        <span
+                                          aria-hidden
+                                          className="w-5 shrink-0 font-mono text-2xs tabular-nums text-muted-foreground/70 group-hover:text-brand"
+                                        >
+                                          {String(i + 1).padStart(2, "0")}
                                         </span>
-                                      )}
-                                    </span>
-                                  </TreeRow>
-                                ))}
-                              </div>
-                            </>
-                          )}
-                        </>
-                      )}
-                      <DocsPager prev={pager.prev} next={pager.next} />
+                                        <span className="min-w-0 flex-1">
+                                          <span className="block text-sm font-medium text-foreground">
+                                            {s.title}
+                                          </span>
+                                          {s.subs.length > 0 && (
+                                            <span className="mt-0.5 block text-2xs leading-snug text-muted-foreground">
+                                              {s.subs.map((x) => x.title).join(" · ")}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <ChevronRight
+                                          aria-hidden
+                                          className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+                                        />
+                                      </TreeRow>
+                                    </li>
+                                  ))}
+                                </ol>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
+                    {/* Outside the scroller on purpose: at the foot of the
+                        content the pager landed wherever the page happened to
+                        end, so reading a guide through meant hunting for it on
+                        every page. Pinned, it is always in the same place. */}
+                    <DocsPager prev={pager.prev} next={pager.next} />
                   </div>
                   <DocsToc
                     subs={subs}

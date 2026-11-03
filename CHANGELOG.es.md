@@ -24,6 +24,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **El visor de documentación se lee más como el índice de un libro.** Las
+  páginas de una guía cuelgan de su entrada en el panel izquierdo con un
+  conector curvo por fila —el de la página actual, en el color de acento— en
+  lugar de una línea recta a lo largo de toda la lista, y la portada de la
+  guía muestra sus páginas como un índice numerado en vez de una rejilla de
+  tarjetas con borde. Los botones de anterior / siguiente quedan fijos en una
+  barra bajo la página en lugar de ir detrás del texto, así que están siempre
+  en el mismo sitio sea cual sea la longitud de la página o del título
+  siguiente.
 - **Abrir una colección de MongoDB ya no descarga sus campos más grandes.**
   Un campo de primer nivel de más de 64 KB se queda en el servidor y aparece
   en el grid como su tipo y su tamaño (por ejemplo *Array · 1,4 MB*). El
