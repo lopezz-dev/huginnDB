@@ -104,6 +104,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   reason, so a pull request starts from what was last merged), and the test
   build carries line tables instead of full debuginfo.
 
+### Fixed
+
+- **Changing a table's primary key in the structure editor now changes it on
+  PostgreSQL and MySQL.** Ticking or unticking the PK box on a column that
+  already existed showed a column change in the preview and applied without an
+  error, but the key stayed exactly as it was: nothing ever told the server.
+  PostgreSQL now drops the old key by the name it really has — looked up in
+  `pg_constraint`, since a table renamed after it was created keeps its old
+  `…_pkey` — and adds the new one once every column it covers is `NOT NULL`.
+  MySQL does both in a single `ALTER TABLE`, because the server checks each
+  statement on its own and would otherwise refuse the step in between (an
+  `AUTO_INCREMENT` column briefly without a key, or a key dropped twice when
+  one of its columns is dropped too). A change that would leave an
+  `AUTO_INCREMENT` column with no key or index leading with it is refused
+  before anything runs, with the column named. SQLite already rebuilt the table
+  for a key change, and SQL Server already handled it.
+
 ## [1.38.0] — 2026-11-02
 
 ### Added

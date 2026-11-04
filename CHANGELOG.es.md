@@ -115,6 +115,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   último que se fusionó), y la build de tests lleva tablas de líneas en lugar
   de información de depuración completa.
 
+### Corregido
+
+- **Cambiar la clave primaria de una tabla en el editor de estructura ahora la
+  cambia en PostgreSQL y MySQL.** Marcar o desmarcar la casilla PK en una
+  columna que ya existía mostraba un cambio de columna en la vista previa y se
+  aplicaba sin error, pero la clave seguía exactamente igual: nunca se le decía
+  nada al servidor. PostgreSQL elimina ahora la clave antigua por el nombre que
+  tiene de verdad —buscado en `pg_constraint`, porque una tabla renombrada
+  después de crearla conserva su `…_pkey` antiguo— y añade la nueva cuando
+  todas sus columnas ya son `NOT NULL`. MySQL hace las dos cosas en un único
+  `ALTER TABLE`, porque el servidor comprueba cada sentencia por separado y
+  rechazaría el paso intermedio (una columna `AUTO_INCREMENT` sin clave por un
+  momento, o una clave eliminada dos veces cuando también se elimina una de sus
+  columnas). Un cambio que dejaría una columna `AUTO_INCREMENT` sin clave ni
+  índice que empiece por ella se rechaza antes de ejecutar nada, indicando la
+  columna. SQLite ya reconstruía la tabla al cambiar la clave, y SQL Server ya
+  lo hacía bien.
+
 ## [1.38.0] — 2026-11-02
 
 ### Añadido
