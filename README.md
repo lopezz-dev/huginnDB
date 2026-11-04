@@ -4,6 +4,8 @@
   <p><strong>A fast, keyboard-first desktop database manager.</strong><br>
   PostgreSQL · MySQL · SQLite · MongoDB · SQL Server</p>
 
+  <p><a href="https://huginndb.vercel.app/"><strong>Website</strong></a> · <a href="https://github.com/lopezz-dev/huginnDB/releases/latest">Download</a> · <a href="https://huginndb.vercel.app/es/">Versión en español</a></p>
+
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
   [![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen.svg)](#status)
   [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-24c8db)](https://v2.tauri.app)
