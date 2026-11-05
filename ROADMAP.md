@@ -246,11 +246,13 @@ pushing a count down. Worth naming individually:
   is the wrong vehicle for it. The three left are the row's own controls.
   `DocumentListView.tsx` is still open, and its raw buttons are the documented
   exception, not work.
-- `ConnectionsTree`'s visible-databases button cannot become an `IconButton` as
-  it stands: it paints a subset badge over its glyph, and `IconButton` takes
-  the icon as a component with no room for a child. Either it gains a badge
-  slot or this one stays hand-rolled with a written reason — the decision, not
-  the migration, is the work.
+- ~~`ConnectionsTree`'s visible-databases button cannot become an
+  `IconButton`~~ — **closed in 1.39**: `IconButton` gained a `badge` slot (a
+  node painted over the glyph's top-right corner, usually the new `BadgeDot`),
+  chosen over a written exception because "this control is not at its
+  default" is a recurring thing for a toolbar button to say, and the next one
+  should not have to hand-roll a `Button` to say it. The button migrated, and
+  its accessible name now carries the subset count the dot only shows.
 
 **Token adoption.** The design tokens exist and are almost unused:
 `brand-flash` (the "short blue pulse on a completed action" the visual brief

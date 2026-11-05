@@ -49,7 +49,7 @@ import { useTranslation } from "react-i18next";
 import { DatabaseBackup, DatabaseZap, ListFilter, PlugZap } from "lucide-react";
 import { SearchField } from "@/components/ui/search-field";
 import { MICRO_HEADING } from "@/components/ui/styles";
-import { IconButton } from "@/components/ui/icon-button";
+import { BadgeDot, IconButton } from "@/components/ui/icon-button";
 import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useConnections } from "@/stores/session/connections";
@@ -86,7 +86,6 @@ import { bucketByGroup, cn } from "@/lib/utils";
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
-import { SimpleTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogBody,
@@ -717,7 +716,8 @@ export function ConnectionsTree() {
           {/* The "N of M connections" line folds into a brand dot on the icon
               that describes it — the subset is still announced, on the control
               that changes it, and its count is in the tooltip. */}
-          <SimpleTooltip
+          <IconButton
+            icon={ListFilter}
             label={
               visibleSet
                 ? `${t("connectionsTree.selectConnections.action")} — ${t(
@@ -726,27 +726,13 @@ export function ConnectionsTree() {
                   )}`
                 : t("connectionsTree.selectConnections.action")
             }
-          >
-            {/* A `Button` rather than an `IconButton` only because of the dot:
-                `IconButton` takes no children. Same shape and variant, so it
-                still matches the disconnect button beside it. */}
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon-sm"
-              icon={ListFilter}
-              onClick={() => setVisibilityPickerOpen(true)}
-              aria-label={t("connectionsTree.selectConnections.action")}
-              className={cn(
-                "relative shrink-0",
-                visibleSet && "text-brand hover:text-brand",
-              )}
-            >
-              {visibleSet && (
-                <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-background" />
-              )}
-            </Button>
-          </SimpleTooltip>
+            badge={visibleSet && <BadgeDot />}
+            onClick={() => setVisibilityPickerOpen(true)}
+            className={cn(
+              "shrink-0",
+              visibleSet && "text-brand hover:text-brand",
+            )}
+          />
         </div>
         <TreeFilterBox
           ref={filterInputRef}

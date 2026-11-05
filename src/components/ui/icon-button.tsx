@@ -75,6 +75,29 @@ export interface IconButtonProps extends Omit<
    * menu's own hover and portal handling. See `tooltip.tsx`.
    */
   nativeTitle?: boolean;
+  /**
+   * A mark painted over the glyph's top-right corner — the slot that lets a
+   * control say "something here is not at its default" on the control that
+   * changes it, without a second element beside it. Usually a
+   * {@link BadgeDot}. `label` still has to say in words what the mark says
+   * in colour: the tooltip is the only place a screen reader and a curious
+   * pointer can read it.
+   */
+  badge?: React.ReactNode;
+}
+
+/**
+ * The standard {@link IconButton} badge: a brand dot ringed in the background
+ * colour, so it reads against the glyph it overlaps. Decorative — the button's
+ * `label` carries the meaning.
+ */
+export function BadgeDot() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-brand ring-2 ring-background"
+    />
+  );
 }
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
@@ -89,6 +112,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       loading = false,
       flat,
       nativeTitle = false,
+      badge,
       className,
       ...props
     },
@@ -109,10 +133,13 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
           TONE[tone],
           !isFlat && TONE_EDGE[tone],
           revealOnHover && REVEAL_ON_HOVER[revealOnHover],
+          badge != null && badge !== false && "relative",
           className,
         )}
         {...props}
-      />
+      >
+        {badge}
+      </Button>
     );
     if (nativeTitle) return button;
     return (
