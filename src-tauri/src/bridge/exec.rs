@@ -244,15 +244,28 @@ pub async fn execute(
         // Every caller of this function acts for an AI, so a statement
         // classified as a read runs where the database itself refuses a write
         // — the second barrier behind the text classifier. See
-        // `execute_read_with_state` for what it does and does not cover.
+        // `execute_read_bounded` for what it does and does not cover.
+        //
+        // A read is also bounded, by the connection's MCP timeout, and stopped
+        // on the server when it passes or when this future is dropped — the
+        // bridge drops it when the sidecar hangs up (ADR #134). A person's
+        // read from the editor stays unbounded; this is the AI's.
         RunStatement {
-            connection_id, sql, ..
+            connection_id,
+            policy_id,
+            sql,
         } => {
             let is_read =
                 crate::db::classify::classify_statement(sql) == crate::db::sql::StmtClass::Read;
             serde_json::to_value(if is_read {
-                crate::commands::query::execute_read_with_state(sink, state, connection_id, sql)
-                    .await?
+                crate::commands::query::execute_read_bounded(
+                    sink,
+                    state,
+                    connection_id,
+                    sql,
+                    timeout_for(state, policy_id, None),
+                )
+                .await?
             } else {
                 crate::commands::query::execute_with_state(sink, state, connection_id, sql).await?
             })?
@@ -510,7 +523,8 @@ pub async fn execute(
 }
 
 /// The timeout a `run_script` / `run_writes` gets on this side: what it asked
-/// for, under the ceiling the profile sets.
+/// for, under the ceiling the profile sets. A read (`run_query`) asks for
+/// nothing, so it gets the default under the same ceiling.
 ///
 /// Read fresh from `profiles.json`, falling back to the in-memory copy, like
 /// the sidecar's write policy: on the sidecar's own path that copy is the one

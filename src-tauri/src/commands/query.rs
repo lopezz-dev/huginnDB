@@ -68,6 +68,7 @@ macro_rules! try_sql_sink {
 // `try_sql_sink!` is defined above these declarations on purpose: a
 // `macro_rules!` macro is visible only to the modules declared after it.
 mod adhoc;
+mod bounded;
 mod browse;
 mod filter;
 mod fk;
@@ -81,6 +82,7 @@ mod bind_type_tests;
 mod filter_tests;
 
 pub(crate) use adhoc::*;
+pub(crate) use bounded::*;
 pub(crate) use browse::*;
 pub(crate) use filter::*;
 pub(crate) use fk::*;

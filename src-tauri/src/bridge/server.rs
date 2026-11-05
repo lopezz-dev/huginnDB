@@ -263,6 +263,26 @@ async fn serve_connection(app: AppHandle, stream: TcpStream, token: Arc<String>)
             continue;
         }
         let response = match serde_json::from_str::<BridgeRequest>(&line) {
+            // A read is dropped the moment the sidecar hangs up, which stops
+            // it on the server (`commands::query::execute_read_bounded`). The
+            // protocol is one request, then its reply, so anything the read
+            // side yields while one is in flight — EOF, an error, a line — means
+            // the client has given up on it: the sidecar shuts its write half
+            // when its own MCP client cancels the call or its wait runs out.
+            //
+            // Only a read. A write that was sent is finished and answered, as
+            // it always was: dropping it mid-flight would leave its outcome
+            // unknown, which `run_script` / `run_writes` are built never to do
+            // (ADR #130).
+            Ok(request) if abandonable(&request) => {
+                tokio::select! {
+                    response = handle(&app, &request, &exposure) => response,
+                    _ = lines.next_line() => {
+                        log_abandoned(&app, &request);
+                        return;
+                    }
+                }
+            }
             Ok(request) => handle(&app, &request, &exposure).await,
             Err(e) => BridgeResponse::err(format!("malformed request: {e}")),
         };
@@ -295,6 +315,34 @@ async fn handle(app: &AppHandle, request: &BridgeRequest, exposure: &Exposure) -
             BridgeResponse::err(message)
         }
     }
+}
+
+/// Whether a request is dropped mid-flight when its client goes away: a
+/// `RunStatement` classified as a read — the same test `bridge::exec` applies
+/// before running it in a read-only transaction, and the one request whose
+/// cost is whatever SQL the AI wrote.
+///
+/// Not every non-mutating request. The metadata reads are already bounded by
+/// the connection's operation timeout, and dropping `EnsureConnected` halfway
+/// through opening a pool would buy nothing for the risk.
+fn abandonable(request: &BridgeRequest) -> bool {
+    matches!(
+        request,
+        BridgeRequest::RunStatement { sql, .. }
+            if crate::db::classify::classify_statement(sql) == crate::db::sql::StmtClass::Read
+    )
+}
+
+/// Say in the Console that a read was stopped because its client went away —
+/// the one served call that ends without a reply to log.
+fn log_abandoned(app: &AppHandle, request: &BridgeRequest) {
+    log_bus::broadcast(
+        app,
+        LogEntry::new(LogKind::Connection)
+            .connection_id(connection_id_of(request))
+            .message(format!("mcp: {} cancelled", request.label()))
+            .error("the MCP client stopped waiting; the statement was stopped on the server"),
+    );
 }
 
 /// Mirror every served call into the Console.
@@ -624,6 +672,32 @@ mod tests {
             assert!(d >= prev, "backoff went backwards at {n}: {d:?} < {prev:?}");
             prev = d;
         }
+    }
+
+    /// Only a read is dropped when its client hangs up. A write that was sent
+    /// is finished and answered, so its outcome stays known (ADR #130).
+    #[test]
+    fn only_a_read_is_dropped_when_its_client_goes_away() {
+        let statement = |sql: &str| BridgeRequest::RunStatement {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            sql: sql.into(),
+        };
+        assert!(abandonable(&statement("SELECT COUNT(*) FROM v GROUP BY k")));
+        assert!(abandonable(&statement("db.events.find({})")));
+        assert!(!abandonable(&statement("UPDATE t SET a = 1 WHERE id = 2")));
+        assert!(!abandonable(&statement("db.events.deleteMany({})")));
+        assert!(!abandonable(&BridgeRequest::RunScript {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            sql: "SELECT 1".into(),
+            transaction: true,
+            max_rows: 1,
+            timeout_secs: None,
+        }));
+        assert!(!abandonable(&BridgeRequest::EnsureConnected {
+            connection_id: "c".into()
+        }));
     }
 
     #[test]

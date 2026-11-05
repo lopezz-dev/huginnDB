@@ -164,8 +164,41 @@ fn affected_result(count: u64, elapsed_ms: u64) -> QueryResult {
     QueryResult::affected(count, elapsed_ms)
 }
 
+/// Whether `error` is the server stopping an operation at its `maxTimeMS`
+/// (code 50, `MaxTimeMSExpired`).
+pub fn is_max_time_expired(error: &AppError) -> bool {
+    match error {
+        AppError::Mongo(e) => matches!(
+            e.kind.as_ref(),
+            mongodb::error::ErrorKind::Command(c) if c.code == MAX_TIME_MS_EXPIRED
+        ),
+        _ => false,
+    }
+}
+
+/// The server's error code for an operation stopped at its `maxTimeMS`.
+const MAX_TIME_MS_EXPIRED: i32 = 50;
+
 /// Execute one parsed `mongosh` statement and shape it into a [`QueryResult`].
 pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
+    execute_within(conn, sql, None).await
+}
+
+/// [`execute`], with the reads (`find`, `aggregate`, `countDocuments`,
+/// `distinct`) given a server-side `maxTimeMS` of `max_time`.
+///
+/// For the reads an AI runs (`commands::query::execute_read_bounded`).
+/// Dropping a driver future does not stop the operation on the server, so the
+/// limit has to travel with the command: the server then kills it itself, with
+/// `MaxTimeMSExpired` ([`is_max_time_expired`]). A cursor's `maxTimeMS` counts
+/// the time of every batch it returns, not only the first. Writes are left
+/// alone: they are single operations, and cutting one off would leave its
+/// outcome unknown (ADR #130).
+pub async fn execute_within(
+    conn: &MongoConn,
+    sql: &str,
+    max_time: Option<Duration>,
+) -> AppResult<QueryResult> {
     let start = Instant::now();
     let parsed = shell::parse(sql)?;
     let db = resolve_db(conn)?;
@@ -203,17 +236,28 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
             if let Some(sk) = skip {
                 action = action.skip(sk.max(0) as u64);
             }
+            if let Some(t) = max_time {
+                action = action.max_time(t);
+            }
             let mut cursor = action.await?;
             let (docs, truncated) = collect_capped(&mut cursor, MAX_ADHOC_QUERY_ROWS).await?;
             Ok(docs_to_result(docs, ms(), truncated))
         }
         MongoOp::Aggregate { pipeline } => {
-            let mut cursor = coll.aggregate(pipeline).await?;
+            let mut action = coll.aggregate(pipeline);
+            if let Some(t) = max_time {
+                action = action.max_time(t);
+            }
+            let mut cursor = action.await?;
             let (docs, truncated) = collect_capped(&mut cursor, MAX_ADHOC_QUERY_ROWS).await?;
             Ok(docs_to_result(docs, ms(), truncated))
         }
         MongoOp::Count { filter } => {
-            let n = coll.count_documents(filter).await?;
+            let mut action = coll.count_documents(filter);
+            if let Some(t) = max_time {
+                action = action.max_time(t);
+            }
+            let n = action.await?;
             Ok(scalar_result("count", "long", Value::from(n), ms()))
         }
         MongoOp::Distinct { field, filter } => {
@@ -225,7 +269,11 @@ pub async fn execute(conn: &MongoConn, sql: &str) -> AppResult<QueryResult> {
             // enough (and the command is read-only, uncommon in the editor)
             // that this is an accepted, lesser-scope gap versus `find`/
             // `aggregate`'s unbounded cursors.
-            let mut values = coll.distinct(&field, filter).await?;
+            let mut action = coll.distinct(&field, filter);
+            if let Some(t) = max_time {
+                action = action.max_time(t);
+            }
+            let mut values = action.await?;
             let truncated = values.len() > MAX_ADHOC_QUERY_ROWS;
             values.truncate(MAX_ADHOC_QUERY_ROWS);
             let data_type = infer_column_type(values.iter().map(Some));

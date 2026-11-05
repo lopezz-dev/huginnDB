@@ -128,6 +128,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A read the MCP connector gives up on no longer keeps running on the
+  server.** When `run_query` or `run_queries` took longer than the MCP client
+  was willing to wait (Claude Desktop stops at about 60 seconds), the client
+  reported a timeout, but HuginnDB went on running the statement. Against a
+  production SQL Server, a `GROUP BY` on a bad plan kept loading the server
+  and slowing everyone else down until someone ran `KILL` by hand. Now an AI's
+  read gets the connection's MCP timeout, 300 seconds at most, and is stopped
+  on the server when that runs out or when the client cancels the call.
+  SQL Server aborts it when its session closes, PostgreSQL gets
+  `pg_cancel_backend`, MySQL and MariaDB get `KILL QUERY`, and MongoDB stops
+  it itself through a `maxTimeMS`. Its connection is never handed to the next
+  query while the statement is still running. The error says how the read was
+  stopped and asks the model to look at the query's plan rather than run it
+  again. Reads you run yourself from the editor are not limited.
 - **Changing a table's primary key in the structure editor now changes it on
   PostgreSQL and MySQL.** Ticking or unticking the PK box on a column that
   already existed showed a column change in the preview and applied without an
