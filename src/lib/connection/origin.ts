@@ -55,3 +55,33 @@ export function filterByScope<T extends HasOrigin>(
   if (scope === "local") return items.filter((p) => !isFromOrigin(p));
   return items.filter((p) => isFromOrigin(p));
 }
+
+/** Anything that carries a profile's provenance and its local-password mark. */
+export type HasSecretOverride = HasOrigin & { secret_override?: unknown };
+
+/**
+ * Is this shared connection running on a password typed on this machine,
+ * rather than the one its origin publishes (`secret_override`, ADR #69)?
+ *
+ * Gated on provenance as well as the field: an override only means something
+ * on a profile an origin owns, and a stray one on a local profile — which the
+ * backend never writes — must not be shown as one.
+ */
+export function usesLocalPassword(p: HasSecretOverride | null | undefined): boolean {
+  return isFromOrigin(p) && !!p?.secret_override;
+}
+
+/**
+ * The names of `originId`'s connections that run on a local password, sorted
+ * so the list reads the same on every render — what Settings → Origins shows
+ * against each origin.
+ */
+export function localPasswordNames(
+  profiles: readonly (HasSecretOverride & { name: string })[],
+  originId: string,
+): string[] {
+  return profiles
+    .filter((p) => originIdOf(p) === originId && usesLocalPassword(p))
+    .map((p) => p.name)
+    .sort((a, b) => a.localeCompare(b));
+}

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { HasOrigin } from "./origin";
-import { filterByScope, isFromOrigin, originIdOf } from "./origin";
+import {
+  filterByScope,
+  isFromOrigin,
+  localPasswordNames,
+  originIdOf,
+  usesLocalPassword,
+} from "./origin";
 
 /** `HasOrigin` is a weak type, so an id-only fixture needs the annotation. */
 type Fixture = HasOrigin & { id: string };
@@ -58,5 +64,40 @@ describe("filterByScope", () => {
   it("preserves the input order within a scope", () => {
     const many: Fixture[] = [shared, local, { id: "e", origin_id: "origin-2" }];
     expect(filterByScope(many, "shared").map((p) => p.id)).toEqual(["b", "e"]);
+  });
+});
+
+describe("usesLocalPassword", () => {
+  const override = { supersedes: "abc" };
+
+  it("is true for a shared connection carrying an override", () => {
+    expect(usesLocalPassword({ origin_id: "o1", secret_override: override })).toBe(true);
+  });
+
+  it("is false without the override, however it is spelled", () => {
+    expect(usesLocalPassword({ origin_id: "o1" })).toBe(false);
+    expect(usesLocalPassword({ origin_id: "o1", secret_override: null })).toBe(false);
+  });
+
+  it("ignores an override on a local connection, which the backend never writes", () => {
+    expect(usesLocalPassword({ origin_id: null, secret_override: override })).toBe(false);
+    expect(usesLocalPassword(null)).toBe(false);
+  });
+});
+
+describe("localPasswordNames", () => {
+  const override = { supersedes: null };
+  const profiles = [
+    { name: "zeta", origin_id: "o1", secret_override: override },
+    { name: "alpha", origin_id: "o1", secret_override: override },
+    { name: "published", origin_id: "o1" },
+    { name: "other origin", origin_id: "o2", secret_override: override },
+    { name: "local", origin_id: null },
+  ];
+
+  it("lists only that origin's connections on a local password, sorted", () => {
+    expect(localPasswordNames(profiles, "o1")).toEqual(["alpha", "zeta"]);
+    expect(localPasswordNames(profiles, "o2")).toEqual(["other origin"]);
+    expect(localPasswordNames(profiles, "o3")).toEqual([]);
   });
 });

@@ -11,13 +11,14 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { FolderSync } from "lucide-react";
+import { FolderSync, KeyRound } from "lucide-react";
 
 import { DriverBadge } from "@/components/common/DriverBadge";
 import { VanishedOriginMark } from "@/components/common/VanishedOriginNotice";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SimpleTooltip } from "@/components/ui/tooltip";
 import { sqliteFileLabel } from "@/lib/connectionLabel";
-import { isFromOrigin } from "@/lib/connection/origin";
+import { isFromOrigin, usesLocalPassword } from "@/lib/connection/origin";
 import { effectivePort } from "@/lib/db/driver";
 import { cn } from "@/lib/utils";
 import type { ConnectionProfile } from "@/types";
@@ -138,6 +139,27 @@ export function ConnectionRailRow({
               different state from "shared and healthy" and needs a different
               glyph, not a different tooltip on the same one. */}
           <VanishedOriginMark profileId={profile.id} />
+          {/* A password typed on this machine in place of the published one
+              (ADR #69). Shown in the Shared section too, where the origin
+              badge is not: which of my shared connections run on my own
+              password is the question this answers, and it was only
+              answerable by opening each one. */}
+          {usesLocalPassword(profile) && (
+            <SimpleTooltip
+              label={
+                originName
+                  ? t("connections.localPasswordTooltip", { origin: originName })
+                  : t("connections.localPasswordTooltipUnknown")
+              }
+            >
+              <span
+                className="flex shrink-0 items-center"
+                aria-label={t("connections.localPasswordLabel")}
+              >
+                <KeyRound className="h-3 w-3 text-muted-foreground" />
+              </span>
+            </SimpleTooltip>
+          )}
         </div>
         <div className="truncate text-2xs text-muted-foreground">{subline}</div>
       </div>
