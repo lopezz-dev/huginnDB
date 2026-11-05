@@ -100,6 +100,11 @@ const ContextMenuAction = React.forwardRef<
     destructive?: boolean;
     shortcut?: string;
     /**
+     * A short trailing value in the label's own register (a date preview, a
+     * count) — muted and monospaced, unlike `shortcut`'s spaced-out keys.
+     */
+    detail?: string;
+    /**
      * Why the managed policy does not allow this (`usePolicyLock`). Disables
      * the item and says so under its label, with a lock — a disabled menu item
      * gets no hover, so a tooltip could never show the reason.
@@ -108,7 +113,7 @@ const ContextMenuAction = React.forwardRef<
   }
 >(
   (
-    { icon: Icon, label, onSelect, disabled, destructive, shortcut, locked },
+    { icon: Icon, label, onSelect, disabled, destructive, shortcut, detail, locked },
     ref,
   ) => (
     <ContextMenuItem
@@ -144,6 +149,11 @@ const ContextMenuAction = React.forwardRef<
       ) : (
         <span className="truncate">{label}</span>
       )}
+      {!locked && detail && (
+        <span className="ml-auto shrink-0 pl-4 font-mono text-3xs text-muted-foreground">
+          {detail}
+        </span>
+      )}
       {!locked && shortcut && (
         <ContextMenuShortcut>{shortcut}</ContextMenuShortcut>
       )}
@@ -166,6 +176,42 @@ const ContextMenuLabel = React.forwardRef<
   />
 ));
 ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName;
+
+/**
+ * The menu's subject — a column or field name with small tags beside it (its
+ * type, `NULL`) — set apart from the uppercase `ContextMenuLabel`s that title
+ * each section below it. Before this, the subject *was* a `ContextMenuLabel`,
+ * so a column called `operation` read `OPERATION` and looked like one more
+ * section heading.
+ */
+const ContextMenuHeader = ({
+  title,
+  tags,
+  className,
+}: {
+  title: string;
+  tags?: (string | null | undefined | false)[];
+  className?: string;
+}) => (
+  <ContextMenuPrimitive.Label
+    className={cn("flex min-w-0 items-baseline gap-1.5 px-2 pb-1.5 pt-1", className)}
+  >
+    <span className="min-w-0 truncate font-mono text-2xs font-medium text-foreground">
+      {title}
+    </span>
+    {tags
+      ?.filter((tag): tag is string => !!tag)
+      .map((tag) => (
+        <span
+          key={tag}
+          className="shrink-0 rounded-sm border border-border px-1 font-mono text-3xs text-muted-foreground"
+        >
+          {tag}
+        </span>
+      ))}
+  </ContextMenuPrimitive.Label>
+);
+ContextMenuHeader.displayName = "ContextMenuHeader";
 
 const ContextMenuSeparator = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Separator>,
@@ -200,6 +246,7 @@ export {
   ContextMenuItem,
   ContextMenuAction,
   ContextMenuLabel,
+  ContextMenuHeader,
   ContextMenuGroup,
   ContextMenuSeparator,
   ContextMenuShortcut,

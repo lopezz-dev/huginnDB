@@ -26,6 +26,8 @@ import i18n from "i18next";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/lib/i18n";
+import { useEpochPanel } from "@/stores/session/epoch";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import { DocumentListView } from "./DocumentListView";
 import type { CellValue, ColumnFilter, ColumnMeta, SortSpec } from "@/types";
 
@@ -357,8 +359,11 @@ const menuColumns: ColumnMeta[] = [
   { name: "code", data_type: "string" },
   { name: "tags", data_type: "array" },
   { name: "meta", data_type: "object" },
+  { name: "createdAt", data_type: "long" },
 ];
-const menuRows: CellValue[][] = [["IMPCR01", ["press"], { plant: "P1" }]];
+const menuRows: CellValue[][] = [
+  ["IMPCR01", ["press"], { plant: "P1" }, 1793875593000],
+];
 
 function MenuHarness({
   nestedPaths,
@@ -478,6 +483,24 @@ describe("field context menu", () => {
     expect(screen.queryByText(/Sort ascending/)).toBeNull();
     expect(screen.queryByText("Filter by this value")).toBeNull();
     // The menu itself still opens: copying a value is not a column operation.
-    expect(screen.getByText("Copy")).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy" })).toBeTruthy();
+  });
+
+  it("offers View as date on a timestamp field and hands it to the Dates panel", () => {
+    render(<MenuHarness nestedPaths onSortChange={() => {}} onAddFilter={() => {}} />);
+    openMenuOn("1793875593000");
+    fireEvent.click(screen.getByRole("menuitem", { name: /View as date/ }));
+    expect(useEpochPanel.getState()).toMatchObject({
+      input: "1793875593000",
+      source: { column: "createdAt" },
+      approximate: false,
+    });
+    expect(useSessionPanelLayout.getState().rightPanel).toBe("dates");
+  });
+
+  it("does not offer View as date on a field that is not a timestamp", () => {
+    render(<MenuHarness nestedPaths onSortChange={() => {}} onAddFilter={() => {}} />);
+    openMenuOn('"IMPCR01"');
+    expect(screen.queryByRole("menuitem", { name: /View as date/ })).toBeNull();
   });
 });

@@ -37,6 +37,7 @@ import {
   ContextMenu,
   ContextMenuAction,
   ContextMenuContent,
+  ContextMenuHeader,
   ContextMenuItem,
   ContextMenuLabel,
   ContextMenuSeparator,
@@ -56,6 +57,7 @@ import { formatValue } from "@/lib/grid/formatValue";
 import { GRID_GUTTER_WIDTH } from "@/lib/grid/useColumnSizing";
 import { cn } from "@/lib/utils";
 import { isSideEditorOpen } from "@/stores/session/panelLayout";
+import { ViewAsDateAction, rowLabel } from "@/components/epoch/ViewAsDateAction";
 import type {
   CellValue,
   ColumnFilter,
@@ -568,11 +570,13 @@ export const GridRow = memo(function GridRow({
                     selectedRows.length > 1 &&
                     isMultiSelected ? (
                     <>
-                      <ContextMenuLabel>
-                        {t("dataGrid.ctxRowsSelected", {
+                      <ContextMenuHeader
+                        title={t("dataGrid.ctxRowsSelected", {
                           count: selectedRows.length,
                         })}
-                      </ContextMenuLabel>
+                      />
+                      <ContextMenuSeparator />
+                      <ContextMenuLabel>{t("dataGrid.ctxSection.copy")}</ContextMenuLabel>
                       <ContextMenuSub>
                         <ContextMenuSubTrigger>
                           <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
@@ -606,7 +610,7 @@ export const GridRow = memo(function GridRow({
                       </ContextMenuSub>
                       {onAddFilter && (
                         <>
-                          <ContextMenuSeparator />
+                          <ContextMenuLabel>{t("dataGrid.ctxSection.filter")}</ContextMenuLabel>
                           <ContextMenuAction
                             icon={Filter}
                             disabled={selectedRows.some((r) =>
@@ -667,23 +671,30 @@ export const GridRow = memo(function GridRow({
                     </>
                   ) : (
                     <>
-                      <ContextMenuLabel>
-                        {meta.name}
-                        {value === null &&
-                        !callbacksRef.current.isTrimmedCell(rowValues, meta.name)
-                          ? " · NULL"
-                          : ""}
-                      </ContextMenuLabel>
+                      <ContextMenuHeader
+                        title={meta.name}
+                        tags={[
+                          meta.data_type,
+                          value === null &&
+                            !callbacksRef.current.isTrimmedCell(rowValues, meta.name) &&
+                            "NULL",
+                        ]}
+                      />
+                      <ContextMenuSeparator />
+                      {/* Sections run from what touches nothing to what
+                      deletes: navigate, copy, view, filter, edit — and the
+                      row deletion alone at the bottom. */}
                       {isFkCell && value !== null && value !== undefined && (
                         <>
+                          <ContextMenuLabel>{t("dataGrid.ctxSection.navigate")}</ContextMenuLabel>
                           <ContextMenuAction
                             icon={ArrowRightCircle}
                             label={t("dataGrid.ctxGoToReference")}
                             onSelect={() => onNavigateFk?.(meta.name, value)}
                           />
-                          <ContextMenuSeparator />
                         </>
                       )}
+                      <ContextMenuLabel>{t("dataGrid.ctxSection.copy")}</ContextMenuLabel>
                       <ContextMenuAction
                         icon={Copy}
                         label={t("dataGrid.ctxCopy")}
@@ -706,12 +717,10 @@ export const GridRow = memo(function GridRow({
                           )
                         }
                       />
-                      {/* Row-level formatters. We keep the per-cell
-                      entries above (single value, single value
-                      with column name) because they're the most
-                      common path; this submenu covers the
-                      less-frequent "I want the whole row" use
-                      cases without bloating the top level. */}
+                      {/* Row-level formatters. The per-cell entries above are
+                      the common path; this submenu covers the less frequent
+                      "I want the whole row" cases without bloating the top
+                      level. */}
                       <ContextMenuSub>
                         <ContextMenuSubTrigger>
                           <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
@@ -759,6 +768,7 @@ export const GridRow = memo(function GridRow({
                           </ContextMenuItem>
                         </ContextMenuSubContent>
                       </ContextMenuSub>
+                      <ContextMenuLabel>{t("dataGrid.ctxSection.view")}</ContextMenuLabel>
                       <ContextMenuAction
                         icon={PanelRight}
                         label={t("dataGrid.openInSideEditor")}
@@ -770,27 +780,18 @@ export const GridRow = memo(function GridRow({
                           )
                         }
                       />
-                      {editable && onCellSave && (
-                        <ContextMenuAction
-                          icon={Eraser}
-                          // A cut cell holds a stand-in `null`, not a NULL.
-                          disabled={
-                            value === null &&
-                            !callbacksRef.current.isTrimmedCell(rowValues, meta.name)
-                          }
-                          locked={columnLock?.(meta.name) ?? null}
-                          label={t("cellEditor.setNull")}
-                          onSelect={() =>
-                            // The rejection is already reported by `DataGrid`'s save seam (which
-                            // notifies and rethrows); swallowing it here only keeps the
-                            // unhandled-rejection warning out of the console.
-                            onCellSave(rowValues, meta.name, null).catch(() => {})
-                          }
-                        />
-                      )}
+                      <ViewAsDateAction
+                        value={value}
+                        source={{
+                          relation: tableName,
+                          column: meta.name,
+                          driver,
+                          row: rowLabel(rowValues, pkColumnNames, columnIndexByName),
+                        }}
+                      />
                       {onAddFilter && (
                         <>
-                          <ContextMenuSeparator />
+                          <ContextMenuLabel>{t("dataGrid.ctxSection.filter")}</ContextMenuLabel>
                           <ContextMenuAction
                             icon={Filter}
                             // Filtering by a value the page never received
@@ -833,24 +834,40 @@ export const GridRow = memo(function GridRow({
                           />
                         </>
                       )}
-                      {(onInsertRow || onDuplicateRow) && (
-                        <>
-                          <ContextMenuSeparator />
-                          {onInsertRow && (
-                            <ContextMenuAction
-                              icon={Plus}
-                              label={t("dataGrid.ctxInsertRow")}
-                              onSelect={() => onInsertRow()}
-                            />
-                          )}
-                          {onDuplicateRow && (
-                            <ContextMenuAction
-                              icon={CopyPlus}
-                              label={t("dataGrid.ctxDuplicateRow")}
-                              onSelect={() => onDuplicateRow(rowValues)}
-                            />
-                          )}
-                        </>
+                      {((editable && onCellSave) || onInsertRow || onDuplicateRow) && (
+                        <ContextMenuLabel>{t("dataGrid.ctxSection.edit")}</ContextMenuLabel>
+                      )}
+                      {editable && onCellSave && (
+                        <ContextMenuAction
+                          icon={Eraser}
+                          // A cut cell holds a stand-in `null`, not a NULL.
+                          disabled={
+                            value === null &&
+                            !callbacksRef.current.isTrimmedCell(rowValues, meta.name)
+                          }
+                          locked={columnLock?.(meta.name) ?? null}
+                          label={t("cellEditor.setNull")}
+                          onSelect={() =>
+                            // The rejection is already reported by `DataGrid`'s save seam (which
+                            // notifies and rethrows); swallowing it here only keeps the
+                            // unhandled-rejection warning out of the console.
+                            onCellSave(rowValues, meta.name, null).catch(() => {})
+                          }
+                        />
+                      )}
+                      {onInsertRow && (
+                        <ContextMenuAction
+                          icon={Plus}
+                          label={t("dataGrid.ctxInsertRow")}
+                          onSelect={() => onInsertRow()}
+                        />
+                      )}
+                      {onDuplicateRow && (
+                        <ContextMenuAction
+                          icon={CopyPlus}
+                          label={t("dataGrid.ctxDuplicateRow")}
+                          onSelect={() => onDuplicateRow(rowValues)}
+                        />
                       )}
                       {onDeleteRow && (
                         <>

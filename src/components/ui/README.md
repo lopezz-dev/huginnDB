@@ -67,6 +67,8 @@ It gives an objective answer to the question that used to be settled by feel:
 | `search-field.tsx`    | `SearchField`                          | magnifier + input + optional clear, geometry paired by `size`                                               |
 | `label.tsx`           | `Label`                                | Radix passthrough                                                                                           |
 | `switch.tsx`          | `Switch`                               | Radix passthrough                                                                                           |
+| `date-picker.tsx`     | `DatePicker`, `Calendar`               | replaces `<input type="date">`; `YYYY-MM-DD` in and out, names from `Intl` in `locale`, arrow labels as props; portalled, closes on Esc / outside click |
+| `time-picker.tsx`     | `TimePicker`                           | replaces `<input type="time">`; always 24-hour `HH:MM[:SS]`, one spin segment per part                       |
 | `segmented.tsx`       | `Segmented`                            | generic over the value union; single-choice toggle strip                                                    |
 | `fold-row.tsx`        | `FoldRow`                              | a picker's collapsible group header: chevron, label, `(count)`; `open` drives `aria-expanded`. The button only — its select-all checkbox stays at the call site |
 | `tabs.tsx`            | `Tabs*`                                | Radix                                                                                                       |

@@ -240,6 +240,13 @@ pide los documentos cuyo `tags` *contiene* ese valor, y ordenar por
 `items.0.sku` ordena por `items.sku`, porque `sort()` no entiende un índice
 posicional.
 
+**Un timestamp Unix se lee como fecha.** Si un campo guarda uno (un `long` o un
+`int` cuyo número de dígitos se lee como segundos, milisegundos, microsegundos o
+nanosegundos, entre 1980 y 2100), su menú ofrece **Ver como fecha**, con la
+fecha al lado. Al elegirlo se abre el panel **Fechas** del dock derecho, con la
+hora local, UTC, otra zona, ISO 8601 y la expresión `$toDate` para el campo,
+todo listo para copiar.
+
 **La proyección devuelve solo los campos que pides.** La fila *Proyección* del
 panel de consulta incluye o excluye campos (también rutas anidadas), y la
 navegación la envía como documento de proyección de `find()`, así que un

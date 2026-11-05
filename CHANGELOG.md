@@ -18,8 +18,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   blocked again. Intel Macs are not covered. CI also builds and tests on
   macOS after every merge, so a change that breaks it shows the same day
   rather than at the next release.
+- **View a Unix timestamp as a date without leaving the app.** Right-clicking
+  a cell or document field that holds one — a whole number whose digit count
+  reads as seconds, milliseconds, microseconds or nanoseconds and lands
+  between 1980 and 2100 — offers **View as date**, with the date already
+  shown beside it. Choosing it opens the new **Dates** panel in the right
+  dock (also reachable from its own icon, to paste any timestamp): local
+  time, UTC and a third zone of your choice, ISO 8601, seconds and
+  milliseconds, the day of the year and ISO week, the value as a literal and
+  the column as a date in the connection's SQL dialect, and the reverse, from
+  a date to its epoch. Every value copies with one click; nothing is written
+  back. The arithmetic is exact to the nanosecond, and the panel says when a
+  value had already been rounded on its way from the server. Its layout
+  follows its own width, so it stays readable from a narrow dock to a wide
+  one. Its date and time fields are the app's own calendar and 24-hour time
+  picker, in the interface's language, rather than the system controls that
+  showed the operating system's format and colours.
 
 ### Changed
+
+- **A cell's context menu is grouped into titled sections.** Copy, View,
+  Filter and Edit each have a heading, with deleting the row alone at the
+  bottom, in both the table grid and the document view. The menu is headed by
+  the column's name and type instead of the name in capitals, which read like
+  one more section title.
 
 - **The documentation viewer reads more like a book's contents.** A guide's
   pages hang off its entry in the left rail with a rounded connector per row
