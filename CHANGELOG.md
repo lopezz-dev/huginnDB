@@ -37,6 +37,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The connection filter button in the connections tree is a standard icon
+  button.** It looks, hovers and shows its tooltip like the disconnect button
+  beside it, and a screen reader now hears the "N of M connections" subset
+  when one is active, not only the button's name. The dot that marks an
+  active subset is now a slot every icon button has, for the next control
+  that needs to say it is not at its default.
 - **A cell's context menu is grouped into titled sections.** Copy, View,
   Filter and Edit each have a heading, with deleting the row alone at the
   bottom, in both the table grid and the document view. The menu is headed by

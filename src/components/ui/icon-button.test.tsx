@@ -12,7 +12,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { Trash2 } from "lucide-react";
 import { TooltipProvider } from "./tooltip";
-import { IconButton } from "./icon-button";
+import { BadgeDot, IconButton } from "./icon-button";
 
 afterEach(() => {
   cleanup();
@@ -47,6 +47,23 @@ describe("IconButton", () => {
     cleanup();
     mount(<IconButton icon={Trash2} label="a" size="xs" />);
     expect(screen.getByRole("button").className).toContain("h-6");
+  });
+
+  it("paints a badge over the glyph, anchored to the button", () => {
+    mount(<IconButton icon={Trash2} label="a" badge={<BadgeDot />} />);
+    const button = screen.getByRole("button");
+    // `relative` is what anchors the badge's `absolute` to this button and
+    // not to whatever positioned ancestor the toolbar happens to have.
+    expect(button.className).toContain("relative");
+    const dot = button.querySelector("span[aria-hidden]");
+    expect(dot?.className).toContain("absolute");
+    // The badge is decoration: the name is still the label alone.
+    expect(screen.getByRole("button", { name: "a" })).not.toBeNull();
+  });
+
+  it("is not positioned when there is no badge to anchor", () => {
+    mount(<IconButton icon={Trash2} label="a" badge={false} />);
+    expect(screen.getByRole("button").className).not.toContain("relative");
   });
 
   it("spins and disables while loading", () => {

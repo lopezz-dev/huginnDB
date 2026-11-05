@@ -41,6 +41,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **El botón de filtrar conexiones del árbol de conexiones es un botón de
+  icono estándar.** Se ve, reacciona al pasar el ratón y muestra su tooltip
+  igual que el de desconectar que tiene al lado, y un lector de pantalla oye
+  ahora el subconjunto «N de M conexiones» cuando hay uno activo, no solo el
+  nombre del botón. El punto que marca un subconjunto activo es ahora un hueco
+  que tiene cualquier botón de icono, para el próximo control que necesite
+  decir que no está en su valor por defecto.
 - **El menú contextual de una celda se agrupa en secciones con título.**
   Copiar, Ver, Filtrar y Editar llevan cada una su encabezado, y eliminar la
   fila queda sola al final, tanto en el grid de tablas como en la vista de
