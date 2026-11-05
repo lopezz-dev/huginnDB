@@ -26,6 +26,7 @@ import {
   Activity,
   Blocks,
   Bot,
+  CalendarClock,
   Moon,
   Save,
   Settings,
@@ -59,6 +60,7 @@ import {
   type ActivityBarButton,
 } from "@/components/shell/ActivityBar";
 import { ExtensionsPanel } from "@/components/settings/ExtensionsPanel";
+import { EpochPanel } from "@/components/epoch/EpochPanel";
 import { IslandShell } from "@/components/shell/IslandShell";
 import { ConsoleDock } from "@/components/shell/ConsoleDock";
 import { CollapsiblePanel } from "@/components/shell/CollapsiblePanel";
@@ -160,6 +162,7 @@ function RightSidePanel() {
   const pulseWidth = useSessionPanelLayout((s) => s.pulseWidth);
   const aiWidth = useSessionPanelLayout((s) => s.aiWidth);
   const extensionsWidth = useSessionPanelLayout((s) => s.extensionsWidth);
+  const datesWidth = useSessionPanelLayout((s) => s.datesWidth);
   const nudgePanel = useSessionPanelLayout((s) => s.nudgePanel);
   const selectedConnectionId = useUi((s) => s.selectedConnectionId);
   const [dragging, setDragging] = useState(false);
@@ -193,6 +196,14 @@ function RightSidePanel() {
     if (rightPanel === "extensions") setExtensionsMounted(true);
   }, [rightPanel]);
 
+  // The Dates panel holds nothing worth keeping between visits — its input
+  // lives in `useEpochPanel` — but mounting it lazily still spares everyone
+  // who never opens it a once-a-second clock.
+  const [datesMounted, setDatesMounted] = useState(rightPanel === "dates");
+  useEffect(() => {
+    if (rightPanel === "dates") setDatesMounted(true);
+  }, [rightPanel]);
+
   const docked = rightPanel ?? lastRightPanel;
   const open = rightPanel !== null;
   const width =
@@ -202,7 +213,9 @@ function RightSidePanel() {
         ? aiWidth
         : docked === "extensions"
           ? extensionsWidth
-          : savedWidth;
+          : docked === "dates"
+            ? datesWidth
+            : savedWidth;
 
   return (
     <>
@@ -249,6 +262,11 @@ function RightSidePanel() {
             {extensionsMounted && (
               <div className="h-full" hidden={docked !== "extensions"}>
                 <ExtensionsPanel active={open && rightPanel === "extensions"} />
+              </div>
+            )}
+            {datesMounted && (
+              <div className="h-full" hidden={docked !== "dates"}>
+                <EpochPanel active={open && rightPanel === "dates"} />
               </div>
             )}
           </div>
@@ -363,6 +381,15 @@ export function AppShell() {
       label: t("panels.saved"),
       active: rightPanel === "saved",
       onClick: () => selectRightPanel("saved"),
+    },
+    // Always present, unlike Pulse and the AI: it reads nothing and sends
+    // nothing, so there is no module switch for it to sit behind.
+    {
+      id: "dates",
+      icon: CalendarClock,
+      label: t("panels.dates"),
+      active: rightPanel === "dates",
+      onClick: () => selectRightPanel("dates"),
     },
     ...(pulseOn
       ? [

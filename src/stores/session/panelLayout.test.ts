@@ -169,6 +169,25 @@ describe("right dock", () => {
     expect(useSessionPanelLayout.getState().savedWidth).toBe(280);
     expect(useSessionPanelLayout.getState().pulseWidth).toBe(320);
   });
+
+  it("showRightPanel opens a panel and never toggles it shut", async () => {
+    const { useSessionPanelLayout } = await loadWith(undefined);
+    const store = useSessionPanelLayout;
+
+    store.getState().showRightPanel("dates");
+    store.getState().showRightPanel("dates");
+    expect(store.getState()).toMatchObject({ rightPanel: "dates", lastRightPanel: "dates" });
+  });
+
+  it("gives the Dates panel its default width on a v2 blob written before it existed", async () => {
+    const { useSessionPanelLayout, rightPanelSizeKey } = await loadWith(
+      { rightPanel: "saved", lastRightPanel: "saved", savedWidth: 300 },
+      2,
+    );
+    expect(rightPanelSizeKey("dates")).toBe("datesWidth");
+    expect(useSessionPanelLayout.getState().datesWidth).toBe(340);
+    expect(useSessionPanelLayout.getState().savedWidth).toBe(300);
+  });
 });
 
 describe("migration v1 → v2", () => {

@@ -74,10 +74,13 @@ import {
   ContextMenu,
   ContextMenuAction,
   ContextMenuContent,
+  ContextMenuHeader,
   ContextMenuLabel,
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { ViewAsDateAction } from "@/components/epoch/ViewAsDateAction";
+import { detectEpoch } from "@/lib/epoch/epoch";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   DraftCellControl,
@@ -1658,12 +1661,26 @@ function FieldMenuItems({
   const isNull = f.value === null || f.value === undefined;
   return (
     <>
-      <ContextMenuLabel>
-        {field}
-        {f.trimmed ? ` · ${f.trimmed}` : isNull ? " · NULL" : ""}
-      </ContextMenuLabel>
+      <ContextMenuHeader title={field} tags={[f.type, f.trimmed, !f.trimmed && isNull && "NULL"]} />
+      <ContextMenuSeparator />
+      {/* Same order as the table grid's menu: what touches nothing first. */}
+      <ContextMenuLabel>{t("dataGrid.ctxSection.copy")}</ContextMenuLabel>
+      <ContextMenuAction
+        icon={Copy}
+        label={t("dataGrid.ctxCopy")}
+        onSelect={() => actionsRef.current.copyValue(f)}
+      />
+      {/* The driver is left to the panel's fallback — the workspace's current
+          connection, which is the one this document came from. */}
+      {!f.trimmed && detectEpoch(f.value) && (
+        <>
+          <ContextMenuLabel>{t("dataGrid.ctxSection.view")}</ContextMenuLabel>
+          <ViewAsDateAction value={f.value} source={{ column: field }} />
+        </>
+      )}
       {sortable && (
         <>
+          <ContextMenuLabel>{t("dataGrid.ctxSection.sort")}</ContextMenuLabel>
           <ContextMenuAction
             icon={ArrowUp}
             label={t("dataGrid.sort.byAsc", { field })}
@@ -1683,11 +1700,11 @@ function FieldMenuItems({
               onSelect={() => actionsRef.current.unsort(f)}
             />
           )}
-          <ContextMenuSeparator />
         </>
       )}
       {filterable && (
         <>
+          <ContextMenuLabel>{t("dataGrid.ctxSection.filter")}</ContextMenuLabel>
           <ContextMenuAction
             icon={Filter}
             label={t("dataGrid.ctxFilterBy")}
@@ -1698,14 +1715,8 @@ function FieldMenuItems({
             label={t("dataGrid.ctxFilterExcluding")}
             onSelect={() => actionsRef.current.filterBy(f, true)}
           />
-          <ContextMenuSeparator />
         </>
       )}
-      <ContextMenuAction
-        icon={Copy}
-        label={t("dataGrid.ctxCopy")}
-        onSelect={() => actionsRef.current.copyValue(f)}
-      />
     </>
   );
 }

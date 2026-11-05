@@ -21,8 +21,31 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   Mac con Intel no están cubiertos. El CI también compila y prueba en macOS
   tras cada merge, así que un cambio que lo rompa se ve el mismo día y no en
   la siguiente release.
+- **Ver un timestamp Unix como fecha sin salir de la app.** Al hacer clic
+  derecho en una celda o en un campo de documento que contiene uno (un entero
+  cuyo número de dígitos se lee como segundos, milisegundos, microsegundos o
+  nanosegundos y que cae entre 1980 y 2100), aparece **Ver como fecha**, con
+  la fecha ya escrita al lado. Al elegirlo se abre el nuevo panel **Fechas**
+  en el dock derecho, al que también se llega desde su propio icono para pegar
+  cualquier timestamp. Muestra la hora local, UTC y una tercera zona a
+  elegir, ISO 8601, segundos y milisegundos, el día del año y la semana ISO,
+  el valor como literal y la columna como fecha en el dialecto SQL de la
+  conexión, y el camino inverso, de una fecha a su epoch. Cada valor se copia
+  con un clic y no se escribe nada de vuelta. Las cuentas son exactas hasta el
+  nanosegundo, y el panel avisa cuando un valor ya llegó redondeado desde el
+  servidor. Se adapta a su propio ancho, así que se lee bien tanto con el dock
+  estrecho como con el dock ancho. Los campos de fecha y hora son el
+  calendario y el selector de 24 horas propios de la app, en el idioma de la
+  interfaz, y no los controles del sistema, que mostraban el formato y los
+  colores del sistema operativo.
 
 ### Cambiado
+
+- **El menú contextual de una celda se agrupa en secciones con título.**
+  Copiar, Ver, Filtrar y Editar llevan cada una su encabezado, y eliminar la
+  fila queda sola al final, tanto en el grid de tablas como en la vista de
+  documentos. El menú lo encabeza el nombre de la columna con su tipo, en
+  lugar del nombre en mayúsculas, que parecía un título de sección más.
 
 - **El visor de documentación se lee más como el índice de un libro.** Las
   páginas de una guía cuelgan de su entrada en el panel izquierdo con un

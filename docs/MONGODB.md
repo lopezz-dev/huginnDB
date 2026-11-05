@@ -227,6 +227,13 @@ element of `tags` asks for documents whose `tags` *contains* that value, and
 sorting on `items.0.sku` sorts on `items.sku`, since `sort()` does not read a
 positional index.
 
+**A Unix timestamp reads as a date.** When a field holds one (a `long` or `int`
+whose digit count reads as seconds, milliseconds, microseconds or nanoseconds,
+between 1980 and 2100), its menu offers **View as date**, with the date beside
+it. Choosing it opens the **Dates** panel in the right dock: local time, UTC,
+another zone, ISO 8601 and the `$toDate` expression for the field, each ready
+to copy.
+
 **Projection returns only the fields you ask for.** The query panel's
 *Projection* row includes or excludes fields (nested paths too), and the
 browse sends it as `find()`'s projection document, so a large sub-document

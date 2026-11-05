@@ -45,11 +45,14 @@ const AI_WIDTH_DEFAULT = 360;
  *  two-line description and an install button, and below ~300px the button
  *  wraps under the text and the list stops scanning as a list. */
 const EXTENSIONS_WIDTH_DEFAULT = 340;
+/** The Dates panel's `regular` density starts at 320 (see `lib/epoch`), so a
+ *  default a little above it opens with label and value on one row. */
+const DATES_WIDTH_DEFAULT = 340;
 const CONSOLE_HEIGHT_DEFAULT = 190;
 const SIDE_EDITOR_WIDTH_DEFAULT = 420;
 
 /** The panels that can occupy the right dock. One at a time. */
-export type RightPanelId = "saved" | "pulse" | "ai" | "extensions";
+export type RightPanelId = "saved" | "pulse" | "ai" | "extensions" | "dates";
 
 /** The tabs of the bottom dock. One shows at a time; the dock's height is
  *  shared, since both want "as many lines as you can spare". */
@@ -64,27 +67,35 @@ export const PANEL_CLAMPS = {
   // a horizontal scrollbar with three characters above it.
   aiWidth: { min: 300, max: 720 },
   extensionsWidth: { min: 300, max: 720 },
+  // Lower floor than the others on purpose: the Dates panel has a `narrow`
+  // layout that stacks every label over its value, so 240px still reads.
+  datesWidth: { min: 240, max: 720 },
   consoleHeight: { min: 120, max: 600 },
   sideEditorWidth: { min: 280, max: 720 },
 } as const;
+
+type RightPanelSizeKey =
+  | "savedWidth"
+  | "pulseWidth"
+  | "aiWidth"
+  | "extensionsWidth"
+  | "datesWidth";
 
 /** Which `PANEL_CLAMPS` key holds a given right-dock panel's width. Exported
  *  so the shell can hand the right `nudgePanel` key to its sash without
  *  spelling the mapping a second time. */
 export function rightPanelSizeKey(
   id: RightPanelId,
-): "savedWidth" | "pulseWidth" | "aiWidth" | "extensionsWidth" {
+): RightPanelSizeKey {
   // A total map rather than a chain of ternaries: adding an occupant to
   // `RightPanelId` without giving it a width is then a compile error here,
   // which is the one place the mapping is spelled.
-  const KEYS: Record<
-    RightPanelId,
-    "savedWidth" | "pulseWidth" | "aiWidth" | "extensionsWidth"
-  > = {
+  const KEYS: Record<RightPanelId, RightPanelSizeKey> = {
     saved: "savedWidth",
     pulse: "pulseWidth",
     ai: "aiWidth",
     extensions: "extensionsWidth",
+    dates: "datesWidth",
   };
   return KEYS[id];
 }
@@ -164,6 +175,7 @@ interface PanelLayoutState {
   pulseWidth: number;
   aiWidth: number;
   extensionsWidth: number;
+  datesWidth: number;
   /** Whether the bottom dock is open — whichever tab it shows. Kept under
    *  its pre-terminal name so a persisted layout reads unchanged. */
   consoleOpen: boolean;
@@ -178,6 +190,11 @@ interface PanelLayoutState {
   /** Activity-bar behaviour: the active entry collapses the dock, any other
    *  switches to it. */
   selectRightPanel: (id: RightPanelId) => void;
+  /** Show `id` in the dock whatever it showed — never closes it. For callers
+   *  that hand the panel something to display (a cell's "View as date"), where
+   *  toggling the dock shut because it already showed that panel would throw
+   *  away the very thing just sent to it. */
+  showRightPanel: (id: RightPanelId) => void;
   /** Edge-toggle behaviour (`LayoutToggles`): collapse, or reopen whichever
    *  panel was last shown. */
   toggleRightDock: () => void;
@@ -211,6 +228,7 @@ type PanelLayoutData = Omit<
   | "toggleSchema"
   | "openSchema"
   | "selectRightPanel"
+  | "showRightPanel"
   | "toggleRightDock"
   | "toggleConsole"
   | "toggleTerminal"
@@ -231,6 +249,7 @@ const DEFAULTS: PanelLayoutData = {
   pulseWidth: PULSE_WIDTH_DEFAULT,
   aiWidth: AI_WIDTH_DEFAULT,
   extensionsWidth: EXTENSIONS_WIDTH_DEFAULT,
+  datesWidth: DATES_WIDTH_DEFAULT,
   consoleOpen: false,
   consoleHeight: CONSOLE_HEIGHT_DEFAULT,
   bottomTab: "console",
@@ -321,6 +340,7 @@ export const useSessionPanelLayout = create<PanelLayoutState>()(
             ? { rightPanel: null }
             : { rightPanel: id, lastRightPanel: id },
         ),
+      showRightPanel: (id) => set({ rightPanel: id, lastRightPanel: id }),
       toggleRightDock: () =>
         set((s) =>
           s.rightPanel === null

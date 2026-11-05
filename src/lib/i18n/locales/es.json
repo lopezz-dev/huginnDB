@@ -79,7 +79,8 @@
     "cell": "Celda",
     "ai": "Asistente",
     "extensions": "Extensiones",
-    "terminal": "Terminal"
+    "terminal": "Terminal",
+    "dates": "Fechas"
   },
   "menu": {
     "file": {
@@ -798,7 +799,16 @@
       "done_other": "Pegado: {{cells}} celda(s) modificada(s), {{count}} filas añadidas",
       "in": "En"
     },
-    "headerInsertOnly": "Bloqueada por la política de tu organización: solo se rellena al añadir una fila"
+    "headerInsertOnly": "Bloqueada por la política de tu organización: solo se rellena al añadir una fila",
+    "ctxViewAsDate": "Ver como fecha",
+    "ctxSection": {
+      "navigate": "Navegar",
+      "copy": "Copiar",
+      "view": "Ver",
+      "filter": "Filtrar",
+      "edit": "Editar",
+      "sort": "Ordenar"
+    }
   },
   "tableData": {
     "refresh": "Actualizar",
@@ -4339,5 +4349,61 @@
       "explain": "Tus contraseñas, frases SSH y la clave de la IA se guardarán en una bóveda cifrada que solo abre esta contraseña. Si la olvidas, los secretos se pierden y tendrás que volver a escribir las contraseñas.",
       "action": "Crear la contraseña maestra"
     }
+  },
+  "epoch": {
+    "inputLabel": "Timestamp Unix",
+    "inputPlaceholder": "Pega un timestamp, p. ej. 1793875593000",
+    "unitLabel": "Unidad",
+    "unitAuto": "Auto",
+    "unitAutoWith": "Auto · {{unit}}",
+    "unit": {
+      "s": "Segundos",
+      "ms": "Milisegundos",
+      "us": "Microsegundos",
+      "ns": "Nanosegundos"
+    },
+    "unitShort": {
+      "s": "s",
+      "ms": "ms",
+      "us": "µs",
+      "ns": "ns"
+    },
+    "pasteHint": "Pega un timestamp o elige «Ver como fecha» en una celda.",
+    "from": "Desde",
+    "empty": "Admite segundos, milisegundos, microsegundos y nanosegundos. La unidad se deduce por el número de dígitos.",
+    "invalid": "No parece un timestamp: tiene que ser un entero de 9 a 19 dígitos. Si sabes la unidad, elígela en el desplegable.",
+    "approximate": "Este valor llegó del servidor como número y ya venía redondeado: las últimas cifras pueden no ser exactas.",
+    "localTime": "Hora local",
+    "copyDate": "Copiar fecha",
+    "copied": "Copiado",
+    "copy": "Copiar",
+    "copyRow": "Copiar {{label}}",
+    "zones": "Zonas horarias",
+    "otherZone": "Otra zona horaria",
+    "formats": "Formatos",
+    "isoUtc": "ISO UTC",
+    "isoLocal": "ISO local",
+    "calendar": "Calendario",
+    "calendarValue": "día {{day}} del año · semana ISO {{week}}",
+    "inSql": "En SQL",
+    "dialect": "Dialecto SQL",
+    "literal": "Literal",
+    "expression": "Columna",
+    "columnPlaceholder": "columna",
+    "toEpoch": "De fecha a epoch",
+    "date": "Fecha",
+    "time": "Hora",
+    "readAs": "Interpretar como",
+    "local": "Local",
+    "dateText": "Fecha en texto",
+    "dateTextHint": "Admite ISO 8601 / RFC 3339 y RFC 2822.",
+    "dateTextInvalid": "No reconozco ese formato. Prueba con 2026-11-05T10:46:33Z.",
+    "now": "Ahora",
+    "refreshNow": "Actualizar",
+    "previousMonth": "Mes anterior",
+    "nextMonth": "Mes siguiente",
+    "hours": "Horas",
+    "minutes": "Minutos",
+    "seconds": "Segundos"
   }
 }

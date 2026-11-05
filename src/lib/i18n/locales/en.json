@@ -79,7 +79,8 @@
     "cell": "Cell",
     "ai": "Assistant",
     "extensions": "Extensions",
-    "terminal": "Terminal"
+    "terminal": "Terminal",
+    "dates": "Dates"
   },
   "menu": {
     "file": {
@@ -798,7 +799,16 @@
       "done_other": "Pasted: {{cells}} cell(s) changed, {{count}} rows added",
       "in": "In"
     },
-    "headerInsertOnly": "Locked by your organization's policy — only filled when adding a row"
+    "headerInsertOnly": "Locked by your organization's policy — only filled when adding a row",
+    "ctxViewAsDate": "View as date",
+    "ctxSection": {
+      "navigate": "Navigate",
+      "copy": "Copy",
+      "view": "View",
+      "filter": "Filter",
+      "edit": "Edit",
+      "sort": "Sort"
+    }
   },
   "tableData": {
     "refresh": "Refresh",
@@ -4339,5 +4349,61 @@
       "explain": "Your passwords, SSH passphrases and AI key will be kept in an encrypted vault that only this password opens. If you forget it, the secrets are lost and you will have to type the passwords again.",
       "action": "Set the master password"
     }
+  },
+  "epoch": {
+    "inputLabel": "Unix timestamp",
+    "inputPlaceholder": "Paste a timestamp, e.g. 1793875593000",
+    "unitLabel": "Unit",
+    "unitAuto": "Auto",
+    "unitAutoWith": "Auto · {{unit}}",
+    "unit": {
+      "s": "Seconds",
+      "ms": "Milliseconds",
+      "us": "Microseconds",
+      "ns": "Nanoseconds"
+    },
+    "unitShort": {
+      "s": "s",
+      "ms": "ms",
+      "us": "µs",
+      "ns": "ns"
+    },
+    "pasteHint": "Paste a timestamp, or choose “View as date” on a cell.",
+    "from": "From",
+    "empty": "Seconds, milliseconds, microseconds and nanoseconds are accepted. The unit follows from the number of digits.",
+    "invalid": "This doesn't look like a timestamp: it has to be a whole number of 9 to 19 digits. If you know the unit, pick it from the list.",
+    "approximate": "This value reached the app as a number and was already rounded on the way: its last digits may not be exact.",
+    "localTime": "Local time",
+    "copyDate": "Copy date",
+    "copied": "Copied",
+    "copy": "Copy",
+    "copyRow": "Copy {{label}}",
+    "zones": "Time zones",
+    "otherZone": "Another time zone",
+    "formats": "Formats",
+    "isoUtc": "ISO UTC",
+    "isoLocal": "ISO local",
+    "calendar": "Calendar",
+    "calendarValue": "day {{day}} of the year · ISO week {{week}}",
+    "inSql": "In SQL",
+    "dialect": "SQL dialect",
+    "literal": "Literal",
+    "expression": "Column",
+    "columnPlaceholder": "column",
+    "toEpoch": "Date to epoch",
+    "date": "Date",
+    "time": "Time",
+    "readAs": "Read as",
+    "local": "Local",
+    "dateText": "Date as text",
+    "dateTextHint": "ISO 8601 / RFC 3339 and RFC 2822 are accepted.",
+    "dateTextInvalid": "That format isn't recognised. Try 2026-11-05T10:46:33Z.",
+    "now": "Now",
+    "refreshNow": "Refresh",
+    "previousMonth": "Previous month",
+    "nextMonth": "Next month",
+    "hours": "Hours",
+    "minutes": "Minutes",
+    "seconds": "Seconds"
   }
 }

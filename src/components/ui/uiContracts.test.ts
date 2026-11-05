@@ -316,6 +316,13 @@ describe("G — the patterns that now have a primitive", () => {
     expect(hits(OUTSIDE_UI, /type="checkbox"/)).toEqual([]);
   });
 
+  it("no native date or time input outside ui/date-picker and ui/time-picker", () => {
+    // The native controls render the WebView's own popup and the OS locale's
+    // format (`11:46:33 AM` in a Spanish UI on an English Windows), neither of
+    // which the theme can reach.
+    expect(hits(OUTSIDE_UI, /type="(date|time|datetime-local|month|week)"/)).toEqual([]);
+  });
+
   it("no hand-rolled Loader2 spinner outside ui/", () => {
     // As an element only. `NotificationCard` legitimately uses `Loader2` as the
     // *icon* of a progress notification, passing the component through a map,
