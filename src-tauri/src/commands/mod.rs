@@ -40,6 +40,8 @@ pub mod write_batch;
 mod mssql_live_tests;
 #[cfg(test)]
 mod pg_live_tests;
+#[cfg(test)]
+mod read_cancel_live_tests;
 
 use crate::log_bus::TauriSink;
 use crate::state::AppState;

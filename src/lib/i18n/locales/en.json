@@ -1799,7 +1799,7 @@
         "saveError": "Couldn't save the row limit."
       },
       "timeout": {
-        "hint": "Each connection's second number is the longest, in seconds, a run_script or run_writes call may run on that connection. Blank: 300. It lengthens nothing on its own: a call still gets 300 s unless it asks for more with timeout_seconds. When it runs out, HuginnDB cancels the statement on the server, rolls the transaction back and says whether anything was committed. Raise it only on work copies where a load may take hours.",
+        "hint": "Each connection's second number is the longest, in seconds, a run_script or run_writes call may run on that connection. Blank: 300. It lengthens nothing on its own: a call still gets 300 s unless it asks for more with timeout_seconds. When it runs out, HuginnDB cancels the statement on the server, rolls the transaction back and says whether anything was committed. A run_query read gets the same limit, at most 300 s, and is stopped on the server when it runs out or when the MCP client gives up. Raise it only on work copies where a load may take hours.",
         "rowLabel": "Longest MCP call on {{name}}, in seconds",
         "rowTitle": "Longest a run_script or run_writes may run on this connection, in seconds. Blank: the default ({{secs}} s).",
         "saved": "{{name}}: up to {{secs}} s per call",

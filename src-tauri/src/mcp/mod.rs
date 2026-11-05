@@ -54,7 +54,8 @@ use std::time::Duration;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{CallToolResult, ContentBlock, Implementation, ServerCapabilities, ServerInfo};
-use rmcp::{tool, tool_handler, tool_router, ErrorData, ServerHandler, ServiceExt};
+use rmcp::service::RequestContext;
+use rmcp::{tool, tool_handler, tool_router, ErrorData, RoleServer, ServerHandler, ServiceExt};
 use serde::Deserialize;
 
 use crate::bridge::protocol::BridgeRequest;
@@ -888,6 +889,31 @@ fn decode_script(bytes: &[u8]) -> Option<String> {
         [0xFF, 0xFE, rest @ ..] => utf16(rest, u16::from_le_bytes),
         [0xFE, 0xFF, rest @ ..] => utf16(rest, u16::from_be_bytes),
         _ => String::from_utf8(bytes.to_vec()).ok(),
+    }
+}
+
+/// Run a read tool's body until the MCP client cancels the request.
+///
+/// rmcp turns the client's `notifications/cancelled` — Claude Desktop sends it
+/// when its own 60 s wait runs out — into a token on the request's context,
+/// and does nothing else: the handler runs on unless it looks (ADR #130 found
+/// nothing did). Dropping `body` is the cancel. On the bridge it drops the
+/// call, whose connection then shuts its write half and the app stops the
+/// statement on the server; on this process's own pools it drops the read,
+/// which does the same (`commands::query::execute_read_bounded`).
+///
+/// Reads only. A write that was sent finishes and is audited whatever the
+/// client does: its outcome must stay known (ADR #130).
+async fn until_cancelled(
+    context: &RequestContext<RoleServer>,
+    body: impl std::future::Future<Output = Result<CallToolResult, ErrorData>>,
+) -> Result<CallToolResult, ErrorData> {
+    tokio::select! {
+        result = body => result,
+        _ = context.ct.cancelled() => Err(ErrorData::internal_error(
+            "the MCP client cancelled this call; the statement was stopped on the server",
+            None,
+        )),
     }
 }
 
@@ -1884,13 +1910,19 @@ impl Huginn {
                       find/aggregate/countDocuments/distinct for MongoDB. \
                       Anything that writes is refused here whatever the \
                       connection's policy says — use `run_write` for those. \
-                      Rows are capped by the server's --max-rows."
+                      Rows are capped by the server's --max-rows. A read \
+                      gets the connection's MCP timeout (300 s at most); \
+                      past it, it is stopped on the server. A read that \
+                      times out has a bad plan: check it with EXPLAIN or \
+                      `pulse_explain` and make it cheaper before running it \
+                      again."
     )]
     async fn run_query(
         &self,
         Parameters(a): Parameters<args::Query>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
-        self.run_statement(a, StatementKind::Read).await
+        until_cancelled(&context, self.run_statement(a, StatementKind::Read)).await
     }
 
     #[tool(
@@ -1991,12 +2023,19 @@ impl Huginn {
                       `run_query` would; one that fails is reported in its \
                       slot (`{\"error\": …}`) without stopping the rest. \
                       Returns one result per statement, in order. Rows share \
-                      one budget: the connection's MCP row limit."
+                      one budget: the connection's MCP row limit. Each read \
+                      gets the connection's MCP timeout, as in `run_query`."
     )]
     async fn run_queries(
         &self,
-        Parameters(mut a): Parameters<args::Queries>,
+        Parameters(a): Parameters<args::Queries>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
+        until_cancelled(&context, self.run_queries_inner(a)).await
+    }
+
+    /// [`Self::run_queries`], without the cancellation.
+    async fn run_queries_inner(&self, mut a: args::Queries) -> Result<CallToolResult, ErrorData> {
         a.connection_id = self.canonical_connection(&a.connection_id)?;
         if a.queries.is_empty() || a.queries.len() > MAX_BATCH_READS {
             return Err(ErrorData::invalid_params(

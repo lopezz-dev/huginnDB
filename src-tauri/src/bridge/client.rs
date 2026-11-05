@@ -38,6 +38,13 @@ const REPLY_SLACK: Duration = Duration::from_secs(120);
 /// has given its own, certain, answer, so that this side giving up first —
 /// with no idea whether the script committed — takes a wedged app rather than
 /// a slow rollback.
+///
+/// A `run_query` is bounded by the app too: by the connection's MCP timeout,
+/// never more than [`crate::state::DEFAULT_MCP_TIMEOUT_SECS`], after which the
+/// app stops the statement on the server and says how (ADR #134). The wait is
+/// that plus [`REPLY_SLACK`], so the app's answer arrives first rather than
+/// this side's "did not answer". Giving up still stops the read: the app sees
+/// the connection close and drops it.
 pub(crate) fn reply_wait(request: &BridgeRequest) -> Duration {
     match request {
         BridgeRequest::RunScript { timeout_secs, .. }
@@ -46,6 +53,9 @@ pub(crate) fn reply_wait(request: &BridgeRequest) -> Duration {
                 .unwrap_or(crate::state::DEFAULT_MCP_TIMEOUT_SECS)
                 .clamp(1, crate::state::MAX_MCP_TIMEOUT_SECS);
             CALL_TIMEOUT.max(Duration::from_secs(2 * u64::from(secs)) + REPLY_SLACK)
+        }
+        BridgeRequest::RunStatement { .. } => {
+            Duration::from_secs(u64::from(crate::state::DEFAULT_MCP_TIMEOUT_SECS)) + REPLY_SLACK
         }
         _ => CALL_TIMEOUT,
     }
@@ -86,7 +96,46 @@ pub struct BridgeClient {
 
 struct Connection {
     reader: tokio::io::Lines<BufReader<OwnedReadHalf>>,
-    writer: OwnedWriteHalf,
+    /// `None` once a call gave up on its reply: dropping the half shuts the
+    /// socket's write side, which is how the app learns to stop the request
+    /// ([`AwaitingReply`]). A connection without it is stale.
+    writer: Option<OwnedWriteHalf>,
+}
+
+/// A connection with a request on the wire and its reply not yet read.
+///
+/// Dropped before [`Self::answered`] — the wait ran out, the read failed, or
+/// the call's future was dropped because the MCP client cancelled it — it
+/// drops the write half. That shuts the socket's write side at once, with no
+/// `.await` needed, so it works from `Drop`: the app reads EOF, stops a read
+/// that is still running on the server (`bridge::server`), and the next call
+/// reconnects instead of reading this one's late reply as its own.
+struct AwaitingReply<'a> {
+    connection: &'a mut Connection,
+    answered: bool,
+}
+
+impl AwaitingReply<'_> {
+    fn answered(mut self) {
+        self.answered = true;
+    }
+}
+
+impl Drop for AwaitingReply<'_> {
+    fn drop(&mut self) {
+        if !self.answered {
+            self.connection.writer = None;
+        }
+    }
+}
+
+/// The write half of `connection`, or the error a write to a connection that
+/// gave up on its last reply would have hit.
+fn writer_of(connection: &mut Connection) -> io::Result<&mut OwnedWriteHalf> {
+    connection
+        .writer
+        .as_mut()
+        .ok_or_else(|| io::Error::other("the previous call gave up on this connection"))
 }
 
 impl BridgeClient {
@@ -150,7 +199,10 @@ impl BridgeClient {
         if let Some(error) = ack.error {
             return Err(io::Error::other(error));
         }
-        Ok(Connection { reader, writer })
+        Ok(Connection {
+            reader,
+            writer: Some(writer),
+        })
     }
 
     /// Send one request and await its reply.
@@ -219,7 +271,11 @@ impl BridgeClient {
         // provably did not execute, and re-sending cannot double-apply. If the
         // framing ever stops being newline-delimited, this reasoning goes with
         // it.
-        if let Err(e) = write_payload(&mut guard.writer, &payload).await {
+        let sent = match writer_of(&mut guard) {
+            Ok(writer) => write_payload(writer, &payload).await,
+            Err(e) => Err(e),
+        };
+        if let Err(e) = sent {
             let unsent = |e: std::io::Error| {
                 BridgeError::Unreachable(format!(
                     "{e} (request not sent{})",
@@ -233,7 +289,8 @@ impl BridgeClient {
             match self.reconnect().await {
                 Some(fresh) => {
                     *guard = fresh;
-                    if let Err(e) = write_payload(&mut guard.writer, &payload).await {
+                    let writer = writer_of(&mut guard).expect("a fresh connection has its writer");
+                    if let Err(e) = write_payload(writer, &payload).await {
                         return Err(unsent(e));
                     }
                 }
@@ -242,16 +299,19 @@ impl BridgeClient {
         }
 
         // From here on the request is in flight. Every failure is `Remote`.
-        let line = match timeout(wait, guard.reader.next_line()).await {
+        let awaiting = AwaitingReply {
+            connection: &mut guard,
+            answered: false,
+        };
+        let line = match timeout(wait, awaiting.connection.reader.next_line()).await {
             Err(_) => {
                 // The app is still working on it, and will write its reply to
                 // this connection when it is done. Left open, the next call
                 // would be queued behind this one and read *that* reply as
                 // its own — the result of a script for a SELECT, or a
-                // success for a re-run that has not happened yet. Shutting the
-                // write half makes the next call fail to send and reconnect
-                // instead, which is safe because nothing of it was sent.
-                let _ = guard.writer.shutdown().await;
+                // success for a re-run that has not happened yet. `awaiting`
+                // drops the write half on the way out, which makes the next
+                // call reconnect instead, and tells the app to stop a read.
                 return Err(BridgeError::Remote(format!(
                     "the HuginnDB app did not answer within {} s; whether this call \
                      completed is unknown — check before running it again",
@@ -266,6 +326,7 @@ impl BridgeClient {
             }
             Ok(Ok(Some(line))) => line,
         };
+        awaiting.answered();
 
         let response: BridgeResponse = serde_json::from_str(&line)
             .map_err(|e| BridgeError::Remote(format!("malformed reply: {e}")))?;
@@ -303,6 +364,9 @@ impl BridgeClient {
 /// non-blocking peek, not a wait. `Lines::next_line` is cancellation-safe, so
 /// abandoning the pending read leaves the stream intact.
 async fn connection_is_stale(connection: &mut Connection) -> bool {
+    if connection.writer.is_none() {
+        return true;
+    }
     // `Err` is the timeout firing: still pending, nothing to read, so the
     // connection is idle and alive. Anything that *resolved* is the problem.
     timeout(Duration::ZERO, connection.reader.next_line())
@@ -598,6 +662,52 @@ mod tests {
         }
     }
 
+    /// The MCP client cancelling a read drops its call mid-flight. The app
+    /// must hear about it at once — it reads EOF and stops the statement on
+    /// the server — not when the next call happens to come along.
+    #[tokio::test]
+    async fn a_call_dropped_in_flight_closes_the_connection_for_the_app() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (heard, hear) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read_half, mut writer) = stream.into_split();
+            let mut lines = BufReader::new(read_half).lines();
+            lines.next_line().await.unwrap(); // hello
+            write_line(
+                &mut writer,
+                &HelloAck {
+                    protocol_version: PROTOCOL_VERSION,
+                    error: None,
+                },
+            )
+            .await
+            .unwrap();
+            lines.next_line().await.unwrap(); // the request, never answered
+            let after = timeout(Duration::from_secs(2), lines.next_line()).await;
+            let _ = heard.send(matches!(after, Ok(Ok(None))));
+        });
+        let client = BridgeClient::connect_to_for_test(port, "t").await;
+        let request = BridgeRequest::RunStatement {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            sql: "SELECT 1".into(),
+        };
+        assert!(
+            timeout(Duration::from_millis(100), client.call(&request))
+                .await
+                .is_err(),
+            "nobody answers, so the call is still waiting when it is dropped"
+        );
+        assert!(
+            hear.await.unwrap(),
+            "the app must read EOF right after the call is dropped"
+        );
+    }
+
     #[test]
     fn a_long_call_waits_past_the_point_the_app_has_answered() {
         let script = |timeout_secs| BridgeRequest::RunScript {
@@ -619,6 +729,15 @@ mod tests {
                 connection_id: "c".into()
             }),
             CALL_TIMEOUT
+        );
+        // A read: the app's own deadline (300 s at most) plus the slack.
+        assert_eq!(
+            reply_wait(&BridgeRequest::RunStatement {
+                connection_id: "c".into(),
+                policy_id: "c".into(),
+                sql: "SELECT 1".into(),
+            }),
+            Duration::from_secs(420)
         );
     }
 

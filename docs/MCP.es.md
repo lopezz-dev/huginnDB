@@ -689,6 +689,37 @@ el de HuginnDB, con el resultado dentro.
 Un **modo asíncrono** quitaría la dependencia de la paciencia del cliente:
 lanzar el script, recibir un id y consultar su estado. Todavía no existe.
 
+### Lecturas: el mismo timeout, y un cliente que se rinde las para
+
+Una lectura de `run_query` o `run_queries` también tiene el timeout MCP de la
+conexión: 300 segundos, o menos si el techo de la conexión es más bajo. Una
+lectura no acepta `timeout_seconds`. Una lectura que tarda tanto suele tener un
+mal plan, y lo que toca es abaratarla, no darle más tiempo.
+
+Cuando se acaba el tiempo, HuginnDB **para la sentencia en el servidor** y
+cierra su sesión, que nunca vuelve al pool:
+
+| Driver | Cómo se para |
+| --- | --- |
+| SQL Server | Se cierra la sesión (o el servidor reconoce una cancelación), y SQL Server aborta la petición de un cliente que se desconecta. |
+| Postgres | `pg_cancel_backend` sobre el backend de la lectura, desde otra conexión. |
+| MySQL / MariaDB | `KILL QUERY` sobre el id de conexión de la lectura, desde otra conexión. |
+| MongoDB | La operación lleva un `maxTimeMS`, así que la para el propio servidor. |
+| SQLite | No se puede parar una vez en marcha: termina en segundo plano, en una conexión sacada del pool, y no cambia nada. |
+
+En Postgres y MySQL no bastaría con cerrar el socket: solo se enteran de que el
+cliente ha desaparecido cuando vuelven a escribirle, y un `GROUP BY` no escribe
+nada hasta que termina.
+
+**Un cliente que se rinde también para la lectura.** Cuando el cliente MCP
+cancela la llamada (Claude Desktop lo hace a los 60 segundos, más o menos),
+HuginnDB la suelta y para la sentencia del mismo modo, en vez de dejar que
+cargue el servidor para nadie. El error de un timeout dice qué ha pasado y le
+pide al modelo que no relance la misma lectura sin mirar antes su plan.
+
+Las escrituras no se cortan cuando el cliente se rinde: una escritura enviada
+termina y queda en la auditoría, para que se sepa cómo acabó.
+
 ### Índices: por qué las dos herramientas de escritura son solo de MongoDB
 
 En los drivers SQL un índice se crea con `CREATE INDEX`, que `run_write` alcanza

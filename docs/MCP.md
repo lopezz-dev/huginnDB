@@ -666,6 +666,37 @@ be HuginnDB's, with the outcome in it.
 An **asynchronous mode** (start a script, get an id back, ask for its status)
 would remove the dependence on the client's patience. It is not built yet.
 
+### Reads: the same timeout, and a client that gives up stops them
+
+A `run_query` or `run_queries` read gets the connection's MCP timeout too:
+300 seconds, or less if the connection's ceiling is lower. A read takes no
+`timeout_seconds`. A read that runs this long usually has a bad plan, and the
+answer is to make it cheaper, not to give it longer.
+
+When the time runs out, HuginnDB **stops the statement on the server** and
+closes its session, which never goes back to the pool:
+
+| Driver | How it is stopped |
+| --- | --- |
+| SQL Server | The session is closed (or the server acknowledges a cancel), and SQL Server aborts the request of a client that disconnects. |
+| Postgres | `pg_cancel_backend` on the read's own backend, from another connection. |
+| MySQL / MariaDB | `KILL QUERY` on the read's own connection id, from another connection. |
+| MongoDB | The operation carries a `maxTimeMS`, so the server stops it itself. |
+| SQLite | It cannot be stopped once it runs: it finishes in the background, on a connection taken out of the pool, and changes nothing. |
+
+Closing the socket alone would not do on Postgres and MySQL: they notice a
+vanished client only when they next write to it, and a `GROUP BY` writes
+nothing until it has finished.
+
+**A client that gives up stops the read as well.** When the MCP client cancels
+the call (Claude Desktop does after about 60 seconds), HuginnDB drops it and
+stops the statement the same way, rather than letting it load the server for
+nobody. The error a timeout returns says what happened and asks the model not
+to run the same read again before looking at its plan.
+
+Writes are not cut off when the client gives up: a write that was sent
+finishes and is audited, so that its outcome stays known.
+
 ### Indexes: why the two write tools are MongoDB-only
 
 On the SQL drivers an index is created with `CREATE INDEX`, which `run_write`

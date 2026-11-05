@@ -140,6 +140,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Una lectura que el conector MCP da por perdida ya no sigue corriendo en el
+  servidor.** Cuando `run_query` o `run_queries` tardaban más de lo que el
+  cliente MCP estaba dispuesto a esperar (Claude Desktop se rinde a los
+  60 segundos, más o menos), el cliente avisaba de un timeout, pero HuginnDB
+  seguía ejecutando la sentencia. Contra un SQL Server de producción, un
+  `GROUP BY` con un mal plan siguió cargando el servidor y ralentizando a los
+  demás hasta que alguien hizo `KILL` a mano. Ahora una lectura de la IA tiene
+  el timeout MCP de la conexión, como mucho 300 segundos, y se para en el
+  servidor cuando se agota o cuando el cliente cancela la llamada. SQL Server
+  la aborta al cerrarse la sesión, a PostgreSQL se le envía
+  `pg_cancel_backend`, a MySQL y MariaDB `KILL QUERY`, y MongoDB la para él
+  mismo con un `maxTimeMS`. Su conexión nunca se entrega a la siguiente
+  consulta mientras la sentencia sigue en marcha. El error dice cómo se paró y
+  le pide al modelo que mire el plan de la consulta en vez de relanzarla. Las
+  lecturas que lanzas tú desde el editor siguen sin límite.
 - **Cambiar la clave primaria de una tabla en el editor de estructura ahora la
   cambia en PostgreSQL y MySQL.** Marcar o desmarcar la casilla PK en una
   columna que ya existía mostraba un cambio de columna en la vista previa y se
