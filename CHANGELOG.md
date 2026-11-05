@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **See at a glance which shared connections use a password you typed.**
+  When you keep your own password for a connection a shared origin publishes
+  (because the server's password changed before the origin was updated),
+  the connection list now marks it with a key, and Settings → Origins shows
+  how many of each origin's connections are in that state, with their names
+  in the tooltip. Until now the only way to find them was to open each
+  connection.
 - **A macOS build for Apple Silicon.** Each release now publishes a `.dmg`
   next to the Windows and Linux installers, with the `huginndb-mcp` connector
   inside the app and its own `.mcpb`, and installed copies update themselves

@@ -174,6 +174,9 @@
     "sharedReadOnly": "solo lectura",
     "sharedBadgeTooltip": "Publicada por el origen compartido «{{origin}}»",
     "sharedBadgeTooltipUnknown": "Publicada por un origen compartido que ya no está registrado",
+    "localPasswordTooltip": "Usa una contraseña guardada en este equipo, no la que publica «{{origin}}». Deja de aplicarse en cuanto el origen publique una nueva.",
+    "localPasswordTooltipUnknown": "Usa una contraseña guardada en este equipo, no la que publica su origen compartido",
+    "localPasswordLabel": "Contraseña local",
     "originProtectedTooltip": "Publicada por «{{origin}}». Borrarla aquí no hace nada: la siguiente sincronización la trae de vuelta. Quita el origen en Ajustes → Orígenes compartidos para eliminarla definitivamente.",
     "originProtectedTooltipUnknown": "Publicada por un origen compartido que ya no está registrado. Conviértela en conexión local desde el aviso de su fila para poder borrarla.",
     "selectAll": "Seleccionar todas las conexiones locales",
@@ -3677,6 +3680,11 @@
     "passphraseKeepPlaceholder": "Frase de paso (en blanco mantiene la guardada)",
     "passphraseKeepHint": "En blanco mantiene la que haya en tu llavero.",
     "curatedBy": "lo cura {{who}}",
+    "localPasswords": {
+      "badge_one": "{{count}} con contraseña local",
+      "badge_other": "{{count}} con contraseña local",
+      "title": "Usan una contraseña guardada en este equipo, no la publicada: {{names}}"
+    },
     "role": {
       "consumer": "Solo lectura",
       "publisher": "Publicador",

@@ -348,14 +348,17 @@ query option outside `authSource`/`directConnection`, which is every Atlas URI,
 so those connections were *born* in raw-edit. Unmodelled options now ride
 through the form untouched. ADR #70.
 
-**Still open from that pass: a local password override is invisible outside the
-connection dialog.** `ConnectionRailRow` marks an origin-owned connection as
-shared and stops there, so "which of my connections are running on a password I
-typed rather than the published one" can only be answered by opening each one.
-Class 3 shaped — the store holds `secret_override` and no list-level surface
-consumes it — and the fix is one badge plus a decision about whether the
-connection rail or Settings → Origins is the right place to answer it at a
-glance.
+**Closed in 1.39, the last one from that pass: a local password override is
+visible outside the connection dialog.** `ConnectionRailRow` used to mark an
+origin-owned connection as shared and stop there, so "which of my connections
+are running on a password I typed rather than the published one" could only be
+answered by opening each one. The store held `secret_override` and no
+list-level surface read it. Now both read it, through
+`lib/connection/origin.ts`'s `usesLocalPassword`: the rail puts a key on each
+such row (in the Shared section too, where the origin badge is hidden), and
+Settings → Origins counts them per origin and names them in the tooltip. Both,
+not one, because they answer different questions: the rail says which
+connection, and Origins says which curator has something to republish.
 
 **Two class 1 instances and a class 2, found and closed: the modal plane.**
 Seven dialogs had hand-copied their own header rail, in five spellings between

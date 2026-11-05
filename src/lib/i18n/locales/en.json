@@ -174,6 +174,9 @@
     "sharedReadOnly": "read-only",
     "sharedBadgeTooltip": "Published by the shared origin “{{origin}}”",
     "sharedBadgeTooltipUnknown": "Published by a shared origin that is no longer registered",
+    "localPasswordTooltip": "Uses a password kept on this machine, not the one \"{{origin}}\" publishes. It stops applying once the origin publishes a new one.",
+    "localPasswordTooltipUnknown": "Uses a password kept on this machine, not the one its shared origin publishes",
+    "localPasswordLabel": "Local password",
     "originProtectedTooltip": "Published by “{{origin}}”. Deleting it here does nothing — the next sync brings it back. Remove the origin in Settings → Shared origins to get rid of it for good.",
     "originProtectedTooltipUnknown": "Published by a shared origin that is no longer registered. Release it into a local connection from the notice on its row to be able to delete it.",
     "selectAll": "Select all local connections",
@@ -3677,6 +3680,11 @@
     "passphraseKeepPlaceholder": "Passphrase (leave blank to keep the stored one)",
     "passphraseKeepHint": "Blank keeps whatever is in your keychain.",
     "curatedBy": "curated by {{who}}",
+    "localPasswords": {
+      "badge_one": "{{count}} on a local password",
+      "badge_other": "{{count}} on a local password",
+      "title": "Running on a password kept on this machine, not the published one: {{names}}"
+    },
     "role": {
       "consumer": "Read only",
       "publisher": "Publisher",

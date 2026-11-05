@@ -10,6 +10,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Ver de un vistazo qué conexiones compartidas usan una contraseña que has
+  escrito tú.** Cuando guardas tu propia contraseña para una conexión que
+  publica un origen compartido (porque la del servidor cambió antes de que se
+  actualizara el origen), la lista de conexiones la marca ahora con una
+  llave, y Ajustes → Orígenes muestra cuántas conexiones de cada origen están
+  así, con sus nombres en el tooltip. Hasta ahora la única forma de
+  encontrarlas era abrir las conexiones una a una.
 - **Una versión para macOS en Apple Silicon.** Cada release publica ahora un
   `.dmg` junto a los instaladores de Windows y Linux, con el conector
   `huginndb-mcp` dentro de la app y su propio `.mcpb`, y las copias instaladas

@@ -21,6 +21,7 @@ import {
   Layers,
   FolderOpen,
   FolderSync,
+  KeyRound,
   PencilLine,
   Plus,
   RefreshCw,
@@ -48,6 +49,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/common/PasswordInput";
 import type { Origin, OriginRole } from "@/types";
 import { FULL_SCOPE, isFullScope, originScope } from "@/lib/origins/scope";
+import { localPasswordNames } from "@/lib/connection/origin";
 import { OriginScopeFields } from "@/components/origins/OriginScopeFields";
 import { formatDateTime } from "@/lib/utils";
 
@@ -77,6 +79,13 @@ export function OriginsSection() {
   // `origins-changed` event keeps every window's copy fresh — which also means
   // "Sync now" below no longer has to remember to re-read `lastSyncedAt`.
   const origins = useOrigins((s) => s.origins);
+
+  // Per origin, the connections running on a password typed on this machine.
+  // Derived here, not in a selector, for gotcha #1's reason.
+  const localPasswords = useMemo(
+    () => new Map(origins.map((o) => [o.id, localPasswordNames(profiles, o.id)])),
+    [origins, profiles],
+  );
   const loadOrigins = useOrigins((s) => s.load);
   const openEditor = useOriginEditor((s) => s.open);
   const [adding, setAdding] = useState(false);
@@ -335,6 +344,25 @@ export function OriginsSection() {
                             <FileJson className="h-3 w-3" />
                           )}
                           {t("origins.scope.badge")}
+                        </Badge>
+                      </SimpleTooltip>
+                    )}
+                    {/* Which of this origin's connections run on a password
+                        typed here rather than the published one (ADR #69).
+                        Counted per origin because the fix — the curator
+                        republishing — is per origin too; the names are in
+                        the tooltip, the rail marks each row. */}
+                    {(localPasswords.get(o.id)?.length ?? 0) > 0 && (
+                      <SimpleTooltip
+                        label={t("origins.localPasswords.title", {
+                          names: localPasswords.get(o.id)!.join(", "),
+                        })}
+                      >
+                        <Badge size="xs" tone="neutral">
+                          <KeyRound className="h-3 w-3" />
+                          {t("origins.localPasswords.badge", {
+                            count: localPasswords.get(o.id)!.length,
+                          })}
                         </Badge>
                       </SimpleTooltip>
                     )}
