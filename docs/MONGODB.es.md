@@ -9,6 +9,16 @@ misma tabla, las mismas pestañas y el mismo conector MCP le sirven. Pero es el
 las que solo tienen sentido con SQL — no existen ahí. Esta página es lo que
 cambia.
 
+## Versiones del servidor
+
+HuginnDB admite **MongoDB 4.4 y posteriores**. MongoDB 4.2 todavía conecta,
+pero solo durante una transición: las versiones publicadas a partir del **1 de
+diciembre de 2026** no conectarán con él, porque el driver de MongoDB que
+incluyen exige la 4.4. Las versiones ya instaladas siguen funcionando. Al
+conectar con un servidor 4.2 (o anterior) aparece un aviso que lo explica;
+MongoDB 4.2 no tiene soporte desde abril de 2023, así que planifica la
+actualización del servidor antes de actualizar HuginnDB.
+
 ## Conectar
 
 El diálogo de conexión es por campos (host, puerto, base de datos, usuario,

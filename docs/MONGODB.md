@@ -5,6 +5,16 @@ and MCP connector serve it. But it is the one engine with no SQL, so several
 surfaces work differently, and a few SQL-only ones don't exist there at all.
 This page is what changes.
 
+## Server versions
+
+HuginnDB supports **MongoDB 4.4 and later**. MongoDB 4.2 still connects for
+now, but only for a transition: releases published from **1 December 2026**
+onwards will not connect to it at all, because the MongoDB driver they ship
+requires 4.4. Versions already installed keep working. Connecting to a 4.2 (or
+older) server shows a notice saying so; MongoDB 4.2 itself has been out of
+support since April 2023, so plan the server's upgrade before updating
+HuginnDB.
+
 ## Connecting
 
 The connection dialog is field-driven (host, port, database, username, **Auth

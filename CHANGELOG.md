@@ -152,8 +152,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   reason, so a pull request starts from what was last merged), and the test
   build carries line tables instead of full debuginfo.
 
+### Deprecated
+
+- **MongoDB 4.2 support ends on 1 December 2026.** Releases published from
+  that date onwards will only connect to MongoDB 4.4 or later; versions
+  already installed keep working. Connecting to a MongoDB 4.2 (or older)
+  server now shows a notice saying so, once per connection per session, so
+  whoever still depends on one hears it before an update stops it
+  connecting. MongoDB 4.2 itself has been out of support since April 2023.
+
 ### Fixed
 
+- **MongoDB 4.2 servers connect again.** Since 1.36.0, connecting to a
+  MongoDB 4.2 server failed with "reports wire version 8, but this version of
+  the MongoDB Rust driver requires at least 9 (MongoDB 4.4)": that release's
+  dependency update moved the MongoDB driver to a version that dropped 4.2.
+  The driver is now held on the last line that still accepts it, until
+  1 December 2026 (see Deprecated).
 - **A read the MCP connector gives up on no longer keeps running on the
   server.** When `run_query` or `run_queries` took longer than the MCP client
   was willing to wait (Claude Desktop stops at about 60 seconds), the client

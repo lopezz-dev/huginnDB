@@ -71,7 +71,16 @@ sqlx = { version = "0.8", features = [
 # dependency so `db/mongo/query.rs` and `commands/query.rs` can `use` it — no
 # new crate enters the tree (same rationale as the `bson` pin above).
 futures-util = "0.3"
-mongodb = { version = "3", default-features = false, features = [
+# Held on the 3.8 line on purpose: mongodb 3.9.0 raised the driver's minimum
+# server to wire version 9 (MongoDB 4.4), and a customer database still on
+# MongoDB 4.2 (wire 8) stopped connecting once 1.36.0's dependency audit moved
+# the lock from 3.7.0 to 3.9.1. 3.8.x is the last line that accepts wire 8.
+# Temporary: the first release cut on or after 2026-12-01 lifts this back to
+# "3" (announced in CHANGELOG › Deprecated, docs/MONGODB.md and an in-app
+# notice — `src/lib/connection/mongoDeprecation.ts`, whose cutoff date and
+# notice go with the pin). A plain `cargo update` must not be what decides
+# which servers we drop.
+mongodb = { version = "~3.8", default-features = false, features = [
     "rustls-tls",
     "dns-resolver",
     "bson-3",
