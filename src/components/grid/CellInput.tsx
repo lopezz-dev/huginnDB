@@ -99,7 +99,7 @@ export const CellInput = forwardRef<HTMLInputElement, CellInputProps>(
         <input
           ref={ref}
           autoFocus={autoFocus}
-          className="h-full min-w-0 flex-1 bg-transparent font-mono text-xs outline-none"
+          className="h-full min-w-0 flex-1 bg-transparent tabular-nums text-xs outline-none"
           placeholder={value === null ? "NULL" : ""}
           value={value ?? ""}
           disabled={disabled}

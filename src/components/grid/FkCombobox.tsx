@@ -214,7 +214,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
       return (
         <input
           className={cn(
-            "h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1.5 font-mono text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20",
+            "h-6 w-full min-w-0 rounded-sm border border-input bg-background px-1.5 tabular-nums text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20",
             className,
           )}
           value={value ?? ""}
@@ -255,7 +255,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
             }
           }}
           className={cn(
-            "flex h-6 w-full min-w-0 items-center justify-between gap-1 rounded-sm border border-input bg-background px-1.5 font-mono text-xs",
+            "flex h-6 w-full min-w-0 items-center justify-between gap-1 rounded-sm border border-input bg-background px-1.5 tabular-nums text-xs",
             "focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20",
             value === null ? "italic text-muted-foreground" : "text-foreground",
             className,
@@ -341,7 +341,7 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
                     triggerRef.current?.focus();
                   }}
                   className={cn(
-                    "flex w-full items-center gap-2 px-2 py-1 text-left font-mono text-xs hover:bg-accent hover:text-accent-foreground",
+                    "flex w-full items-center gap-2 px-2 py-1 text-left tabular-nums text-xs hover:bg-accent hover:text-accent-foreground",
                     opt.value === value && "bg-accent/60",
                   )}
                   title={opt.label ? `${opt.value} — ${opt.label}` : opt.value}

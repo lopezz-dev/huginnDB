@@ -53,8 +53,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   en Windows) porque la tipografía que pedía la app nunca se llegó a incluir,
   así que su aspecto dependía de las fuentes que tuviera instaladas cada PC.
   Ahora la fuente viaja dentro de la app y todas las instalaciones se ven
-  igual, también el grid de datos. El editor SQL y el terminal mantienen su
-  fuente monoespaciada. El menú **Ventana** de la barra superior se ensancha
+  igual. Eso incluye los valores del grid de datos, que se dibujaban en una
+  fuente monoespaciada: las celdas, el editor en línea y el selector de clave
+  ajena usan ahora la tipografía de la interfaz, con cifras tabulares para que
+  una columna de números siga alineada dígito a dígito, y el doble clic en el
+  borde de una columna la ajusta al nuevo ancho. El editor SQL y el resto de
+  editores Monaco mantienen la fuente elegida en Ajustes → Editor, igual que
+  el terminal. El menú **Ventana** de la barra superior se ensancha
   ahora hasta lo que ocupan sus textos, así que «Restablecer disposición de
   ventanas» ya no se parte en dos líneas.
 - **El botón de filtrar conexiones del árbol de conexiones es un botón de
