@@ -54,7 +54,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   así que su aspecto dependía de las fuentes que tuviera instaladas cada PC.
   Ahora la fuente viaja dentro de la app y todas las instalaciones se ven
   igual, también el grid de datos. El editor SQL y el terminal mantienen su
-  fuente monoespaciada.
+  fuente monoespaciada. El menú **Ventana** de la barra superior se ensancha
+  ahora hasta lo que ocupan sus textos, así que «Restablecer disposición de
+  ventanas» ya no se parte en dos líneas.
 - **El botón de filtrar conexiones del árbol de conexiones es un botón de
   icono estándar.** Se ve, reacciona al pasar el ratón y muestra su tooltip
   igual que el de desconectar que tiene al lado, y un lector de pantalla oye

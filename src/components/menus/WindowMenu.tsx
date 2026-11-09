@@ -30,7 +30,10 @@ export function WindowMenu() {
           <ChevronDown className="h-3 w-3 opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      {/* A minimum, not a fixed width, and no wrapping: the panel grows to
+          its longest label plus its shortcut, so "Restablecer disposición de
+          ventanas" stays on one line in any typeface or language. */}
+      <DropdownMenuContent align="start" className="min-w-56 whitespace-nowrap">
         <DropdownMenuItem
           onSelect={() => {
             // Same treatment as the other two entry points to this command
