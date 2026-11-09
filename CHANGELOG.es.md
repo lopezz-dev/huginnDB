@@ -168,6 +168,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Los servidores MongoDB 4.2 vuelven a conectar.** Desde la 1.36.0, conectar
+  con un servidor MongoDB 4.2 fallaba con "reports wire version 8, but this
+  version of the MongoDB Rust driver requires at least 9 (MongoDB 4.4)": la
+  actualización de dependencias de esa versión llevó el driver de MongoDB a
+  una versión que dejó de admitir la 4.2. El driver queda ahora fijado en la
+  última línea que todavía la acepta. MongoDB 4.2 no tiene soporte desde abril
+  de 2023, así que esto es un apaño para servidores pendientes de migrar, no
+  un compromiso de seguir admitiéndolo.
 - **Una lectura que el conector MCP da por perdida ya no sigue corriendo en el
   servidor.** Cuando `run_query` o `run_queries` tardaban más de lo que el
   cliente MCP estaba dispuesto a esperar (Claude Desktop se rinde a los

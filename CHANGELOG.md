@@ -154,6 +154,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **MongoDB 4.2 servers connect again.** Since 1.36.0, connecting to a
+  MongoDB 4.2 server failed with "reports wire version 8, but this version of
+  the MongoDB Rust driver requires at least 9 (MongoDB 4.4)": that release's
+  dependency update moved the MongoDB driver to a version that dropped 4.2.
+  The driver is now held on the last line that still accepts it. MongoDB 4.2
+  has been out of support since April 2023, so this is a stopgap for servers
+  waiting to be migrated, not a promise to keep supporting it.
 - **A read the MCP connector gives up on no longer keeps running on the
   server.** When `run_query` or `run_queries` took longer than the MCP client
   was willing to wait (Claude Desktop stops at about 60 seconds), the client
