@@ -44,6 +44,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Changed
 
+- **The interface uses IBM Plex Sans, bundled with the app.** Menus, panels,
+  dialogs and the tree used to fall back to the system font (Segoe UI on
+  Windows) because the typeface the app asked for was never shipped, so what
+  the app looked like depended on the fonts each PC had installed. The font now
+  travels inside the app, so every install renders the same face, data grid
+  included. The SQL editor and the terminal keep their monospaced font. The
+  top bar's **Window** menu now widens to fit its labels, so "Reset window
+  layout" no longer breaks onto a second line.
 - **The connection filter button in the connections tree is a standard icon
   button.** It looks, hovers and shows its tooltip like the disconnect button
   beside it, and a screen reader now hears the "N of M connections" subset
