@@ -48,8 +48,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   dialogs and the tree used to fall back to the system font (Segoe UI on
   Windows) because the typeface the app asked for was never shipped, so what
   the app looked like depended on the fonts each PC had installed. The font now
-  travels inside the app, so every install renders the same face, data grid
-  included. The SQL editor and the terminal keep their monospaced font. The
+  travels inside the app, so every install renders the same face. That
+  includes the values in the data grid, which used to be drawn in a
+  monospaced font: cells, the inline editor and the foreign-key picker now
+  use the interface's typeface, with tabular figures so a column of numbers
+  still lines up digit under digit, and a double-clicked column edge fits the
+  new width. The SQL editor and the other Monaco editors keep the font chosen
+  in Settings → Editor, as does the terminal. The
   top bar's **Window** menu now widens to fit its labels, so "Reset window
   layout" no longer breaks onto a second line.
 - **The connection filter button in the connections tree is a standard icon

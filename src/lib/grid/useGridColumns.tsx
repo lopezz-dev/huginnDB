@@ -18,6 +18,7 @@ import {
   formatValue,
   rawCellText,
 } from "@/lib/grid/formatValue";
+import { GRID_CELL_FONT_CLASS } from "@/lib/grid/autoFitColumn";
 import { defaultColumnWidth } from "@/lib/grid/columnKinds";
 import { describeTrimmed, type TrimmedRows } from "@/lib/grid/trimmedCells";
 import { formatComboForDisplay } from "@/lib/keybindings";
@@ -427,7 +428,7 @@ export function useGridColumns(
           return (
             <div className="flex min-w-0 items-center gap-1">
               <span
-                className={`truncate font-mono ${
+                className={`truncate ${GRID_CELL_FONT_CLASS} ${
                   isNumeric ? "text-numeric" : ""
                 }`}
               >

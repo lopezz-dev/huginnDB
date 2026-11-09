@@ -95,7 +95,7 @@ export function DraftCellControl({
   if (locked && !isAutoPkColumn(info)) {
     return (
       <PolicyLockHint reason={`${locked} ${t("dataGrid.draftLocked")}`}>
-        <span className="flex items-center gap-1 px-1 font-mono text-2xs text-muted-foreground/60">
+        <span className="flex items-center gap-1 px-1 text-2xs text-muted-foreground/60">
           <Lock aria-hidden className="h-2.5 w-2.5 shrink-0" />—
         </span>
       </PolicyLockHint>
@@ -104,7 +104,7 @@ export function DraftCellControl({
   if (isAutoPkColumn(info)) {
     return (
       <span
-        className="block px-1 font-mono text-2xs italic text-muted-foreground/60"
+        className="block px-1 text-2xs italic text-muted-foreground/60"
         title={t("dataGrid.autoValueHint")}
       >
         {t("dataGrid.autoValue")}

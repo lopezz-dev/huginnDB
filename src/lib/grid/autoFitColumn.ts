@@ -30,9 +30,18 @@ function measureCtx(): CanvasRenderingContext2D | null {
 const MEASURE_CHAR_CAP = 512;
 
 /**
+ * The classes that decide how a grid cell's value is drawn: the interface's
+ * own typeface (the inherited sans stack), with tabular figures so a column of
+ * numbers still lines up digit under digit. One constant because the renderer
+ * (`useGridColumns`) and the auto-fit measurement below must agree, or a
+ * double-clicked column edge fits the wrong font.
+ */
+export const GRID_CELL_FONT_CLASS = "tabular-nums";
+
+/**
  * Build a canvas `font` shorthand matching what a real grid element renders
- * with. The font family comes from the theme's CSS (`font-mono` for cells,
- * the app's sans stack for headers), so it can't be hardcoded here — a
+ * with. The font family comes from the theme's CSS (the app's sans stack, for
+ * cells and headers alike), so it can't be hardcoded here — a
  * throwaway probe element carrying the same class list is appended to `host`
  * and its computed style read back. One reflow per auto-fit, not per cell.
  *
@@ -200,7 +209,7 @@ export function computeAutoFitWidths(
 ): Record<string, number> {
   const cellFont = resolveCanvasFont(
     input.host,
-    "font-mono",
+    GRID_CELL_FONT_CLASS,
     input.cellFontSize,
   );
   const headerFont = resolveCanvasFont(input.host, "", input.headerFontSize);
