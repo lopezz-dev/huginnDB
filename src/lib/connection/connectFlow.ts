@@ -20,6 +20,12 @@ import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { persistLaunchState } from "@/stores/session/persistedTabs";
 import { driverMismatchHint } from "@/lib/db/driver";
+import { api } from "@/lib/tauri";
+import {
+  MONGO_LEGACY_CUTOFF,
+  isLegacyMongoVersion,
+  mongoVersionNumber,
+} from "@/lib/connection/mongoDeprecation";
 
 /**
  * Open the pool for `id` and load its schema. Returns whether it worked, so the
@@ -49,6 +55,7 @@ export async function connectAndWarm(id: string): Promise<boolean> {
     notify.success(i18n.t("connections.connected"), {
       description: profileName(id),
     });
+    void warnIfLegacyMongo(id);
     return true;
   } catch (e) {
     return report(id, String(e));
@@ -139,6 +146,42 @@ export async function disconnectAll(): Promise<void> {
   // collapses, and "did that get all of them" is exactly the question a
   // command called "disconnect all" leaves behind.
   notify.success(i18n.t("connections.disconnectedAll", { count: ids.length }));
+}
+
+/** Connections already told about their MongoDB version in this run, so a
+ *  reconnect (the keepalive's included) does not repeat the notice. */
+const legacyMongoWarned = new Set<string>();
+
+/**
+ * Tell whoever just opened a MongoDB older than 4.4 that a release on or
+ * after {@link MONGO_LEGACY_CUTOFF} stops connecting to it — see
+ * `mongoDeprecation.ts` for why. Fire-and-forget after a connect that already
+ * succeeded: a failed version read (a policy that refuses it, a server that
+ * hides `buildInfo`) costs nothing but the notice.
+ */
+async function warnIfLegacyMongo(id: string): Promise<void> {
+  const profile = useConnections.getState().profiles.find((p) => p.id === id);
+  if (profile?.driver !== "mongodb" || legacyMongoWarned.has(id)) return;
+  try {
+    const version = await api.serverVersion(id);
+    if (!isLegacyMongoVersion(version)) return;
+    legacyMongoWarned.add(id);
+    const date = new Date(`${MONGO_LEGACY_CUTOFF}T00:00:00`).toLocaleDateString(
+      i18n.language,
+      { day: "numeric", month: "long", year: "numeric" },
+    );
+    notify.warning(
+      i18n.t("connections.legacyMongoTitle", { name: profile.name }),
+      {
+        description: i18n.t("connections.legacyMongoBody", {
+          version: mongoVersionNumber(version),
+          date,
+        }),
+      },
+    );
+  } catch {
+    // Best effort — see above.
+  }
 }
 
 /** Profile name for a notification, falling back to the id we were given. */

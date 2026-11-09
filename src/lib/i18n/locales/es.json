@@ -210,6 +210,8 @@
     "refreshFailed": "No se pudieron cargar las conexiones",
     "connected": "Conectado",
     "connectFailed": "No se ha podido conectar con {{name}}",
+    "legacyMongoTitle": "{{name}} usa una versión de MongoDB que deja de estar soportada",
+    "legacyMongoBody": "Este servidor tiene MongoDB {{version}}. Las versiones de HuginnDB publicadas a partir del {{date}} solo conectarán con MongoDB 4.4 o posterior. Las versiones ya instaladas siguen funcionando; planifica la actualización del servidor antes de actualizar la app.",
     "disconnectedAll": "{{count}} conexiones cerradas",
     "lostTitle": "Se ha perdido la conexión con {{name}}",
     "restoredTitle": "Se ha recuperado la conexión con {{name}}"

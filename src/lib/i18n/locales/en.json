@@ -210,6 +210,8 @@
     "refreshFailed": "Could not load the connections",
     "connected": "Connected",
     "connectFailed": "Could not connect to {{name}}",
+    "legacyMongoTitle": "{{name}} runs a MongoDB version that is being retired",
+    "legacyMongoBody": "This server runs MongoDB {{version}}. HuginnDB releases published from {{date}} onwards will only connect to MongoDB 4.4 or later. Versions already installed keep working; plan the server's upgrade before updating.",
     "disconnectedAll": "Disconnected {{count}} connection(s)",
     "lostTitle": "Lost the connection to {{name}}",
     "restoredTitle": "Connection to {{name}} restored"
