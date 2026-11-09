@@ -48,6 +48,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Cambiado
 
+- **La interfaz usa IBM Plex Sans, incluida en la propia app.** Los menús, los
+  paneles, los diálogos y el árbol acababan en la fuente del sistema (Segoe UI
+  en Windows) porque la tipografía que pedía la app nunca se llegó a incluir,
+  así que su aspecto dependía de las fuentes que tuviera instaladas cada PC.
+  Ahora la fuente viaja dentro de la app y todas las instalaciones se ven
+  igual, también el grid de datos. El editor SQL y el terminal mantienen su
+  fuente monoespaciada.
 - **El botón de filtrar conexiones del árbol de conexiones es un botón de
   icono estándar.** Se ve, reacciona al pasar el ratón y muestra su tooltip
   igual que el de desconectar que tiene al lado, y un lector de pantalla oye

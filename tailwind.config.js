@@ -123,13 +123,15 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        // `Inter` is listed first so that self-hosting it later (a single
-        // @fontsource import) is picked up automatically; until then the stack
-        // falls back to the platform UI sans (Segoe UI on Windows, the app's
-        // primary target). This replaces Tailwind's default sans so the whole
-        // app stops rendering in the bare system default.
+        // IBM Plex Sans is self-hosted (`@fontsource-variable/ibm-plex-sans`,
+        // imported in `main.tsx`), so every install renders the same face; the
+        // family name of the bundled variable font is the one with the
+        // `Variable` suffix. The platform UI sans after it only ever shows for
+        // a script the bundled subsets do not cover. This replaces Tailwind's
+        // default sans so the whole app stops rendering in the system default.
         sans: [
-          "Inter",
+          "IBM Plex Sans Variable",
+          "IBM Plex Sans",
           "Segoe UI Variable",
           "Segoe UI",
           "-apple-system",

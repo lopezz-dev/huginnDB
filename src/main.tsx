@@ -7,6 +7,11 @@ import { PulseWindow } from "./components/pulse/PulseWindow";
 import { LockGate } from "./components/lock/LockGate";
 import "./lib/monaco/monaco-setup";
 import "./lib/i18n";
+// The UI typeface ships inside the bundle, like Monaco: what the app looks
+// like must not depend on which fonts this PC happens to have installed.
+// Upright and italic, so italics are drawn rather than slanted by the engine.
+import "@fontsource-variable/ibm-plex-sans/wght.css";
+import "@fontsource-variable/ibm-plex-sans/wght-italic.css";
 import "./index.css";
 
 // The WebView's native context menu (Reload, View source, Inspect…) has no
