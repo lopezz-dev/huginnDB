@@ -23,6 +23,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  Apple,
   AppWindow,
   ArrowUpDown,
   Bell,
@@ -31,6 +32,7 @@ import {
   Bug,
   BookOpen,
   Building2,
+  CalendarClock,
   ClipboardPaste,
   Coins,
   Columns3,
@@ -56,6 +58,7 @@ import {
   ListTree,
   Lock,
   MonitorOff,
+  OctagonX,
   Package,
   Palette,
   PanelTop,
@@ -80,7 +83,9 @@ import {
   Target,
   Timer,
   Trash2,
+  Type,
   Wand2,
+  Zap,
 } from "lucide-react";
 
 export interface ReleaseHighlight {
@@ -111,6 +116,48 @@ export interface ReleaseNote {
  * (the manual Help entry) and for any future "history" view.
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
+  {
+    version: "1.39.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_39_0.tagline",
+    highlights: [
+      {
+        icon: Apple,
+        titleKey: "whatsNew.releases.1_39_0.items.macosBuild.title",
+        bodyKey: "whatsNew.releases.1_39_0.items.macosBuild.body",
+      },
+      {
+        icon: CalendarClock,
+        titleKey: "whatsNew.releases.1_39_0.items.unixDates.title",
+        bodyKey: "whatsNew.releases.1_39_0.items.unixDates.body",
+      },
+      {
+        icon: Zap,
+        titleKey: "whatsNew.releases.1_39_0.items.mongoFaster.title",
+        bodyKey: "whatsNew.releases.1_39_0.items.mongoFaster.body",
+      },
+      {
+        icon: OctagonX,
+        titleKey: "whatsNew.releases.1_39_0.items.mcpReadCancel.title",
+        bodyKey: "whatsNew.releases.1_39_0.items.mcpReadCancel.body",
+      },
+      {
+        icon: Type,
+        titleKey: "whatsNew.releases.1_39_0.items.plexSans.title",
+        bodyKey: "whatsNew.releases.1_39_0.items.plexSans.body",
+      },
+      {
+        icon: TableProperties,
+        titleKey: "whatsNew.releases.1_39_0.items.primaryKey.title",
+        bodyKey: "whatsNew.releases.1_39_0.items.primaryKey.body",
+      },
+      {
+        icon: Database,
+        titleKey: "whatsNew.releases.1_39_0.items.mongo42.title",
+        bodyKey: "whatsNew.releases.1_39_0.items.mongo42.body",
+      },
+    ],
+  },
   {
     version: "1.38.0",
     major: true,

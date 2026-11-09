@@ -2785,6 +2785,39 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_39_0": {
+        "tagline": "HuginnDB ya funciona en los Mac con Apple Silicon, un timestamp de Unix se lee como fecha con un clic, las colecciones de MongoDB se abren más rápido y la lectura de una IA que se queda sin tiempo se detiene en el servidor.",
+        "items": {
+          "macosBuild": {
+            "title": "Una versión para macOS con Apple Silicon",
+            "body": "Cada versión publica ahora un .dmg junto a los instaladores de Windows y Linux, con el conector MCP dentro, y las copias instaladas se actualizan solas. Está firmada ad hoc, así que el primer arranque pide Abrir igualmente en Ajustes del Sistema → Privacidad y seguridad; las actualizaciones desde la propia app ya no se bloquean. Los Mac Intel no están cubiertos."
+          },
+          "unixDates": {
+            "title": "Lee un timestamp de Unix como fecha",
+            "body": "Con clic derecho sobre una celda o campo que lo contenga, Ver como fecha abre el nuevo panel Fechas: hora local, UTC y una zona a tu elección, ISO 8601, la semana ISO, el valor como literal SQL en el dialecto de la conexión y el camino inverso, de una fecha a su epoch. Cada valor se copia con un clic, exacto al nanosegundo."
+          },
+          "mongoFaster": {
+            "title": "Las colecciones de MongoDB se abren más rápido",
+            "body": "Los campos de primer nivel de más de 64 KB se quedan en el servidor hasta que la fila se edita, se abre o se copia, las respuestas viajan comprimidas cuando el servidor no es local y el grid ya no serializa un valor entero para pintar 200 caracteres. Por el túnel SSH de un cliente, una página de ficheros guardados pasó de 2,3 s a 66 ms."
+          },
+          "mcpReadCancel": {
+            "title": "La lectura lenta de una IA se detiene en el servidor",
+            "body": "Cuando run_query o run_queries tardaban más de lo que esperaba el cliente MCP, la sentencia seguía cargando el servidor hasta que alguien la mataba a mano. Ahora la lectura recibe el timeout MCP de la conexión y se cancela en el servidor al agotarse o cuando el cliente desiste, en todos los motores. Las lecturas que lanzas tú no tienen límite."
+          },
+          "plexSans": {
+            "title": "La misma tipografía en todos los PC",
+            "body": "La interfaz incluye IBM Plex Sans en vez de recurrir a la fuente que tuviera cada PC, y las celdas del grid también la usan, con cifras tabulares para que los números sigan alineados. El editor SQL y el terminal mantienen la fuente que elegiste en Ajustes → Editor."
+          },
+          "primaryKey": {
+            "title": "Los cambios de clave primaria llegan al servidor",
+            "body": "En PostgreSQL y MySQL, marcar o desmarcar la casilla PK de una columna existente se aplicaba sin error pero dejaba la clave como estaba. El editor de estructura ahora quita y añade la clave de verdad, y rechaza un cambio que dejaría una columna AUTO_INCREMENT sin ella."
+          },
+          "mongo42": {
+            "title": "MongoDB 4.2 vuelve a conectar, hasta el 1 de diciembre",
+            "body": "Desde la 1.36.0, los servidores MongoDB 4.2 no conectaban; vuelven a hacerlo. Las versiones publicadas desde el 1 de diciembre de 2026 necesitarán MongoDB 4.4 o posterior, y al conectar a un servidor más antiguo se avisa una vez por sesión, para que lo sepas antes de que una actualización lo deje sin conectar."
+          }
+        }
+      },
       "1_38_0": {
         "tagline": "Un grid vacío ya permite empezar una fila nueva, los scripts de SQL Server se ejecutan lote a lote como en SSMS, y el script largo de una IA ahora se detiene en el servidor cuando se queda sin tiempo.",
         "items": {

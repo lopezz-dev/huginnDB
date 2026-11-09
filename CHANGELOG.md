@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.39.0] — 2026-11-09
+
 ### Added
 
 - **See at a glance which shared connections use a password you typed.**

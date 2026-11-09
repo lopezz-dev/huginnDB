@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.39.0] — 2026-11-09
+
 ### Añadido
 
 - **Ver de un vistazo qué conexiones compartidas usan una contraseña que has

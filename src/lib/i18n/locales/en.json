@@ -2785,6 +2785,39 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_39_0": {
+        "tagline": "HuginnDB now runs on Apple Silicon Macs, a Unix timestamp reads as a date in one click, MongoDB collections open faster, and an AI's read that runs out of time is stopped on the server.",
+        "items": {
+          "macosBuild": {
+            "title": "A macOS build for Apple Silicon",
+            "body": "Every release now ships a .dmg next to the Windows and Linux installers, with the MCP connector inside, and installed copies update themselves. It is ad-hoc signed, so the first launch needs Open Anyway in System Settings → Privacy & Security; updates from inside the app are not blocked again. Intel Macs are not covered."
+          },
+          "unixDates": {
+            "title": "Read a Unix timestamp as a date",
+            "body": "Right-click a cell or field holding one and View as date opens the new Dates panel: local time, UTC and a zone of your choice, ISO 8601, the ISO week, the value as a SQL literal in the connection's dialect, and the way back from a date to its epoch. Every value copies with one click, exact to the nanosecond."
+          },
+          "mongoFaster": {
+            "title": "MongoDB collections open faster",
+            "body": "Top-level fields over 64 KB stay on the server until the row is edited, opened or copied, replies are compressed on the wire when the server is not local, and the grid no longer serialises a whole value to paint 200 characters of it. Over a customer's SSH tunnel, a page of stored files went from 2.3 s to 66 ms."
+          },
+          "mcpReadCancel": {
+            "title": "An AI's slow read is stopped on the server",
+            "body": "When run_query or run_queries outlived the MCP client's patience, the statement kept loading the server until someone killed it by hand. Now the read gets the connection's MCP timeout and is cancelled on the server when it runs out or the client gives up, on every engine. Reads you run yourself are not limited."
+          },
+          "plexSans": {
+            "title": "One typeface on every PC",
+            "body": "The interface ships IBM Plex Sans instead of falling back to whatever font each PC had, and grid cells use it too, with tabular figures so numbers still line up. The SQL editor and the terminal keep the font you chose in Settings → Editor."
+          },
+          "primaryKey": {
+            "title": "Primary key changes reach the server",
+            "body": "On PostgreSQL and MySQL, ticking or unticking the PK box on an existing column applied without an error but left the key as it was. The structure editor now really drops and adds the key, and refuses a change that would leave an AUTO_INCREMENT column without one."
+          },
+          "mongo42": {
+            "title": "MongoDB 4.2 connects again, until 1 December",
+            "body": "Since 1.36.0, MongoDB 4.2 servers refused to connect; they work again. Releases from 1 December 2026 will need MongoDB 4.4 or later, and connecting to an older server now says so once per session, so you hear it before an update stops it."
+          }
+        }
+      },
       "1_38_0": {
         "tagline": "An empty grid can start a new row, SQL Server scripts run batch by batch as in SSMS, and an AI's long script is now stopped on the server when it runs out of time.",
         "items": {
