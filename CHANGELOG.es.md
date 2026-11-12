@@ -8,6 +8,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Cambiado
+
+- **Edita y borra filas directamente desde los resultados de una consulta.**
+  La rejilla de resultados del editor SQL era de solo lectura, así que corregir
+  un valor o quitar unas cuantas filas que acababas de encontrar con un
+  `SELECT` obligaba a abrir la tabla y volver a filtrarla. Ahora, cuando la
+  sentencia lee **una sola tabla** y su resultado incluye la clave primaria
+  completa, la rejilla ofrece lo mismo que el navegador de tablas: editar una
+  celda, borrar una fila o seleccionar varias y borrarlas de una vez, con la
+  misma confirmación. Tras cada cambio la sentencia se vuelve a ejecutar, así
+  que la rejilla muestra lo que de verdad hay en el servidor. Todo lo que puede
+  hacer que una fila del resultado deje de ser una fila de la tabla —un `JOIN`,
+  `GROUP BY`, `DISTINCT`, un agregado, una subconsulta en `FROM`, un operador
+  de conjuntos— mantiene la rejilla en solo lectura, igual que dejar la clave
+  primaria fuera de la proyección; las columnas calculadas siguen sin poder
+  editarse y lo explican. Insertar y duplicar filas se queda, a propósito, en
+  el navegador de tablas. La política gestionada sigue decidiendo cada
+  escritura, y los resultados de consultas de MongoDB no cambian.
+
 ## [1.39.0] — 2026-11-09
 
 ### Añadido

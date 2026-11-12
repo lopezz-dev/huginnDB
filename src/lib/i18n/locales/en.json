@@ -2607,6 +2607,8 @@
     "resultTabs": "Result sets",
     "resultTabTitle": "Result of statement {{index}}",
     "resultTabTruncatedTitle": "First {{rows}} rows — the batch's row budget was reached",
+    "notWritable": "Computed column — it is not a column of {{table}}, so it cannot be edited",
+    "refreshFailed": "Saved, but the results could not be refreshed",
     "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n"
   },
   "saved": {

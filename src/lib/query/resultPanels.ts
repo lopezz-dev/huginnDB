@@ -30,11 +30,21 @@ export interface ResultPanel {
    *  statement can genuinely return several. */
   set: number | null;
   result: QueryResult;
+  /**
+   * The statement text that produced this set, when known. The grid reads it
+   * to decide whether the rows can be written back to their table
+   * (`lib/query/editableSource.ts`) and re-runs it to refresh after a write.
+   */
+  sql?: string;
 }
 
-/** Flatten a batch's statements into one panel per result set, in order. */
+/**
+ * Flatten a batch's statements into one panel per result set, in order.
+ * `texts` is what was sent, indexed like the outcomes' `index`.
+ */
 export function panelsFromBatch(
   statements: ReadonlyArray<StmtOutcome>,
+  texts?: ReadonlyArray<string>,
 ): ResultPanel[] {
   return statements.flatMap((stmt) =>
     stmt.results.map((result, i) => ({
@@ -42,6 +52,9 @@ export function panelsFromBatch(
       statement: stmt.index + 1,
       set: stmt.results.length > 1 ? i + 1 : null,
       result,
+      // A statement that returned several sets is not a single-table SELECT,
+      // and re-running it could not say which of its sets to refresh.
+      sql: stmt.results.length === 1 ? texts?.[stmt.index] : undefined,
     })),
   );
 }
