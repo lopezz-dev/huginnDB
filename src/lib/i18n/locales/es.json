@@ -2607,6 +2607,8 @@
     "resultTabs": "Conjuntos de resultados",
     "resultTabTitle": "Resultado de la sentencia {{index}}",
     "resultTabTruncatedTitle": "Primeras {{rows}} filas — se alcanzó el presupuesto de filas del lote",
+    "notWritable": "Columna calculada — no es una columna de {{table}}, así que no se puede editar",
+    "refreshFailed": "Guardado, pero no se pudieron refrescar los resultados",
     "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n"
   },
   "saved": {
