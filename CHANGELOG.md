@@ -14,6 +14,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   the connection tree's open-table markers. They now only redraw when a tab
   opens, closes, moves or changes something they display, which a slow CPU
   notices as typing that keeps up.
+  
+- **Typing and resizing panels no longer stutter on a slow disk.** The app
+  saves your open tabs a moment after you stop typing, and the panel layout
+  after every resize. That save wrote and flushed the whole tab-state file on
+  the same thread that draws the window, so on an HDD or a slow eMMC every
+  pause in typing could freeze the interface for a fraction of a second. The
+  write now happens on a background thread that folds several saves into one;
+  the change itself is applied immediately and in order, and anything still
+  being written is finished before the app closes. Two saves landing at once
+  can also no longer leave the older one on disk.
+  
+### Changed
+
+- **A smaller, tighter release binary.** Release builds now link with thin
+  LTO and a single codegen unit, and drop their debug info, so the compiler
+  can inline across crates (sqlx, serde_json, the drivers) instead of
+  stopping at each crate's boundary. The Windows executable goes from about
+  54.6 MB to 50.1 MB, which is less to read from disk on every cold start —
+  the part of launching that a slow HDD or eMMC feels most. Panics still
+  unwind, so a failure inside one background task keeps failing only that
+  task rather than closing the app.
 
 ## [1.39.0] — 2026-11-09
 

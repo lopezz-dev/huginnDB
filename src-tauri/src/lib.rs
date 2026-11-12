@@ -648,6 +648,10 @@ pub fn run() {
                 // Every shell and `mongosh` the panel started ends with the
                 // app, rather than being orphaned to the OS.
                 app.state::<terminal::TerminalRegistry>().close_all();
+                // The tab-state and layout autosaves write on a background
+                // thread (`tab_state::mutate_deferred_save`); the process
+                // ending would take a write in flight with it.
+                tab_state::flush_deferred_saves();
                 let state = app.state::<state::AppState>();
                 tauri::async_runtime::block_on(commands::connection::close_all_pools(
                     state.inner(),
