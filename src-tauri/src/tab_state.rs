@@ -980,17 +980,151 @@ pub fn save_tab_state(state: &PersistedTabState) -> AppResult<()> {
 /// Whatever `f` returns is handed back to the caller, which covers the writers
 /// that also need the value they just built (the saved [`Environment`], the
 /// updated [`Origin`]).
+///
+/// Writes are serialised by [`SAVE_LOCK`], and the snapshot is taken **inside**
+/// it rather than next to the mutation. Several writers can run at once — the
+/// async commands (origins, origin documents) already did, and the autosaves
+/// now write from a background thread ([`mutate_deferred_save`]) — and
+/// without this two of them
+/// could each clone their own snapshot and race to disk, the older one landing
+/// last and undoing the newer one on disk until the next save. Worse, both
+/// would share `write_atomic`'s one `.tab_state.json.tmp`. Snapshotting under
+/// the save lock means whichever writer goes last writes the latest state,
+/// whoever's mutation that was.
 pub fn mutate<T>(
     lock: &parking_lot::RwLock<PersistedTabState>,
     f: impl FnOnce(&mut PersistedTabState) -> AppResult<T>,
 ) -> AppResult<T> {
-    let (snapshot, out) = {
+    let out = {
         let mut guard = lock.write();
-        let out = f(&mut guard)?;
-        (guard.clone(), out)
+        f(&mut guard)?
     };
+    let _save = SAVE_LOCK.lock();
+    let snapshot = lock.read().clone();
     save_tab_state(&snapshot)?;
     Ok(out)
+}
+
+/// Held for the length of one [`mutate`] save — see its doc.
+static SAVE_LOCK: parking_lot::Mutex<()> = parking_lot::const_mutex(());
+
+/// [`mutate`] for the autosaves: apply `f` now, write the file on the
+/// background writer.
+///
+/// The commands that call this are synchronous on purpose, so they still run
+/// on the main thread and their mutations still land in the order the frontend
+/// sent them — `save_launch_state` and friends resolve against whichever
+/// environment is active *when the mutation runs*, so an `async` command that
+/// the runtime is free to reorder would be a correctness change, not a speed-up.
+/// What leaves the main thread is only the expensive half: cloning the whole
+/// blob, pretty-printing it and the `fsync`. The frontend autosaves tab state
+/// 600 ms after every pause in typing and the layout on every resize, and on a
+/// slow disk (HDD, eMMC) each of those writes froze the window for tens to
+/// hundreds of milliseconds.
+///
+/// Requests coalesce: however many arrive while a write is in flight, the
+/// writer does one more, of the latest state. A write error is logged rather
+/// than returned — the in-memory state is already correct, and the next save
+/// retries the file. [`flush_deferred_saves`] waits for the writer to drain;
+/// the app calls it on exit.
+pub fn mutate_deferred_save<T>(
+    lock: &std::sync::Arc<parking_lot::RwLock<PersistedTabState>>,
+    f: impl FnOnce(&mut PersistedTabState) -> AppResult<T>,
+) -> AppResult<T> {
+    let out = {
+        let mut guard = lock.write();
+        f(&mut guard)?
+    };
+    deferred_writer().request(lock.clone());
+    Ok(out)
+}
+
+/// Block until every save [`mutate_deferred_save`] requested is on disk.
+pub fn flush_deferred_saves() {
+    if let Some(writer) = DEFERRED_WRITER.get() {
+        writer.flush();
+    }
+}
+
+type SharedTabState = std::sync::Arc<parking_lot::RwLock<PersistedTabState>>;
+
+#[derive(Default)]
+struct WriterQueue {
+    /// The state to write next, if a save was requested since the last write
+    /// started. Only ever one: a newer request replaces it.
+    pending: Option<SharedTabState>,
+    /// Writes running right now: the thread's, and a [`DeferredWriter::flush`]
+    /// that wrote the pending state itself. A count, not a flag, so one
+    /// finishing cannot mark the other done.
+    busy: u32,
+}
+
+struct DeferredWriter {
+    queue: parking_lot::Mutex<WriterQueue>,
+    changed: parking_lot::Condvar,
+}
+
+static DEFERRED_WRITER: std::sync::OnceLock<DeferredWriter> = std::sync::OnceLock::new();
+
+fn deferred_writer() -> &'static DeferredWriter {
+    DEFERRED_WRITER.get_or_init(|| {
+        std::thread::Builder::new()
+            .name("tab-state-writer".into())
+            .spawn(|| deferred_writer().run())
+            .expect("spawning the tab state writer thread");
+        DeferredWriter {
+            queue: parking_lot::Mutex::new(WriterQueue::default()),
+            changed: parking_lot::Condvar::new(),
+        }
+    })
+}
+
+impl DeferredWriter {
+    fn request(&self, state: SharedTabState) {
+        self.queue.lock().pending = Some(state);
+        self.changed.notify_all();
+    }
+
+    fn run(&self) {
+        loop {
+            let state = {
+                let mut q = self.queue.lock();
+                while q.pending.is_none() {
+                    self.changed.wait(&mut q);
+                }
+                q.busy += 1;
+                q.pending.take().expect("checked above")
+            };
+            Self::write(&state);
+            self.queue.lock().busy -= 1;
+            self.changed.notify_all();
+        }
+    }
+
+    fn flush(&self) {
+        let mut q = self.queue.lock();
+        // Write what is pending ourselves rather than waiting for the thread
+        // to be scheduled, then wait out a write it may already be doing.
+        if let Some(state) = q.pending.take() {
+            q.busy += 1;
+            drop(q);
+            Self::write(&state);
+            q = self.queue.lock();
+            q.busy -= 1;
+            self.changed.notify_all();
+        }
+        while q.busy > 0 || q.pending.is_some() {
+            self.changed.wait(&mut q);
+        }
+    }
+
+    fn write(state: &SharedTabState) {
+        let _save = SAVE_LOCK.lock();
+        let snapshot = state.read().clone();
+        if let Err(e) = save_tab_state(&snapshot) {
+            eprintln!("[tab_state] deferred save failed: {e}");
+        }
+    }
 }
 
 #[cfg(test)]
