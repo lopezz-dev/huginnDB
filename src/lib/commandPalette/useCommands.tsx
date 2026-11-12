@@ -68,7 +68,7 @@ import {
 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
-import { useTabs } from "@/stores/session/tabs";
+import { useTabs, useTabsIgnoringQuery } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
 import { useEnvironments, environmentLabel } from "@/stores/session/environments";
 import { openTrackedDatabaseView } from "@/stores/session/persistedTabs";
@@ -166,7 +166,7 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
   // #32), and on a multi-DB connection the tables live in the per-database
   // child slices beneath it.
   const refreshSchema = useSchema((s) => s.refreshTree);
-  const tabs = useTabs((s) => s.tabs);
+  const tabs = useTabsIgnoringQuery();
   const activeTabId = useTabs((s) => s.activeId);
   const selected = useUi((s) => s.selectedConnectionId);
   const setSelected = useUi((s) => s.setSelectedConnectionId);

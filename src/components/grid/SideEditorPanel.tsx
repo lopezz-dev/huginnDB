@@ -49,7 +49,7 @@ import {
 import { CellEditorBody } from "@/components/grid/dialogs/CellEditor";
 import { useCellEditor, type CellEditorTarget } from "@/stores/grid/cellEditor";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
-import { useTabs } from "@/stores/session/tabs";
+import { useTabs, useTabsIgnoringQuery } from "@/stores/session/tabs";
 import {
   detectLanguage,
   type ContentLanguage,
@@ -90,7 +90,7 @@ export function SideEditorPanel() {
   const closeStore = useCellEditor((s) => s.close);
   // The open-tabs list, so parked sessions can be swept when their owning tab
   // closes, and the active id, so we know which tab's session to show.
-  const tabs = useTabs((s) => s.tabs);
+  const tabs = useTabsIgnoringQuery();
   const activeId = useTabs((s) => s.activeId);
   // Derive from raw state (gotcha #1) — the same "is there a schema actually
   // resolved for this column" check `CellEditorBody` does for its `resolved`,

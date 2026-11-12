@@ -62,7 +62,7 @@ import { tabNeed, usePolicyLock } from "@/lib/policy/access";
 import { openQueryTab } from "@/lib/tabs/openQueryTab";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { scheduleSaveActive } from "@/stores/session/persistedTabs";
-import { useTabs } from "@/stores/session/tabs";
+import { useTabs, useTabsIgnoringQuery } from "@/stores/session/tabs";
 import { useUi } from "@/stores/session/ui";
 
 interface Props {
@@ -282,7 +282,7 @@ function NewTabAction(_props: IDockviewHeaderActionsProps) {
 }
 
 export function TabbedArea(_props: Props) {
-  const tabs = useTabs((s) => s.tabs);
+  const tabs = useTabsIgnoringQuery();
   const activeId = useTabs((s) => s.activeId);
   const tabAccentStyle = usePreferences((s) => s.prefs.ui.tabAccentStyle);
   const [api, setApi] = useState<DockviewApi | null>(null);

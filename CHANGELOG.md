@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Less work per keystroke in the SQL editor.** Every key typed in a query
+  tab re-rendered parts of the window that never show the SQL: the tab area,
+  the tab switcher, the window title, the command palette, the side editor and
+  the connection tree's open-table markers. They now only redraw when a tab
+  opens, closes, moves or changes something they display, which a slow CPU
+  notices as typing that keeps up.
+
 ## [1.39.0] — 2026-11-09
 
 ### Added

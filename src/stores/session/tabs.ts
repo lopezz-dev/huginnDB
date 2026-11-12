@@ -6,6 +6,7 @@
  * need to be unique within the current session.
  */
 
+import { useRef } from "react";
 import { create } from "zustand";
 import { isDatabaseViewOf, tableTabTitle } from "@/lib/connectionLabel";
 import type { AppTab, ConnectionProfile, TabViewState } from "@/types";
@@ -302,4 +303,50 @@ export function retitleTabsForTableRename(
       rename(tab.id, `${newName} (${structureSuffix})`, newName);
     }
   }
+}
+
+/**
+ * Whether two `tabs` arrays differ only in tabs' `query` text.
+ *
+ * `updateQuery` runs on every keystroke in the SQL editor and, like every
+ * other write here, replaces the array and the edited tab object. Anything
+ * that reads the tab list but not the SQL body — the dockview host, the tab
+ * switcher, the window title, the command palette, the tree's open-table
+ * markers — was re-rendering on each of those keystrokes, which a slow CPU
+ * feels as typing lag. This is the equality that lets them skip it.
+ */
+export function sameTabsIgnoringQuery(a: AppTab[], b: AppTab[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (x === y) continue;
+    const xKeys = Object.keys(x) as (keyof AppTab)[];
+    if (xKeys.length !== Object.keys(y).length) return false;
+    for (const k of xKeys) {
+      if (k !== "query" && x[k] !== y[k]) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * `useTabs((s) => s.tabs)` for a component that never reads a tab's `query`:
+ * it re-renders when tabs open, close, move, retitle or change any other
+ * field, but not while someone types SQL.
+ *
+ * The array handed back is the one from the last change that mattered, so its
+ * tabs' `query` values may be stale — that is the whole point. A component
+ * that does need the SQL body must subscribe with `useTabs` directly, or read
+ * `useTabs.getState()` inside the handler that needs it.
+ */
+export function useTabsIgnoringQuery(): AppTab[] {
+  const last = useRef<AppTab[] | null>(null);
+  return useTabs((s) => {
+    const prev = last.current;
+    if (prev && sameTabsIgnoringQuery(prev, s.tabs)) return prev;
+    last.current = s.tabs;
+    return s.tabs;
+  });
 }

@@ -18,7 +18,7 @@
 
 import { useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useTabs } from "@/stores/session/tabs";
+import { useTabs, useTabsIgnoringQuery } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { useUi } from "@/stores/session/ui";
 import { useAppFlavor } from "@/stores/preferences/appFlavor";
@@ -28,7 +28,7 @@ import {
 } from "@/lib/connectionLabel";
 
 export function WindowTitleSync() {
-  const tabs = useTabs((s) => s.tabs);
+  const tabs = useTabsIgnoringQuery();
   const activeId = useTabs((s) => s.activeId);
   const profiles = useConnections((s) => s.profiles);
   const selectedConnectionId = useUi((s) => s.selectedConnectionId);
