@@ -87,7 +87,7 @@ import {
   type SettingsSection,
 } from "@/components/settings/useSettingsDialog";
 import { BUILT_IN_THEMES } from "@/lib/themes";
-import { DOCS } from "@/lib/appInfo/docs";
+import { DOC_IDS, docDescriptionKey, docTitleKey } from "@/lib/appInfo/docCatalog";
 import {
   isServerWide,
   resolveConnectionLabel,
@@ -824,15 +824,15 @@ export function useCommands(enabled: boolean): PaletteCommand[] {
       icon: <BookOpen className="h-4 w-4" />,
       run: () => useDocsDialog.getState().openTo(),
     });
-    for (const doc of DOCS) {
+    for (const id of DOC_IDS) {
       list.push({
-        id: `help:doc:${doc.id}`,
+        id: `help:doc:${id}`,
         group: "help",
-        label: t(doc.titleKey),
-        detail: t(doc.descriptionKey),
-        keywords: `docs documentation documentación ${doc.id}`,
+        label: t(docTitleKey(id)),
+        detail: t(docDescriptionKey(id)),
+        keywords: `docs documentation documentación ${id}`,
         icon: <BookOpen className="h-4 w-4" />,
-        run: () => useDocsDialog.getState().openTo(doc.id),
+        run: () => useDocsDialog.getState().openTo(id),
       });
     }
     list.push(

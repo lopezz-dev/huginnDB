@@ -14,7 +14,7 @@
  * keeps each session and its scrollback; closing a tab ends its session.
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Database, Download, Plus, SquareTerminal, X } from "lucide-react";
 
@@ -40,7 +40,11 @@ import { useMongoshDownload } from "@/stores/session/mongoshDownload";
 import { useTerminals } from "@/stores/session/terminals";
 import { useUi } from "@/stores/session/ui";
 import { MongoshDownload } from "./MongoshDownload";
-import { TerminalView } from "./TerminalView";
+// Lazy: xterm.js is ~400 KB that only a terminal tab needs, and most
+// sessions never open one.
+const TerminalView = lazy(() =>
+  import("./TerminalView").then((m) => ({ default: m.TerminalView })),
+);
 
 /** Free text with every verb is what `mongosh` asks of the policy
  *  (`guard::mongosh`); the first of these that is locked is the reason. */
@@ -268,9 +272,11 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
         )}
       </div>
       <div className="min-h-0 flex-1">
-        {tabs.map((tab) => (
-          <TerminalView key={tab.key} tab={tab} active={tab.key === activeKey} visible={visible} />
-        ))}
+        <Suspense fallback={null}>
+          {tabs.map((tab) => (
+            <TerminalView key={tab.key} tab={tab} active={tab.key === activeKey} visible={visible} />
+          ))}
+        </Suspense>
       </div>
     </div>
   );

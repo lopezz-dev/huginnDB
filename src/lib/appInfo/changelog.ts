@@ -3,10 +3,10 @@
  *
  * Both CHANGELOG.md (English, authoritative) and CHANGELOG.es.md (Spanish,
  * maintained for the recent releases) are bundled at build time via Vite's
- * `?raw` import — no network, no HTTP plugin. CHANGELOG.md's pre-1.0 (0.x)
+ * `?raw` import (as lazily loaded chunks) — no network, no HTTP plugin. CHANGELOG.md's pre-1.0 (0.x)
  * history was pruned once the file grew too large to be a useful in-app
  * reader; the full early history still lives in git tags/commits. The
- * Spanish file may lag behind on older versions; `getReleases("es")`
+ * Spanish file may lag behind on older versions; `loadReleases("es")`
  * therefore keeps the English version list + order and substitutes the
  * Spanish body only where it exists, falling back to English per-version
  * otherwise.
@@ -17,9 +17,14 @@
  * item text and rendered by the component.
  */
 
-// The files live at the repo root.
-import enRaw from "../../../CHANGELOG.md?raw";
-import esRaw from "../../../CHANGELOG.es.md?raw";
+// The files live at the repo root. They are loaded on demand, not imported:
+// the two of them are over 1.3 MB of text, which used to sit in the startup
+// bundle and be parsed on every launch (and in every secondary window) for a
+// panel most sessions never open. Vite emits each as its own chunk.
+const loadEn = () =>
+  import("../../../CHANGELOG.md?raw").then((m) => m.default);
+const loadEs = () =>
+  import("../../../CHANGELOG.es.md?raw").then((m) => m.default);
 
 export interface ChangelogSection {
   /** "Added", "Changed", "Fixed", … */
@@ -127,13 +132,13 @@ let esMergedCache: ChangelogRelease[] | null = null;
  * Spanish keeps the English version list/order and swaps in the Spanish body
  * per version where the translation exists.
  */
-export function getReleases(lang: string): ChangelogRelease[] {
-  enCache ??= parseChangelog(enRaw);
+export async function loadReleases(lang: string): Promise<ChangelogRelease[]> {
+  enCache ??= parseChangelog(await loadEn());
   if (lang !== "es") return enCache;
 
   if (!esMergedCache) {
     const esByVersion = new Map(
-      parseChangelog(esRaw).map((r) => [r.version, r]),
+      parseChangelog(await loadEs()).map((r) => [r.version, r]),
     );
     esMergedCache = enCache.map((r) => esByVersion.get(r.version) ?? r);
   }

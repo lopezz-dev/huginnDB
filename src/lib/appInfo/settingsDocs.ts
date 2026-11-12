@@ -18,7 +18,6 @@
  */
 
 import type { SettingsSection } from "@/components/settings/useSettingsDialog";
-import { docLocation } from "./docs";
 
 export interface SettingsDocLink {
   section: SettingsSection;
@@ -64,12 +63,17 @@ export function settingsSectionForDoc(docId: string): SettingsSection | undefine
 /**
  * Where in the guide `link` lands: the doc id plus the page and anchor to open
  * it on. `heading` is the translated text behind `link.headingKey`.
+ *
+ * Async because the guides' text lives in the lazily loaded docs registry
+ * (`./docs`), not in the startup bundle; this runs on a click, where the
+ * chunk load is not noticeable.
  */
-export function resolveSettingsDoc(
+export async function resolveSettingsDoc(
   link: SettingsDocLink,
   heading: string | null,
   lang: string,
-): { id: string; section: string | null; anchor: string | null } {
+): Promise<{ id: string; section: string | null; anchor: string | null }> {
+  const { docLocation } = await import("./docs");
   const where = heading ? docLocation(link.docId, heading, lang) : null;
   return {
     id: link.docId,

@@ -40,6 +40,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   la parte del inicio que más nota un disco mecánico o una eMMC lenta. Los
   *panics* siguen desenrollando la pila, así que un fallo dentro de una tarea
   en segundo plano sigue tumbando solo esa tarea y no cierra la aplicación.
+  
+ - **Una cuarta parte menos de código que cargar antes de que aparezca la
+  ventana.** El script que cada ventana de HuginnDB tiene que procesar antes
+  de poder dibujar nada baja de 8,0 MB a 5,9 MB. Los dos changelogs, las guías
+  de documentación y el motor de la terminal iban dentro, aunque la mayoría de
+  las sesiones nunca abren Novedades, el visor de Documentación ni una
+  terminal; ahora cada uno se carga la primera vez que hace falta. Una CPU
+  lenta lo nota en un arranque más rápido, y también cada ventana nueva (una
+  pestaña separada, Pulse).
 
 ## [1.39.0] — 2026-11-09
 

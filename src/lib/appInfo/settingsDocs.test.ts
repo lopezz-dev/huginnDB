@@ -50,14 +50,14 @@ describe("Preferences ↔ guides table", () => {
     }
   });
 
-  it("resolves to the cover when there is no heading, or none matches", () => {
+  it("resolves to the cover when there is no heading, or none matches", async () => {
     const link = docForSettingsSection("mcp")!;
-    expect(resolveSettingsDoc(link, null, "en")).toEqual({
+    expect(await resolveSettingsDoc(link, null, "en")).toEqual({
       id: "mcp",
       section: null,
       anchor: null,
     });
-    expect(resolveSettingsDoc(link, "No such heading anywhere", "en").section).toBeNull();
+    expect((await resolveSettingsDoc(link, "No such heading anywhere", "en")).section).toBeNull();
   });
 
   it("finds the section for a guide and the guide for a section", () => {
