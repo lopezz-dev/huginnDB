@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.39.1] — 2026-11-12
+
 ### Changed
 
 - **Edit and delete rows straight from a query's results.** The SQL editor's

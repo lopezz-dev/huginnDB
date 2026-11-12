@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.39.1] — 2026-11-12
+
 ### Cambiado
 
 - **Edita y borra filas directamente desde los resultados de una consulta.**
