@@ -270,3 +270,29 @@ mcp = ["dep:rmcp", "dep:schemars", "dep:anyhow"]
 # `tauri.canary.conf.json` (separate bundle identifier + updater feed). The OS
 # keychain service is deliberately NOT split by this feature (see keychain.rs).
 canary = []
+
+# Release profile for everything this workspace ships: the desktop app and the
+# `huginndb-mcp` sidecar (profiles are only read from the workspace root, so
+# this is the one place they can live).
+#
+# Cargo's default release profile optimises each crate in 16 separate codegen
+# units and never inlines across crate boundaries. For an app whose hot paths
+# run through sqlx / tiberius / mongodb / serde_json, that leaves cross-crate
+# inlining on the table and ships a larger binary than it needs — and a larger
+# binary is a slower cold start on the low-end PCs (HDD, eMMC) some users run.
+#
+# - `lto = "thin"`: cross-crate inlining at a fraction of fat LTO's link time,
+#   which matters because three release workflows build this per platform.
+# - `codegen-units = 1`: lets LLVM see each crate whole; slower to compile,
+#   which only the release build pays.
+# - `strip = "debuginfo"`: drops debug info the release build never needed but
+#   keeps the symbol table, so a `RUST_BACKTRACE` a user pastes into an issue
+#   still names functions. `true` would strip those too.
+#
+# `panic` stays `unwind` on purpose: a panic inside a spawned tokio task is
+# caught by the runtime today and fails only that task (one command, one
+# keepalive ping). `abort` would turn it into the whole app vanishing.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

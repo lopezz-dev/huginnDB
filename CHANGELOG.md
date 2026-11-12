@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **A smaller, tighter release binary.** Release builds now link with thin
+  LTO and a single codegen unit, and drop their debug info, so the compiler
+  can inline across crates (sqlx, serde_json, the drivers) instead of
+  stopping at each crate's boundary. The Windows executable goes from about
+  54.6 MB to 50.1 MB, which is less to read from disk on every cold start —
+  the part of launching that a slow HDD or eMMC feels most. Panics still
+  unwind, so a failure inside one background task keeps failing only that
+  task rather than closing the app.
+
 ## [1.39.0] — 2026-11-09
 
 ### Added
