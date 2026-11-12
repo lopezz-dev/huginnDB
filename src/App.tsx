@@ -12,7 +12,7 @@
  * "workspaces", which was never the intent).
  */
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "dockview-react/dist/styles/dockview.css";
 import {
   selectUpdateNotificationVisible,
@@ -27,7 +27,6 @@ import { SplashScreen } from "@/components/shell/SplashScreen";
 import { getCurrentVersion } from "@/lib/appInfo/updater";
 import { useWhatsNew } from "@/stores/dialogs/whatsNew";
 import { WhatsNewDialog } from "@/components/shell/dialogs/WhatsNewDialog";
-import { DocsDialog } from "@/components/shell/dialogs/DocsDialog";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
@@ -696,7 +695,7 @@ export default function App() {
       />
       <FeedbackDialog />
       <WhatsNewDialog />
-      <DocsDialog />
+      <DocsDialogOnDemand />
       <WindowTitleSync />
       {/* Both notification hosts plus their overflow badges. See
           `NotificationHosts` for why the container is not inlined here. */}
@@ -705,5 +704,29 @@ export default function App() {
         <UpdateBanner version={availableVersion} />
       )}
     </TooltipProvider>
+  );
+}
+
+/**
+ * The Documentation viewer, loaded the first time it is opened.
+ *
+ * Its registry carries every guide's markdown in both languages, which used
+ * to be parsed at startup — in every window — for a dialog most sessions never
+ * open. Once opened it stays mounted, exactly as it did before, so closing and
+ * reopening it keeps its state and its close animation.
+ */
+const LazyDocsDialog = lazy(() =>
+  import("@/components/shell/dialogs/DocsDialog").then((m) => ({ default: m.DocsDialog })),
+);
+
+function DocsDialogOnDemand() {
+  const open = useDocsDialog((s) => s.open);
+  const [armed, setArmed] = useState(false);
+  if (open && !armed) setArmed(true);
+  if (!armed) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyDocsDialog />
+    </Suspense>
   );
 }

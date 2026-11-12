@@ -17,7 +17,6 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Info } from "lucide-react";
 import { notify } from "@/lib/notify";
-import { docLocation } from "@/lib/appInfo/docs";
 import { useDocsDialog } from "@/stores/dialogs/docsDialog";
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { Button } from "@/components/ui/button";
@@ -74,7 +73,10 @@ export function ConnectionsSection() {
 
   /** Open the documentation on the section that explains these numbers, in
    *  the language the viewer will show — see `docLocation`. */
-  function explain() {
+  async function explain() {
+    // Imported here, not at the top: the docs registry carries every guide's
+    // text and is kept out of the startup bundle.
+    const { docLocation } = await import("@/lib/appInfo/docs");
     const where = docLocation(
       "connections",
       t("settings.connections.live.docHeading"),

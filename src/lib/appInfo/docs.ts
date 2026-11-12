@@ -10,7 +10,7 @@
  * so its last-updated date is injected.
  *
  * Titles/descriptions are i18n keys (`docs.entries.<id>.*`). The body is
- * per-language, same idea as `getReleases` in `lib/changelog.ts`: English is
+ * per-language, same idea as `loadReleases` in `lib/appInfo/changelog.ts`: English is
  * authoritative and always present; a translation (`docs/<Name>.<lang>.md`)
  * is optional and may lag behind — `getDocBody` falls back to English for any
  * language without one, so a missing translation never surfaces a blank

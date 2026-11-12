@@ -6,6 +6,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Changed
+
+- **A quarter less code to load before the window appears.** The script every
+  HuginnDB window parses before it can draw anything shrinks from 8.0 MB to
+  5.9 MB. The two changelogs, the documentation guides and the terminal's
+  engine were all inside it, even though most sessions never open What's new,
+  the Documentation viewer or a terminal; each is now loaded the first time
+  it is needed. A slow CPU sees this as a faster start, and so does every new
+  window (a detached tab, Pulse).
+
 ## [1.39.0] — 2026-11-09
 
 ### Added

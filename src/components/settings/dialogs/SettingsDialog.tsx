@@ -285,9 +285,9 @@ export function SettingsDialog({ open, onOpenChange }: Props) {
   // the hand-written "full guide" links at the foot of MCP and Pulse were an
   // inconsistent half of.
   const guide = searching ? undefined : docForSettingsSection(section);
-  const openGuide = () => {
+  const openGuide = async () => {
     if (!guide) return;
-    const target = resolveSettingsDoc(
+    const target = await resolveSettingsDoc(
       guide,
       guide.headingKey ? t(guide.headingKey) : null,
       i18n.language,

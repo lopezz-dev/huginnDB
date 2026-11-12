@@ -9,13 +9,13 @@
  * renderer.
  */
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { MICRO_HEADING } from "@/components/ui/styles";
 import { PrefGroup } from "./PrefGroup";
 import { cn } from "@/lib/utils";
 import { usePreferences } from "@/stores/preferences/preferences";
-import { getReleases } from "@/lib/appInfo/changelog";
+import { loadReleases, type ChangelogRelease } from "@/lib/appInfo/changelog";
 import {
   Select,
   SelectContent,
@@ -48,8 +48,20 @@ export function PatchNotesCard({ currentVersion }: Props) {
   const { t } = useTranslation();
   const language = usePreferences((s) => s.prefs.ui.language);
 
-  // Re-parse only when the language changes (the parser caches internally).
-  const releases = useMemo(() => getReleases(language), [language]);
+  // Loaded on demand (the changelogs are their own chunks, not part of the
+  // startup bundle) and re-parsed only when the language changes — the
+  // parser caches internally. Empty until the chunk arrives, which renders
+  // nothing for that moment rather than a spinner for a local file.
+  const [releases, setReleases] = useState<ChangelogRelease[]>([]);
+  useEffect(() => {
+    let live = true;
+    void loadReleases(language).then((r) => {
+      if (live) setReleases(r);
+    });
+    return () => {
+      live = false;
+    };
+  }, [language]);
 
   // Default to the installed version if present, else the first entry
   // (Unreleased, or the latest release).
