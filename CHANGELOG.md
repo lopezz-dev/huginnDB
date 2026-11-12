@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Fixed
+
+- **Typing and resizing panels no longer stutter on a slow disk.** The app
+  saves your open tabs a moment after you stop typing, and the panel layout
+  after every resize. That save wrote and flushed the whole tab-state file on
+  the same thread that draws the window, so on an HDD or a slow eMMC every
+  pause in typing could freeze the interface for a fraction of a second. The
+  write now happens on a background thread that folds several saves into one;
+  the change itself is applied immediately and in order, and anything still
+  being written is finished before the app closes. Two saves landing at once
+  can also no longer leave the older one on disk.
+  
 ### Changed
 
 - **A smaller, tighter release binary.** Release builds now link with thin

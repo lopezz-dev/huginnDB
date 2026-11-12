@@ -8,6 +8,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Escribir y redimensionar paneles ya no da tirones con un disco lento.** La
+  aplicación guarda las pestañas abiertas un instante después de que dejas de
+  escribir, y la disposición de los paneles tras cada cambio de tamaño. Ese
+  guardado escribía y volcaba el fichero de estado completo en el mismo hilo
+  que dibuja la ventana, así que con un disco mecánico o una eMMC lenta cada
+  pausa al escribir podía congelar la interfaz una fracción de segundo. Ahora
+  la escritura se hace en un hilo en segundo plano que agrupa varios guardados
+  en uno; el cambio se aplica al momento y en orden, y lo que quede por
+  escribir se termina antes de cerrar la aplicación. Además, dos guardados
+  simultáneos ya no pueden dejar en disco el más antiguo.
+  
 ### Cambiado
 
 - **Un binario de release más pequeño y ajustado.** Las builds de release
