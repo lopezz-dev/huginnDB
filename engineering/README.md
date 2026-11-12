@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-134 entries: 107 ADRs, 18 gotchas, 9 conventions.
+135 entries: 108 ADRs, 18 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -174,4 +174,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 132 | Gotcha | [tiberius 0.13's `cancel_query` gives up before SQL Server acknowledges, and leaves the acknowledgement on the wire](gotchas/gotcha-132-tiberius-cancel-query-misses-the-attention-ack.md) | active | 2026-11-02 |
 | 133 | ADR | [a MongoDB browse leaves oversized fields on the server until their row is used](adr/adr-133-a-mongodb-browse-leaves-oversized-fields-on-the-server.md) | accepted | 2026-11-03 |
 | 134 | ADR | [An AI's read is stopped on the server when it runs out of time or its caller goes away](adr/adr-134-an-ai-read-is-stopped-on-the-server-when-it-runs-out-or-its-caller-leaves.md) | accepted | 2026-11-05 |
+| 135 | ADR | [a grid is driven by a source that states what it can write, and one controller acts on it](adr/adr-135-a-grid-is-driven-by-a-source-that-states-what-it-can-write.md) | accepted | 2026-11-12 |
 <!-- index:end -->
