@@ -10,6 +10,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Menos trabajo por pulsación en el editor SQL.** Cada tecla escrita en una
+  pestaña de consulta volvía a dibujar partes de la ventana que nunca muestran
+  el SQL: el área de pestañas, el selector de pestañas, el título de la
+  ventana, la paleta de comandos, el editor lateral y las marcas de tabla
+  abierta del árbol de conexiones. Ahora solo se redibujan cuando una pestaña
+  se abre, se cierra, se mueve o cambia algo que muestran, y una CPU lenta lo
+  nota en que la escritura va al día.
+  
 - **Escribir y redimensionar paneles ya no da tirones con un disco lento.** La
   aplicación guarda las pestañas abiertas un instante después de que dejas de
   escribir, y la disposición de los paneles tras cada cambio de tamaño. Ese

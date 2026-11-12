@@ -34,7 +34,7 @@ import {
   Workflow,
   X,
 } from "lucide-react";
-import { useTabs } from "@/stores/session/tabs";
+import { useTabs, useTabsIgnoringQuery } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import {
   resolveConnectionLabel,
@@ -82,7 +82,7 @@ export function TabSwitcher() {
   const open = useTabSwitcher((s) => s.open);
   const setOpen = useTabSwitcher((s) => s.setOpen);
 
-  const tabs = useTabs((s) => s.tabs);
+  const tabs = useTabsIgnoringQuery();
   const activeId = useTabs((s) => s.activeId);
   const profiles = useConnections((s) => s.profiles);
 

@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Less work per keystroke in the SQL editor.** Every key typed in a query
+  tab re-rendered parts of the window that never show the SQL: the tab area,
+  the tab switcher, the window title, the command palette, the side editor and
+  the connection tree's open-table markers. They now only redraw when a tab
+  opens, closes, moves or changes something they display, which a slow CPU
+  notices as typing that keeps up.
+  
 - **Typing and resizing panels no longer stutter on a slow disk.** The app
   saves your open tabs a moment after you stop typing, and the panel layout
   after every resize. That save wrote and flushed the whole tab-state file on

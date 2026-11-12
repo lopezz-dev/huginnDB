@@ -25,7 +25,7 @@
  */
 
 import { useMemo } from "react";
-import { useTabs } from "@/stores/session/tabs";
+import { useTabs, useTabsIgnoringQuery } from "@/stores/session/tabs";
 import type { AppTab } from "@/types";
 
 /** `\0`-separated so no schema/table name can collide with the delimiter —
@@ -74,7 +74,7 @@ export function computeOpenTableKeys(
 }
 
 export function useOpenTableKeys(): OpenTableKeys {
-  const tabs = useTabs((s) => s.tabs);
+  const tabs = useTabsIgnoringQuery();
   const activeId = useTabs((s) => s.activeId);
   return useMemo(() => computeOpenTableKeys(tabs, activeId), [tabs, activeId]);
 }
