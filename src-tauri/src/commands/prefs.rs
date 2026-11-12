@@ -114,7 +114,7 @@ pub fn save_tab_state(
     mut tab_state_value: ConnectionTabState,
 ) -> AppResult<()> {
     tab_state::normalise(&mut tab_state_value);
-    tab_state::mutate(&state.tab_state, |ts| {
+    tab_state::mutate_deferred_save(&state.tab_state, |ts| {
         ts.active_environment_mut()
             .connections
             .insert(connection_id, tab_state_value);
@@ -169,7 +169,7 @@ pub fn save_workspace_layout(
     state: State<'_, AppState>,
     layout: Option<serde_json::Value>,
 ) -> AppResult<()> {
-    tab_state::mutate(&state.tab_state, |ts| {
+    tab_state::mutate_deferred_save(&state.tab_state, |ts| {
         ts.active_environment_mut().internal_layout = layout;
         Ok(())
     })

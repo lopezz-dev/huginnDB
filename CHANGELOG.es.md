@@ -8,9 +8,40 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Corregido
+
+- **Menos trabajo por pulsación en el editor SQL.** Cada tecla escrita en una
+  pestaña de consulta volvía a dibujar partes de la ventana que nunca muestran
+  el SQL: el área de pestañas, el selector de pestañas, el título de la
+  ventana, la paleta de comandos, el editor lateral y las marcas de tabla
+  abierta del árbol de conexiones. Ahora solo se redibujan cuando una pestaña
+  se abre, se cierra, se mueve o cambia algo que muestran, y una CPU lenta lo
+  nota en que la escritura va al día.
+  
+- **Escribir y redimensionar paneles ya no da tirones con un disco lento.** La
+  aplicación guarda las pestañas abiertas un instante después de que dejas de
+  escribir, y la disposición de los paneles tras cada cambio de tamaño. Ese
+  guardado escribía y volcaba el fichero de estado completo en el mismo hilo
+  que dibuja la ventana, así que con un disco mecánico o una eMMC lenta cada
+  pausa al escribir podía congelar la interfaz una fracción de segundo. Ahora
+  la escritura se hace en un hilo en segundo plano que agrupa varios guardados
+  en uno; el cambio se aplica al momento y en orden, y lo que quede por
+  escribir se termina antes de cerrar la aplicación. Además, dos guardados
+  simultáneos ya no pueden dejar en disco el más antiguo.
+  
 ### Cambiado
 
-- **Una cuarta parte menos de código que cargar antes de que aparezca la
+- **Un binario de release más pequeño y ajustado.** Las builds de release
+  enlazan ahora con LTO *thin* y una sola unidad de generación de código, y
+  descartan la información de depuración, de modo que el compilador puede
+  hacer *inlining* entre crates (sqlx, serde_json, los drivers) en lugar de
+  detenerse en la frontera de cada una. El ejecutable de Windows pasa de unos
+  54,6 MB a 50,1 MB: menos que leer del disco en cada arranque en frío, que es
+  la parte del inicio que más nota un disco mecánico o una eMMC lenta. Los
+  *panics* siguen desenrollando la pila, así que un fallo dentro de una tarea
+  en segundo plano sigue tumbando solo esa tarea y no cierra la aplicación.
+  
+ - **Una cuarta parte menos de código que cargar antes de que aparezca la
   ventana.** El script que cada ventana de HuginnDB tiene que procesar antes
   de poder dibujar nada baja de 8,0 MB a 5,9 MB. Los dos changelogs, las guías
   de documentación y el motor de la terminal iban dentro, aunque la mayoría de
