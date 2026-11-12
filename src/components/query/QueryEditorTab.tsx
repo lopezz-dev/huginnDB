@@ -64,6 +64,7 @@ import { IconButton } from "@/components/ui/icon-button";
 import { SearchField } from "@/components/ui/search-field";
 import { Spinner } from "@/components/ui/spinner";
 import { api } from "@/lib/tauri";
+import { notify } from "@/lib/notify";
 import { useConnections } from "@/stores/session/connections";
 import {
   tableKey,
@@ -85,7 +86,7 @@ import { runAiTask } from "@/lib/ai/runTask";
 import { statementAt, type SqlDialect } from "@/lib/sql/sqlSplit";
 import i18n from "@/lib/i18n";
 import type { BatchResult, DatabaseInfo, QueryResult } from "@/types";
-import { DataGrid } from "@/components/grid/DataGrid";
+import { QueryResultGrid } from "@/components/query/QueryResultGrid";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -202,6 +203,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
    * used to keep only the last one.
    */
   const [panels, setPanels] = useState<ResultPanel[]>([]);
+  /** The connection (or database view) the panels above came from — not
+   *  necessarily `effectiveId`, which the database selector can move after
+   *  the run. A write from the grid has to go where the rows were read. */
+  const [resultsOn, setResultsOn] = useState(connectionId);
   /** Key of the panel on screen. Only that one's grid is mounted — see
    *  `ResultTabs` for why rendering all of them would be the wrong trade. */
   const [activeKey, setActiveKey] = useState<string | null>(null);
@@ -442,7 +447,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       queryTimerRef.current?.start();
       try {
         const r = await api.executeQuery(effectiveId, toRun);
-        setPanels([{ key: "0", statement: 1, set: null, result: r }]);
+        setPanels([{ key: "0", statement: 1, set: null, result: r, sql: toRun }]);
+        setResultsOn(effectiveId);
         setActiveKey("0");
         addHistory({
           sql: toRun,
@@ -489,8 +495,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         statements.map((s) => s.text),
       );
       setBatchSummary(r);
-      const next = panelsFromBatch(r.statements);
+      const next = panelsFromBatch(
+        r.statements,
+        statements.map((s) => s.text),
+      );
       setPanels(next);
+      setResultsOn(effectiveId);
       setActiveKey(next[0]?.key ?? null);
       const failed = r.statements.find((s) => s.error);
       addHistory({
@@ -515,6 +525,27 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     () => panels.find((p) => p.key === activeKey) ?? panels[0] ?? null,
     [panels, activeKey],
   );
+
+  /**
+   * Re-run the panel on screen after the grid wrote to its table, and swap
+   * in the fresh rows. Only that statement runs again — never the rest of a
+   * batch, whose other statements may be writes. A failure here comes *after*
+   * the write succeeded, so it is reported on its own rather than thrown back
+   * to the grid as if the save itself had failed.
+   */
+  const activeKeyNow = active?.key;
+  const activeSql = active?.sql;
+  const refreshActive = useCallback(async () => {
+    if (!activeKeyNow || !activeSql) return;
+    try {
+      const r = await api.executeQuery(resultsOn, activeSql);
+      setPanels((prev) =>
+        prev.map((p) => (p.key === activeKeyNow ? { ...p, result: r } : p)),
+      );
+    } catch (e) {
+      notify.error(t("query.refreshFailed"), { description: String(e) });
+    }
+  }, [activeKeyNow, activeSql, resultsOn, t]);
 
   /** Switching result panels clears the grid's client-side filter: it is
    *  typed against one result's columns, and carrying it over to another
@@ -981,26 +1012,25 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           ) : active && active.result.columns.length === 0 ? (
             <DmlResult result={active.result} />
           ) : active ? (
-            // `DataGrid` sizes itself with `h-full`, so it needs a box with a
-            // definite height — given one, its own inner `overflow-auto`
-            // scrolls; given the raw flex line, `height: 100%` resolves
-            // against the *whole* panel and the grid hangs below it by
-            // however tall the summary and the tab strip are, clipping the
-            // last rows with no way to scroll to them. `TableDataTab` already
-            // wraps it exactly like this; this one did not, which only showed
-            // once there was anything above the grid.
-            <div className="min-h-0 flex-1 overflow-hidden">
-              {/* Keyed, so switching panels remounts the grid rather than
-                  feeding a new result into one holding the previous one's
-                  sort, selection and column widths. */}
-              <DataGrid
-                key={active.key}
-                result={active.result}
-                tabId={tabId}
-                globalFilter={filter}
-                onGlobalFilterChange={setFilter}
-              />
-            </div>
+            // `QueryResultGrid`'s root is the `flex-1 overflow-hidden` box the
+            // grid needs to get a definite height from this flex column —
+            // without it the grid hangs below the panel by however tall the
+            // summary and the tab strip are, clipping the last rows.
+            //
+            // Keyed, so switching panels remounts the grid rather than feeding
+            // a new result into one holding the previous one's sort, selection
+            // and column widths.
+            <QueryResultGrid
+              key={active.key}
+              result={active.result}
+              sql={active.sql}
+              connectionId={resultsOn}
+              driver={driver}
+              tabId={tabId}
+              globalFilter={filter}
+              onGlobalFilterChange={setFilter}
+              onRefresh={refreshActive}
+            />
           ) : (
             <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
               {batchSummary ? null : t("query.noResults")}

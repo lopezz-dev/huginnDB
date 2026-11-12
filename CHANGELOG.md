@@ -44,6 +44,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   it is needed. A slow CPU sees this as a faster start, and so does every new
   window (a detached tab, Pulse).
 
+## [1.39.1] — 2026-11-12
+
+### Changed
+
+- **Edit and delete rows straight from a query's results.** The SQL editor's
+  result grid used to be view-only, so fixing a value or removing a handful of
+  rows you had just found with a `SELECT` meant opening the table and filtering
+  it all over again. Now, when the statement reads **one table** and its result
+  includes that table's whole primary key, the grid offers what the table
+  browser does: edit a cell, delete a row, or select several and delete them
+  together, behind the same confirmation. After each change the statement runs
+  again, so the grid shows what the server now holds. Anything that could make
+  a result row stop being one table row — a join, `GROUP BY`, `DISTINCT`, an
+  aggregate, a subquery in `FROM`, a set operator — keeps the grid read-only,
+  as does a primary key left out of the projection; computed columns stay
+  read-only and say why. Inserting and duplicating rows stay in the table
+  browser on purpose. The managed policy still decides every write, and
+  MongoDB query results are unchanged.
+
 ## [1.39.0] — 2026-11-09
 
 ### Added
