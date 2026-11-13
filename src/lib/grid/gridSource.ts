@@ -159,11 +159,14 @@ export interface GridSource {
    *  the row cannot be addressed. */
   keyOf(row: CellValue[]): CellValue[];
   /**
-   * Stable identity for selection (ADR #7). The key tuple when the rows are
-   * addressable; otherwise whatever read-only identity the source can offer
-   * (`null` for none, which switches selection off).
+   * Stable identity for selection (ADR #7): the key tuple when the rows are
+   * addressable, otherwise whatever read-only identity the source can offer
+   * (the table falls back to the whole row). `undefined` when the rows have
+   * no identity at all — a query over several tables — which switches the
+   * grid's selection off; a function returning `null` for a row only leaves
+   * that row out of it.
    */
-  getRowKey(row: CellValue[]): string | null;
+  getRowKey: ((row: CellValue[]) => string | null) | undefined;
   /** The row with every value the page left on the server loaded back
    *  (ADR #133); the row itself when nothing was left out. */
   hydrate(row: CellValue[]): Promise<CellValue[]>;
