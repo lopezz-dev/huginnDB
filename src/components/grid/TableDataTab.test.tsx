@@ -781,6 +781,8 @@ describe("TableDataTab — foreign keys", () => {
     const open = vi.fn();
     useTabs.setState({ open } as never);
     mount();
+    // The header's key icon and the cell gesture read one list.
+    expect(grid().fkColumnNames).toEqual(["product_id"]);
     grid().onNavigateFk("product_id", 7);
     expect(open).toHaveBeenCalledWith(
       expect.objectContaining({

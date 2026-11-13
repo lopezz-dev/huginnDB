@@ -7,9 +7,10 @@
  *
  * - {@link useQueryRelation} — *which relation do these rows belong to?* It
  *   recognises a single-table `SELECT` (`editableSource.ts`), reads that
- *   table's catalog, and lines the result's columns up with it. `null` for
- *   anything else: a join, an aggregate, a key left out, a catalog that
- *   cannot be read.
+ *   table's catalog, and lines the result's columns up with it: `columns`
+ *   when they line up (enough to read through them), `editable` when the
+ *   whole key came back too (enough to write). `null` for anything else: a
+ *   join, an aggregate, a catalog that cannot be read.
  * - {@link useQuerySource} — *what may be done with them?* Given that mapping
  *   and the managed policy already resolved for the relation
  *   (`useRelationPolicy`, injected rather than read here), it states each
@@ -20,11 +21,14 @@
  * - **Insert and duplicate** — a result is a view the user filtered by hand;
  *   a new row need not match the `WHERE` it would appear under, so new rows
  *   belong to the table's own tab (ADR #135).
- * - **Paste, FK navigation, export, bulk update** — not offered by this
+ * - **Paste, export, bulk update** — not offered by this
  *   source *yet*: each needs result columns translated to table columns
  *   beyond a single cell save (an alias is not a column of the table), and
  *   each lands in its own change. `unsupported` here means "this source does
  *   not offer it", which hides it, as it was hidden before the migration.
+ *
+ * FK navigation needs only `columns`, not the key: it reads, so a `SELECT`
+ * that left the key out can still follow its foreign keys.
  *
  * After a write the statement runs again (`onRefresh`) rather than the row
  * being patched, so the grid shows what the server now holds — defaults,
@@ -36,11 +40,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/tauri";
 import {
-  mapResultColumns,
   parseSingleTableSelect,
   pkValuesOf,
+  resolveResultColumns,
   type EditableSource,
+  type ResultColumns,
 } from "@/lib/query/editableSource";
+import { isFkColumn, openReferencedRow } from "@/lib/grid/fkNavigation";
 import {
   available,
   blocked,
@@ -50,8 +56,16 @@ import {
 import type { RelationPolicy } from "@/lib/policy/useRelationPolicy";
 import type { CellValue, ColumnInfo, ColumnMeta, Driver } from "@/types";
 
+/** What a result set is, relative to the one table it reads. */
+export interface QueryRelation {
+  /** Its columns lined up with the table's. */
+  columns: ResultColumns;
+  /** The writable view, when the whole key came back; `null` otherwise. */
+  editable: EditableSource | null;
+}
+
 /**
- * The relation a result set writes to, or `null` when it writes to none.
+ * The relation a result set reads, or `null` when it is not one table.
  *
  * The catalog is fetched straight from the backend rather than through the
  * schema store: the tab may be scoped to a database view the explorer never
@@ -63,7 +77,7 @@ export function useQueryRelation(
   driver: Driver | undefined,
   sql: string | undefined,
   resultColumns: ColumnMeta[],
-): EditableSource | null {
+): QueryRelation | null {
   const select = useMemo(
     () => (sql ? parseSingleTableSelect(sql, driver) : null),
     [sql, driver],
@@ -88,7 +102,7 @@ export function useQueryRelation(
   return useMemo(
     () =>
       select && tableColumns && tableColumns.length > 0
-        ? mapResultColumns(select, tableColumns, resultColumns)
+        ? resolveResultColumns(select, tableColumns, resultColumns)
         : null,
     [select, tableColumns, resultColumns],
   );
@@ -96,9 +110,9 @@ export function useQueryRelation(
 
 export interface QuerySourceInput {
   connectionId: string;
-  /** From {@link useQueryRelation}; `null` → nothing is writable. */
-  relation: EditableSource | null;
-  /** The managed policy, resolved for `relation`. */
+  /** From {@link useQueryRelation}; `null` → read-only, no FK navigation. */
+  resolved: QueryRelation | null;
+  /** The managed policy, resolved for the relation. */
   policy: RelationPolicy;
   /** Run the statement again and replace this result. */
   onRefresh: () => Promise<void>;
@@ -108,14 +122,39 @@ const unaddressable = (): CellValue[] => {
   throw new Error("This result cannot be written back");
 };
 const asIs = (row: CellValue[]) => Promise.resolve(row);
+const asFk = (c: ColumnInfo) => (isFkColumn(c) ? c : null);
 
 export function useQuerySource({
   connectionId,
-  relation,
+  resolved,
   policy,
   onRefresh,
 }: QuerySourceInput): GridSource {
   const { t } = useTranslation();
+  const relation = resolved?.editable ?? null;
+  const columns = resolved?.columns ?? null;
+
+  /**
+   * The result columns a single-column FK makes navigable, by the name the
+   * grid shows — an alias navigates as the table column it stands for.
+   * Memoised: the grid keys its header and row memos on the list.
+   */
+  const fkByName = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof asFk>>();
+    for (const [name, col] of columns?.byName ?? []) {
+      const fk = asFk(col);
+      if (fk) m.set(name, fk);
+    }
+    return m;
+  }, [columns]);
+  const fkColumnNames = useMemo(() => [...fkByName.keys()], [fkByName]);
+  const navigateFk = useCallback(
+    (column: string, value: CellValue) => {
+      const fk = fkByName.get(column);
+      if (fk) openReferencedRow(connectionId, fk, value);
+    },
+    [fkByName, connectionId],
+  );
 
   const qualified = relation
     ? `${relation.schema ? `${relation.schema}.` : ""}${relation.table}`
@@ -206,7 +245,9 @@ export function useQuerySource({
       duplicate: unsupported,
       paste: unsupported,
       fieldUnset: unsupported,
-      fkNavigate: unsupported,
+      fkNavigate: fkColumnNames.length
+        ? available({ columns: fkColumnNames, navigateFk })
+        : unsupported,
       bulkUpdate: unsupported,
       export: unsupported,
     } as const;
@@ -251,5 +292,7 @@ export function useQuerySource({
     columnLock,
     connectionId,
     deleteRows,
+    fkColumnNames,
+    navigateFk,
   ]);
 }

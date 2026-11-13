@@ -404,11 +404,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     [projection, isMongo, pkColumnNames],
   );
   const projected = wire !== undefined;
-  /** Single-column FK columns, for the grid header key icon (presentational). */
-  const fkColumnNames = useMemo(
-    () => cols?.filter((c) => c.referenced_table).map((c) => c.name) ?? [],
-    [cols],
-  );
 
 
   // Leave oversized fields on the server (ADR #133). MongoDB only: a SQL
@@ -1306,7 +1301,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             tableName={table}
             tabId={tabId}
             driver={driver}
-            fkColumnNames={fkColumnNames}
             sort={sort}
             onSortChange={applySort}
             onSortSpecsChange={replaceSort}

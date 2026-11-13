@@ -142,7 +142,14 @@ export interface FieldUnsetOps {
 }
 
 export interface FkNavigateOps {
-  /** Single-column FK navigation; a no-op for any other column. */
+  /**
+   * The result columns a single-column FK makes navigable, by the name the
+   * grid shows. The one list the grid reads for both the header's key icon
+   * and the cell gestures (the context-menu entry, Alt+click), so the two
+   * cannot disagree.
+   */
+  columns: string[];
+  /** Open the referenced row; a no-op for a column not in `columns`. */
   navigateFk(column: string, value: CellValue): void;
 }
 

@@ -1735,7 +1735,7 @@ export function DataGrid({
                                 pinnedColumnSet={pinnedColumnSet}
                                 resultColumns={result.columns}
                                 columnIndexByName={columnIndexByName}
-                                columnInfoByName={columnInfoByName}
+                                fkColumnSet={fkNameSet}
                                 driver={driver}
                                 tableName={tableName}
                                 pkColumnNames={pkColumnNames}

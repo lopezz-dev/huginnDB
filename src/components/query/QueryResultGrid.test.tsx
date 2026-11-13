@@ -73,6 +73,9 @@ vi.mock("@/components/grid/dialogs/DeleteRowsDialog", () => ({
 import { QueryResultGrid } from "./QueryResultGrid";
 import { usePreferences } from "@/stores/preferences/preferences";
 import { useGridSelection } from "@/stores/grid/gridSelection";
+import { useTabs } from "@/stores/session/tabs";
+
+const originalOpen = useTabs.getState().open;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type LooseProps = Record<string, any>;
@@ -145,6 +148,7 @@ beforeEach(() => {
   h.api.deleteRows.mockResolvedValue(undefined);
   h.notify.error.mockClear();
   onRefresh.mockClear();
+  useTabs.setState({ open: originalOpen });
   usePreferences.setState((s) => ({
     prefs: { ...s.prefs, ui: { ...s.prefs.ui, confirmDestructive: true } },
   }));
@@ -310,5 +314,56 @@ describe("QueryResultGrid — managed policy locks", () => {
     expect(grid().onDeleteRow).toBeUndefined();
     expect(grid().onBulkDelete).toBeUndefined();
     expect(grid().editable).toBe(true);
+  });
+});
+
+describe("QueryResultGrid — foreign keys", () => {
+  /** shop.orders: key id, and customer_id → shop.customers.id. */
+  const ORDERS: ColumnInfo[] = [
+    col("id", "int", { is_primary_key: true }),
+    col("customer_id", "int", {
+      referenced_schema: "shop",
+      referenced_table: "customers",
+      referenced_column: "id",
+    }),
+    col("total", "numeric"),
+  ];
+
+  it("navigates an aliased FK column, even when the key was left out", async () => {
+    h.api.listColumns.mockResolvedValue(ORDERS);
+    const open = vi.fn();
+    useTabs.setState({ open } as never);
+    await mount(
+      "SELECT customer_id AS c, total FROM shop.orders",
+      result(["c", "total"], [[5, "10.00"]]),
+    );
+    // Read-only — no key — yet the FK is followed, by its alias.
+    expect(grid().editable).toBe(false);
+    expect(grid().fkColumnNames).toEqual(["c"]);
+    grid().onNavigateFk("c", 5);
+    expect(open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "table",
+        connectionId: "c1",
+        schema: "shop",
+        table: "customers",
+        initialFilters: [{ column: "id", op: "eq", value: 5 }],
+      }),
+    );
+    open.mockClear();
+    grid().onNavigateFk("total", "10.00");
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("offers no FK navigation where no column is a foreign key", async () => {
+    await mount();
+    expect(grid().onNavigateFk).toBeUndefined();
+    expect(grid().fkColumnNames).toBeUndefined();
+  });
+
+  it("offers none over a join, whose columns name no single table", async () => {
+    h.api.listColumns.mockResolvedValue(ORDERS);
+    await mount("SELECT o.customer_id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id");
+    expect(grid().onNavigateFk).toBeUndefined();
   });
 });

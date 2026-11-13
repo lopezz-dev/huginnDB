@@ -8,6 +8,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Seguir una clave ajena desde los resultados de una consulta.** En una
+  pestaña SQL Query, una columna de un `SELECT` de una sola tabla que sea
+  clave ajena muestra ahora el icono de llave en su cabecera y ofrece *Ir al
+  registro referenciado* en el menú de la celda (o Alt+clic), que abre la
+  tabla referenciada filtrada por ese valor, igual que en una pestaña de
+  tabla. Funciona también con alias (`SELECT customer_id AS c …`) y aunque
+  la consulta no traiga la clave primaria, porque seguir una referencia no
+  cambia nada. Los resultados de varias tablas no la ofrecen.
+
 ### Corregido
 
 - **Una vista ya no ofrece añadir filas.** Al navegar una vista aparecía el
