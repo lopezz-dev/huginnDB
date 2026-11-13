@@ -92,6 +92,7 @@ import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/clipboard";
 import { notify } from "@/lib/notify";
 import { toBulk, type SqlTarget } from "@/lib/grid/copyFormats";
+import type { FkRef } from "@/lib/grid/gridSource";
 import { cellDisplayText, formatValue } from "@/lib/grid/formatValue";
 import {
   GRID_GUTTER_WIDTH,
@@ -162,6 +163,12 @@ interface Props {
    * keeps the result's names and a `<table>` placeholder.
    */
   sqlTarget?: SqlTarget;
+  /**
+   * Where an FK cell's value must exist — from the source's `update`
+   * capability, so it is there exactly while a cell can be changed. Editing
+   * such a cell picks from those values (`FkCombobox`) instead of typing.
+   */
+  fkRefOf?: (column: string) => FkRef | undefined;
   /** Id of the tab hosting this grid. Threaded to the docked side editor so it
    *  can close itself when this tab is closed (it lives outside the subtree). */
   tabId?: string;
@@ -464,6 +471,7 @@ export function DataGrid({
   tableSchema,
   tableName,
   sqlTarget,
+  fkRefOf,
   tabId,
   driver,
   pkColumnNames,
@@ -869,7 +877,7 @@ export function DataGrid({
     tableName,
     tabId,
     cellEditorMode,
-    columnInfoByName,
+    fkRefOf,
     columnIndexByName,
     columnLock,
     // The quiet pair: the only commit this hook performs is the docked side
@@ -1241,8 +1249,7 @@ export function DataGrid({
     },
     sort,
     onSortChange,
-    connectionId,
-    tableSchema,
+    fkRefOf,
     onCellSave,
   });
 
@@ -1330,7 +1337,7 @@ export function DataGrid({
     },
     selectedCell,
     setSelectedRowIndex,
-    columnInfoByName,
+    fkRefOf,
     bitColNames,
     bitDisplay,
     expandCellCombo,

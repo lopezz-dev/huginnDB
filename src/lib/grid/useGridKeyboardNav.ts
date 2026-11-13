@@ -6,7 +6,8 @@ import { normalizeBitValue } from "@/lib/grid/columnKinds";
 import { formatValue, rawCellText } from "@/lib/grid/formatValue";
 import { isBlockText } from "@/lib/grid/pasteBlock";
 import { matchesBinding } from "@/lib/keybindings";
-import type { CellValue, ColumnInfo, ColumnMeta, GridPrefs } from "@/types";
+import type { FkRef } from "@/lib/grid/gridSource";
+import type { CellValue, ColumnMeta, GridPrefs } from "@/types";
 import type { InlineEdit } from "@/lib/grid/useCellEditing";
 
 /** `{ r, c }` into the visible row model and the visible leaf columns. */
@@ -69,8 +70,9 @@ export interface GridKeyboardNavOptions {
   selectedCell: { rowValues: CellValue[]; column: ColumnMeta; value: CellValue } | null;
   /** Moving the active cell also moves the row highlight. */
   setSelectedRowIndex: (index: number | null) => void;
-  /** Catalog metadata by column name — an FK column has no text to paste into. */
-  columnInfoByName: ReadonlyMap<string, ColumnInfo>;
+  /** Where an FK cell's value must exist — such a cell has no text to paste
+   *  into: its editor picks from those values (`UpdateOps.fkRefOf`). */
+  fkRefOf: ((column: string) => FkRef | undefined) | undefined;
   /** Names of MySQL `BIT` columns, likewise not free-text. */
   bitColNames: ReadonlySet<string>;
   bitDisplay: GridPrefs["bitDisplay"];
@@ -127,7 +129,7 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
     editing,
     selectedCell,
     setSelectedRowIndex,
-    columnInfoByName,
+    fkRefOf,
     bitColNames,
     bitDisplay,
     expandCellCombo,
@@ -212,13 +214,12 @@ export function useGridKeyboardNav(opts: GridKeyboardNavOptions) {
       }
       return;
     }
-    const info = columnInfoByName.get(cell.column.name);
     // One value into one cell: the inline editor, as before.
     const intoCell = !!(
       editable &&
       onCellSave &&
       !columnLock?.(cell.column.name) &&
-      !info?.referenced_table
+      !fkRefOf?.(cell.column.name)
     );
     if (!intoCell && !onPasteBlock) return;
     const isBit = bitColNames.has(cell.column.name);

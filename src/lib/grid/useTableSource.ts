@@ -377,6 +377,24 @@ export function useTableSource({
   );
   const fkColumnNames = useMemo(() => fkColumns.map((c) => c.name), [fkColumns]);
 
+  /** Where an FK cell's new value must exist: the editor picks from there.
+   *  The referenced schema defaults to this table's, as the grid always did. */
+  const fkRefOf = useCallback(
+    (columnName: string) => {
+      const col = fkColumns.find((c) => c.name === columnName);
+      return col
+        ? {
+            connectionId,
+            schema: col.referenced_schema ?? schema ?? undefined,
+            table: col.referenced_table,
+            column: col.referenced_column,
+            nullable: col.nullable,
+          }
+        : undefined;
+    },
+    [fkColumns, connectionId, schema],
+  );
+
   /** "Go to referenced row" (`lib/grid/fkNavigation.ts`). */
   const navigateFk = useCallback(
     (columnName: string, value: CellValue) => {
@@ -443,6 +461,7 @@ export function useTableSource({
       update: gate([keyMissing, policy.update], () => ({
         saveField,
         columnLock: policy.updateColumnLock,
+        fkRefOf,
       })),
       delete: gate([keyMissing, policy.delete], () => ({
         target: { connectionId, schema, table, pkColumns: pkColumnNames },
@@ -515,5 +534,6 @@ export function useTableSource({
     navigateFk,
     fkColumnNames,
     sqlTarget,
+    fkRefOf,
   ]);
 }

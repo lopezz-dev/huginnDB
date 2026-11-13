@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Pick a foreign key's value when editing a query's results.** Editing a
+  foreign-key cell in the results of a single-table `SELECT` now opens the
+  same searchable list of the referenced table's values as in a table tab,
+  instead of a plain text box — also when the column is under an alias
+  (`SELECT customer_id AS c …`). It is offered only where the cell can be
+  changed: with the primary key in the results and the policy allowing the
+  update.
+
 - **Export a query's results.** The results grid of a SQL Query tab has an
   *Export data* menu: CSV, JSON and — when the results come from a single
   table — SQL INSERT. It writes every row the query returned, not only those

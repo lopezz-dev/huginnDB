@@ -91,6 +91,17 @@ export interface DeleteTarget {
   pkColumns: string[];
 }
 
+/** The relation a foreign-key cell's value must exist in — where the editor's
+ *  combobox looks its options up. */
+export interface FkRef {
+  connectionId: string;
+  schema: string | undefined;
+  table: string;
+  column: string;
+  /** The FK column takes NULL: the combobox offers it. */
+  nullable: boolean;
+}
+
 export interface UpdateOps {
   saveField(
     row: CellValue[],
@@ -101,6 +112,12 @@ export interface UpdateOps {
   /** Omitted when no column is limited, so the grid's per-cell path stays
    *  exactly as it is for everyone else. */
   columnLock?: ColumnLock;
+  /**
+   * For a result column that is a single-column foreign key, where its value
+   * must exist — editing it then picks from those values instead of typing.
+   * Part of *update* because it only matters while a cell can be changed.
+   */
+  fkRefOf?: (resultColumn: string) => FkRef | undefined;
 }
 
 export interface DeleteOps {

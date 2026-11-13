@@ -35,6 +35,7 @@ import {
   reasonOf,
   type ColumnLock,
   type DraftCommitOps,
+  type FkRef,
   type GridSource,
 } from "@/lib/grid/gridSource";
 import type { PastePlan } from "@/lib/grid/pastePlan";
@@ -78,6 +79,7 @@ export interface GridControllerProps {
   onNavigateFk: ((column: string, value: CellValue) => void) | undefined;
   fkColumnNames: string[] | undefined;
   sqlTarget: SqlTarget | undefined;
+  fkRefOf: ((column: string) => FkRef | undefined) | undefined;
   onPasteBlock: ((paste: GridPaste) => Promise<void>) | undefined;
   onDeleteRow: ((row: CellValue[]) => void) | undefined;
   onBulkDelete: ((rows: CellValue[][]) => void) | undefined;
@@ -348,6 +350,7 @@ export function useGridController(
     onNavigateFk: fk?.navigateFk,
     fkColumnNames: fk?.columns,
     sqlTarget: source.sqlTarget,
+    fkRefOf: update?.fkRefOf,
     onPasteBlock: paste ? onPasteBlock : undefined,
     onDeleteRow: del ? onDeleteRow : undefined,
     onBulkDelete: del ? onDeleteRows : undefined,

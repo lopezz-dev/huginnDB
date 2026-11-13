@@ -787,6 +787,15 @@ describe("TableDataTab — foreign keys", () => {
       pkColumns: ["order_id", "line"],
     });
     expect(grid().sqlTarget.columnOf("qty")).toBe("qty");
+    // Editing the FK picks from the referenced table's values.
+    expect(grid().fkRefOf("product_id")).toEqual({
+      connectionId: "c1",
+      schema: "shop",
+      table: "products",
+      column: "id",
+      nullable: true,
+    });
+    expect(grid().fkRefOf("qty")).toBeUndefined();
     // The header's key icon and the cell gesture read one list.
     expect(grid().fkColumnNames).toEqual(["product_id"]);
     grid().onNavigateFk("product_id", 7);
