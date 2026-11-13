@@ -75,6 +75,7 @@ export interface GridControllerProps {
     | undefined;
   onFieldDelete: ((row: CellValue[], path: string[]) => Promise<void>) | undefined;
   onNavigateFk: ((column: string, value: CellValue) => void) | undefined;
+  fkColumnNames: string[] | undefined;
   onPasteBlock: ((paste: GridPaste) => Promise<void>) | undefined;
   onDeleteRow: ((row: CellValue[]) => void) | undefined;
   onBulkDelete: ((rows: CellValue[][]) => void) | undefined;
@@ -343,6 +344,7 @@ export function useGridController(
     onFieldSave: update ? onFieldSave : undefined,
     onFieldDelete: unset ? onFieldDelete : undefined,
     onNavigateFk: fk?.navigateFk,
+    fkColumnNames: fk?.columns,
     onPasteBlock: paste ? onPasteBlock : undefined,
     onDeleteRow: del ? onDeleteRow : undefined,
     onBulkDelete: del ? onDeleteRows : undefined,

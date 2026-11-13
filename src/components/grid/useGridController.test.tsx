@@ -114,7 +114,7 @@ function fakeSource(s: Spies, over: Partial<GridSource> = {}): GridSource {
       applyPaste: s.applyPaste,
     }),
     fieldUnset: available({ unsetField: s.unsetField }),
-    fkNavigate: available({ navigateFk: s.navigateFk }),
+    fkNavigate: available({ columns: ["ref"], navigateFk: s.navigateFk }),
     bulkUpdate: AVAILABLE,
     export: AVAILABLE,
     ...over,

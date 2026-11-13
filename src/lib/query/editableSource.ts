@@ -563,15 +563,35 @@ function findColumn(columns: ColumnInfo[], name: string): ColumnInfo | undefined
 const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /**
- * Line the recognised projection up with the catalog and the result, and say
- * what can be written. `null` when the two do not agree position by position
- * or the primary key did not come back whole.
+ * The columns of a single-table result, lined up with the table's catalog.
+ * Unlike {@link EditableSource} it needs no primary key: it says which table
+ * column each result name stands for, which is all a read-only gesture (FK
+ * navigation) needs.
  */
-export function mapResultColumns(
+export interface ResultColumns {
+  schema: string | undefined;
+  table: string;
+  /**
+   * Result column name → the table column it is. A name absent from the map
+   * is no column of the table (an expression, or a name two result columns
+   * share with different meanings).
+   */
+  byName: Map<string, ColumnInfo>;
+}
+
+/** An alignment, with the table column (or `null`, an expression) at each
+ *  result position — what finding the key needs. */
+type Aligned = ResultColumns & { sources: (ColumnInfo | null)[] };
+
+/**
+ * Line the recognised projection up with the catalog and the result. `null`
+ * when the two do not agree position by position.
+ */
+function align(
   select: SingleTableSelect,
   tableColumns: ColumnInfo[],
   resultColumns: ColumnMeta[],
-): EditableSource | null {
+): Aligned | null {
   // Per result position: the table column it is, or null for an expression.
   const sources: (ColumnInfo | null)[] = [];
   for (const item of select.items) {
@@ -595,30 +615,67 @@ export function mapResultColumns(
   }
   if (sources.length !== resultColumns.length) return null;
 
+  // A result name maps to one table column, unambiguously.
+  const seen = new Map<string, ColumnInfo | null>();
+  resultColumns.forEach((rc, ix) => {
+    const src = sources[ix];
+    if (!seen.has(rc.name)) seen.set(rc.name, src);
+    else if (seen.get(rc.name)?.name !== src?.name) seen.set(rc.name, null);
+  });
+  const byName = new Map<string, ColumnInfo>();
+  for (const [name, src] of seen) if (src) byName.set(name, src);
+
+  return { schema: select.schema, table: select.table, byName, sources };
+}
+
+/** The writable view of an alignment: `null` without the whole key. */
+function withKey(
+  aligned: Aligned,
+  tableColumns: ColumnInfo[],
+  resultColumns: ColumnMeta[],
+): EditableSource | null {
   // The key: every PK column, first position it appears at.
   const pk = tableColumns.filter((c) => c.is_primary_key);
   if (pk.length === 0) return null;
-  const pkIndices = pk.map((k) => sources.findIndex((s) => s?.name === k.name));
+  const pkIndices = pk.map((k) =>
+    aligned.sources.findIndex((s) => s?.name === k.name),
+  );
   if (pkIndices.some((ix) => ix < 0)) return null;
-
-  // Writable names: a result name maps to one table column, unambiguously.
-  const byName = new Map<string, ColumnInfo | null>();
-  resultColumns.forEach((rc, ix) => {
-    const src = sources[ix];
-    if (!byName.has(rc.name)) byName.set(rc.name, src);
-    else if (byName.get(rc.name)?.name !== src?.name) byName.set(rc.name, null);
-  });
-  const writable = new Map<string, ColumnInfo>();
-  for (const [name, src] of byName) if (src) writable.set(name, src);
-
   return {
-    schema: select.schema,
-    table: select.table,
+    schema: aligned.schema,
+    table: aligned.table,
     pkColumns: pk.map((c) => c.name),
     pkIndices,
     pkResultNames: pkIndices.map((ix) => resultColumns[ix].name),
-    writable,
+    writable: aligned.byName,
   };
+}
+
+/**
+ * What a single-table result is, in both senses a grid needs: its `columns`
+ * lined up with the table (enough to read through them — FK navigation), and
+ * `editable` when the whole primary key came back too (enough to write).
+ * `null` when the columns do not line up at all.
+ */
+export function resolveResultColumns(
+  select: SingleTableSelect,
+  tableColumns: ColumnInfo[],
+  resultColumns: ColumnMeta[],
+): { columns: ResultColumns; editable: EditableSource | null } | null {
+  const aligned = align(select, tableColumns, resultColumns);
+  if (!aligned) return null;
+  const { sources: _positions, ...columns } = aligned;
+  return { columns, editable: withKey(aligned, tableColumns, resultColumns) };
+}
+
+/** {@link resolveResultColumns}' writable half — `null` unless the columns
+ *  line up and the whole key came back. */
+export function mapResultColumns(
+  select: SingleTableSelect,
+  tableColumns: ColumnInfo[],
+  resultColumns: ColumnMeta[],
+): EditableSource | null {
+  return resolveResultColumns(select, tableColumns, resultColumns)?.editable ?? null;
 }
 
 /** The key tuple of one result row, in {@link EditableSource.pkColumns} order. */

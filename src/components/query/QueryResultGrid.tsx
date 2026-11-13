@@ -46,17 +46,20 @@ export function QueryResultGrid({
   onGlobalFilterChange,
   onRefresh,
 }: Props) {
-  const editable = useQueryRelation(connectionId, driver, sql, result.columns);
-  // Read once for the relation the statement writes to; `null` (no relation)
+  const resolved = useQueryRelation(connectionId, driver, sql, result.columns);
+  // Read once for the relation the statement reads; `null` (not one table)
   // asks only about the connection, and locks nothing by column.
   const relation = useMemo(
-    () => (editable ? { schema: editable.schema, name: editable.table } : null),
-    [editable],
+    () =>
+      resolved
+        ? { schema: resolved.columns.schema, name: resolved.columns.table }
+        : null,
+    [resolved],
   );
   const policy = useRelationPolicy(connectionId, relation, false);
   const source = useQuerySource({
     connectionId,
-    relation: editable,
+    resolved,
     policy,
     onRefresh,
   });

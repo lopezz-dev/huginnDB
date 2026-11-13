@@ -61,7 +61,6 @@ import { ViewAsDateAction, rowLabel } from "@/components/epoch/ViewAsDateAction"
 import type {
   CellValue,
   ColumnFilter,
-  ColumnInfo,
   ColumnMeta,
   Driver,
 } from "@/types";
@@ -166,7 +165,10 @@ interface GridRowProps {
   pinnedColumnSet: ReadonlySet<string>;
   resultColumns: ColumnMeta[];
   columnIndexByName: Map<string, number>;
-  columnInfoByName: Map<string, ColumnInfo>;
+  /** The columns FK navigation offers (`DataGrid`'s `fkColumnNames`): the
+   *  same list as the header's key icon, so a cell is navigable exactly where
+   *  its header says it is a foreign key. */
+  fkColumnSet: ReadonlySet<string>;
   driver?: Driver;
   tableName?: string;
   pkColumnNames?: string[];
@@ -247,7 +249,7 @@ export const GridRow = memo(function GridRow({
   pinnedColumnSet,
   resultColumns,
   columnIndexByName,
-  columnInfoByName,
+  fkColumnSet,
   driver,
   tableName,
   pkColumnNames,
@@ -387,12 +389,11 @@ export const GridRow = memo(function GridRow({
         const meta = resultColumns[backendIdx];
         const value = rowValues[backendIdx];
         const colIdx = backendIdx;
-        // FK-navigable iff the parent wired `onNavigateFk` and this
-        // column carries a single-column FK reference. Drives the
-        // Ctrl/Cmd+click accelerator, the context-menu entry, and a
-        // subtle hover affordance.
-        const isFkCell =
-          !!onNavigateFk && !!columnInfoByName.get(meta.name)?.referenced_table;
+        // FK-navigable iff the parent wired `onNavigateFk` and lists this
+        // column as a foreign key — by its name in the result, which a query
+        // alias may make differ from the table's. Drives the Alt+click
+        // accelerator, the context-menu entry, and a subtle hover affordance.
+        const isFkCell = !!onNavigateFk && fkColumnSet.has(meta.name);
         const isActiveCell = activeColIdx === cIdx;
         // The inline control rendered here (CellInput, or BitInput's
         // <select>) already draws its own bordered box with the same
@@ -504,8 +505,7 @@ export const GridRow = memo(function GridRow({
                   if (
                     e.altKey &&
                     !e.shiftKey &&
-                    onNavigateFk &&
-                    columnInfoByName.get(meta.name)?.referenced_table &&
+                    isFkCell &&
                     value !== null &&
                     value !== undefined
                   ) {

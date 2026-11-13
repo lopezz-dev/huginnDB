@@ -27,9 +27,7 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/tauri";
-import { tableTabTitle } from "@/lib/connectionLabel";
-import { useTabs } from "@/stores/session/tabs";
-import { useConnections } from "@/stores/session/connections";
+import { isFkColumn, openReferencedRow } from "@/lib/grid/fkNavigation";
 import {
   insertAvailability,
   insertBlockReason,
@@ -367,31 +365,21 @@ export function useTableSource({
     [connectionId, schema, table, pkColumns],
   );
 
-  /**
-   * "Go to referenced row": open (or focus) the table the FK column points
-   * at, pre-filtered to the clicked value. The referenced table lives in the
-   * same connection/database. No-op for a column that is not a single-column
-   * FK.
-   */
+  /** The table's single-column FK columns — a table's result names are its
+   *  column names. Memoised: the grid keys its header and row memos on it. */
+  const fkColumns = useMemo(
+    () => (cols ?? []).filter(isFkColumn),
+    [cols],
+  );
+  const fkColumnNames = useMemo(() => fkColumns.map((c) => c.name), [fkColumns]);
+
+  /** "Go to referenced row" (`lib/grid/fkNavigation.ts`). */
   const navigateFk = useCallback(
     (columnName: string, value: CellValue) => {
-      const col = cols?.find((c) => c.name === columnName);
-      if (!col?.referenced_table || !col.referenced_column) return;
-      // Both reads are `getState()` snapshots, not subscriptions.
-      useTabs.getState().open({
-        kind: "table",
-        title: tableTabTitle(
-          useConnections.getState().profiles,
-          connectionId,
-          col.referenced_table,
-        ),
-        connectionId,
-        schema: col.referenced_schema ?? undefined,
-        table: col.referenced_table,
-        initialFilters: [{ column: col.referenced_column, op: "eq", value }],
-      });
+      const col = fkColumns.find((c) => c.name === columnName);
+      if (col) openReferencedRow(connectionId, col, value);
     },
-    [cols, connectionId],
+    [fkColumns, connectionId],
   );
 
   // Why the rows cannot be written at all, when they cannot.
@@ -479,7 +467,9 @@ export function useTableSource({
         [isMongo ? null : t("dataGrid.writeBlocked.documentsOnly")],
         () => ({ unsetField }),
       ),
-      fkNavigate: available({ navigateFk }),
+      fkNavigate: fkColumnNames.length
+        ? available({ columns: fkColumnNames, navigateFk })
+        : unsupported,
       bulkUpdate,
       export: policy.export ? blocked(policy.export) : AVAILABLE,
     };
@@ -511,5 +501,6 @@ export function useTableSource({
     applyPaste,
     unsetField,
     navigateFk,
+    fkColumnNames,
   ]);
 }

@@ -6,6 +6,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+
+- **Follow a foreign key from a query's results.** In a SQL Query tab, a
+  column of a single-table `SELECT` that is a foreign key now shows the key
+  icon in its header and offers *Go to referenced row* in the cell's menu
+  (or Alt+click), opening the referenced table filtered to that value —
+  exactly as in a table tab. It follows the column under an alias too
+  (`SELECT customer_id AS c …`), and works even when the query left the
+  primary key out, since following a reference changes nothing. Results over
+  several tables are not offered it.
+
 ### Fixed
 
 - **A view no longer offers to add rows.** Browsing a view showed a disabled

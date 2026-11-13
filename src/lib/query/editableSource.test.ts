@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ColumnInfo, ColumnMeta } from "@/types";
 import {
   mapResultColumns,
+  resolveResultColumns,
   parseSingleTableSelect,
   pkValuesOf,
 } from "./editableSource";
@@ -163,5 +164,27 @@ describe("mapResultColumns", () => {
     );
     expect(r!.writable.has("name")).toBe(false);
     expect(r!.writable.has("id")).toBe(true);
+  });
+});
+
+describe("resolveResultColumns", () => {
+  const parse = (sql: string) => parseSingleTableSelect(sql, "postgres")!;
+
+  it("lines the columns up even when the key did not come back", () => {
+    const r = resolveResultColumns(parse("SELECT name AS n, email FROM users"), USERS, meta("n", "email"));
+    expect(r!.editable).toBeNull();
+    expect(r!.columns.table).toBe("users");
+    expect(r!.columns.byName.get("n")!.name).toBe("name");
+    expect([...r!.columns.byName.keys()]).toEqual(["n", "email"]);
+  });
+
+  it("is writable too when the key came back", () => {
+    const r = resolveResultColumns(parse("SELECT * FROM users"), USERS, meta("id", "name", "email"));
+    expect(r!.editable!.pkColumns).toEqual(["id"]);
+    expect(r!.editable!.writable).toBe(r!.columns.byName);
+  });
+
+  it("is nothing when the result does not line up", () => {
+    expect(resolveResultColumns(parse("SELECT name FROM users"), USERS, meta("other"))).toBeNull();
   });
 });
