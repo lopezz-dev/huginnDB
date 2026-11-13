@@ -781,6 +781,12 @@ describe("TableDataTab — foreign keys", () => {
     const open = vi.fn();
     useTabs.setState({ open } as never);
     mount();
+    // Copy as SQL addresses the table by its own names.
+    expect(grid().sqlTarget).toMatchObject({
+      table: "order_lines",
+      pkColumns: ["order_id", "line"],
+    });
+    expect(grid().sqlTarget.columnOf("qty")).toBe("qty");
     // The header's key icon and the cell gesture read one list.
     expect(grid().fkColumnNames).toEqual(["product_id"]);
     grid().onNavigateFk("product_id", 7);

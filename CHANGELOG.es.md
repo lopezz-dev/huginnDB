@@ -10,6 +10,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Copiar como SQL desde los resultados de una consulta nombra la tabla
+  real.** En una pestaña SQL Query, *Copiar fila como ▸ SQL INSERT / SQL
+  UPDATE* (y lo mismo con varias filas seleccionadas) escribía `<table>` y
+  los nombres de columna tal como los mostraba la consulta, alias y columnas
+  calculadas incluidos. Para los resultados de un `SELECT` de una sola
+  tabla, el fragmento nombra ahora la tabla, escribe cada columna con alias
+  como la columna de la tabla a la que corresponde, deja fuera las columnas
+  calculadas y localiza el `UPDATE` por la clave primaria de la tabla. Si
+  los resultados no traen la clave completa, el `UPDATE` mantiene el
+  marcador `<pk> = <value>` en lugar de un `WHERE` sobre parte de ella, que
+  podría afectar a más filas que la copiada. Los resultados de varias tablas
+  mantienen los marcadores como antes.
+
 - **Pegar sobre los resultados de una consulta.** Un bloque copiado de una
   hoja de cálculo o de otro grid se puede pegar ahora sobre los resultados
   de un `SELECT` de una sola tabla en una pestaña SQL Query, igual que en

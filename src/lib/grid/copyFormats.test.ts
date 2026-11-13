@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { quoteIdent, selectSnippet, sqlLiteral, toBulk } from "./copyFormats";
+import {
+  quoteIdent,
+  selectSnippet,
+  sqlLiteral,
+  toBulk,
+  toSqlInsert,
+  toSqlUpdate,
+  type SqlTarget,
+} from "./copyFormats";
 
 describe("quoteIdent", () => {
   it("uses each driver's conventional delimiters", () => {
@@ -149,9 +157,69 @@ describe("toBulk", () => {
     const sql = toBulk(rows, "insert", {
       columns,
       driver: "postgres",
-      tableName: "notes",
+      target: { table: "notes", columnOf: (c) => c, pkColumns: ["id"] },
     });
     expect(sql.split("\n")).toHaveLength(2);
     expect(sql).toContain('INSERT INTO "notes"');
+  });
+});
+
+describe("Copy as SQL through a target", () => {
+  // A table: result names are its column names.
+  const items = [
+    { name: "shop_id", data_type: "int" },
+    { name: "id", data_type: "int" },
+    { name: "price", data_type: "numeric" },
+  ];
+  const table: SqlTarget = {
+    table: "items",
+    columnOf: (c) => c,
+    pkColumns: ["shop_id", "id"],
+  };
+  const row = [1, 7, "9.50"];
+
+  it("addresses a table by its full composite key", () => {
+    expect(toSqlUpdate(row, items, "postgres", table)).toBe(
+      'UPDATE "items" SET "price" = \'9.50\' WHERE "shop_id" = 1 AND "id" = 7;',
+    );
+    expect(toSqlInsert(row, items, "postgres", table)).toBe(
+      'INSERT INTO "items" ("shop_id", "id", "price") VALUES (1, 7, \'9.50\');',
+    );
+  });
+
+  // A query: `SELECT id, price AS p, price * 2 AS doubled, shop_id FROM items`.
+  const result = [
+    { name: "id", data_type: "int" },
+    { name: "p", data_type: "numeric" },
+    { name: "doubled", data_type: "numeric" },
+    { name: "shop_id", data_type: "int" },
+  ];
+  const as: Record<string, string | null> = { id: "id", p: "price", doubled: null, shop_id: "shop_id" };
+  const query: SqlTarget = { ...table, columnOf: (c) => as[c] ?? null };
+  const qrow = [7, "9.50", "19.00", 1];
+
+  it("names table columns for aliases and leaves expressions out", () => {
+    expect(toSqlUpdate(qrow, result, "mysql", query)).toBe(
+      "UPDATE `items` SET `price` = '9.50' WHERE `shop_id` = 1 AND `id` = 7;",
+    );
+    expect(toSqlInsert(qrow, result, "mysql", query)).toBe(
+      "INSERT INTO `items` (`id`, `price`, `shop_id`) VALUES (7, '9.50', 1);",
+    );
+  });
+
+  it("never writes a partial WHERE: without the whole key it leaves a placeholder", () => {
+    const partial = result.slice(0, 3); // shop_id left out
+    expect(toSqlUpdate(qrow.slice(0, 3), partial, "postgres", query)).toBe(
+      'UPDATE "items" SET "price" = \'9.50\' WHERE <pk> = <value>;',
+    );
+  });
+
+  it("without a target keeps the result's names and a table placeholder", () => {
+    expect(toSqlInsert([1, "a"], [{ name: "x", data_type: "int" }, { name: "y", data_type: "text" }], "postgres", undefined)).toBe(
+      'INSERT INTO <table> ("x", "y") VALUES (1, \'a\');',
+    );
+    expect(toSqlUpdate([1, "a"], [{ name: "x", data_type: "int" }, { name: "y", data_type: "text" }], "postgres", undefined, ["x"])).toBe(
+      'UPDATE <table> SET "y" = \'a\' WHERE "x" = 1;',
+    );
   });
 });

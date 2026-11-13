@@ -104,68 +104,91 @@ function jsonSafe(v: CellValue): unknown {
 }
 
 /**
- * A SQL `INSERT INTO … (cols) VALUES (lits);` snippet for the row.
+ * The table a "Copy as SQL" snippet addresses, and how the grid's columns map
+ * onto it. A grid shows **result** names — on a query, an alias (`price AS p`)
+ * or an expression (`price * 2`) — while a statement has to name **table**
+ * columns, so the snippet is built through this rather than from the names on
+ * screen. On a table's own grid `columnOf` is the identity.
  *
- * If `tableName` is missing we fall back to a placeholder `<table>` so
- * the snippet remains structurally valid for the user to fill in — this
- * matters for query-result rows where the source table isn't known.
+ * Absent (a result over several tables, a preview with no relation), a snippet
+ * keeps the result's names and a `<table>` placeholder for the user to fill.
+ */
+export interface SqlTarget {
+  table: string;
+  /** The table column a result column is, or `null` for an expression. */
+  columnOf: (resultColumn: string) => string | null;
+  /** The table's primary key, by table column name. */
+  pkColumns: string[];
+}
+
+/** The columns a snippet writes: each result position that is a table
+ *  column, with the name the statement must use. */
+function sqlColumns(
+  columns: ColumnMeta[],
+  target: SqlTarget | undefined,
+): { index: number; name: string }[] {
+  return columns.flatMap((c, index) => {
+    const name = target ? target.columnOf(c.name) : c.name;
+    return name === null ? [] : [{ index, name }];
+  });
+}
+
+/**
+ * A SQL `INSERT INTO … (cols) VALUES (lits);` snippet for the row: the table
+ * columns the result carries, by their table names; an expression is left
+ * out, since it is no column to insert into.
  */
 export function toSqlInsert(
   rowValues: CellValue[],
   columns: ColumnMeta[],
   driver: Driver | undefined,
-  tableName: string | undefined,
+  target: SqlTarget | undefined,
 ): string {
-  const tbl = qualifiedTable(driver, tableName);
-  const cols = columns.map((c) => quoteIdent(driver, c.name)).join(", ");
-  const vals = rowValues.map((v) => sqlLiteral(v, driver)).join(", ");
-  return `INSERT INTO ${tbl} (${cols}) VALUES (${vals});`;
+  const tbl = qualifiedTable(driver, target?.table);
+  const cols = sqlColumns(columns, target);
+  const names = cols.map((c) => quoteIdent(driver, c.name)).join(", ");
+  const vals = cols.map((c) => sqlLiteral(rowValues[c.index], driver)).join(", ");
+  return `INSERT INTO ${tbl} (${names}) VALUES (${vals});`;
 }
 
 /**
  * A SQL `UPDATE … SET … WHERE pk = lit;` snippet for the row.
  *
- * Every PK column is excluded from the `SET` clause (updating a row's
- * primary key from a copy-paste is almost never the user's intent) and
- * AND-joined in the `WHERE` clause so the snippet stays safe on
- * composite-PK tables — emitting only the first PK column there would
- * silently fan the UPDATE out across every row sharing that leading
- * value, exactly the corruption the cell-save path used to suffer. If
- * the row has no known PK columns the snippet falls back to
- * `WHERE <pk> = <value>` so the user fixes it before executing.
+ * Every key column is excluded from the `SET` clause (updating a row's key
+ * from a copy-paste is almost never the intent) and AND-joined in the `WHERE`
+ * clause so the snippet stays safe on composite keys. The `WHERE` needs the
+ * **whole** key: with part of it — a result that left a key column out — the
+ * statement would fan out across every row sharing the part it has, which is
+ * the corruption the cell-save path once suffered. Without the whole key the
+ * snippet falls back to `WHERE <pk> = <value>` for the user to fix before
+ * running it.
  */
 export function toSqlUpdate(
   rowValues: CellValue[],
   columns: ColumnMeta[],
   driver: Driver | undefined,
-  tableName: string | undefined,
-  pkColumnNames: string[] | undefined,
+  target: SqlTarget | undefined,
+  /** The key by the names on screen, for a grid with no target (a table's
+   *  own names are its result names). */
+  pkColumnNames?: string[],
 ): string {
-  const tbl = qualifiedTable(driver, tableName);
-  const pkSet = new Set(pkColumnNames ?? []);
-  const pkIndices = (pkColumnNames ?? [])
-    .map((name) => columns.findIndex((c) => c.name === name))
-    .filter((i) => i >= 0);
+  const tbl = qualifiedTable(driver, target?.table);
+  const cols = sqlColumns(columns, target);
+  const pk = target?.pkColumns ?? pkColumnNames ?? [];
+  const pkSet = new Set(pk);
+  const literal = (c: { index: number; name: string }) =>
+    `${quoteIdent(driver, c.name)} = ${sqlLiteral(rowValues[c.index], driver)}`;
 
-  const setPairs = columns
-    .map((c, i) => {
-      if (pkSet.has(c.name)) return null;
-      return `${quoteIdent(driver, c.name)} = ${sqlLiteral(rowValues[i], driver)}`;
-    })
-    .filter((s): s is string => s !== null)
+  const setPairs = cols
+    .filter((c) => !pkSet.has(c.name))
+    .map(literal)
     .join(", ");
 
-  let whereClause: string;
-  if (pkIndices.length > 0) {
-    whereClause = pkIndices
-      .map(
-        (i) =>
-          `${quoteIdent(driver, columns[i].name)} = ${sqlLiteral(rowValues[i], driver)}`,
-      )
-      .join(" AND ");
-  } else {
-    whereClause = "<pk> = <value>";
-  }
+  const keyCols = pk.map((k) => cols.find((c) => c.name === k));
+  const whereClause =
+    pk.length > 0 && keyCols.every((c) => c !== undefined)
+      ? keyCols.map((c) => literal(c!)).join(" AND ")
+      : "<pk> = <value>";
   return `UPDATE ${tbl} SET ${setPairs} WHERE ${whereClause};`;
 }
 
@@ -255,11 +278,11 @@ export function toBulk(
   ctx: {
     columns: ColumnMeta[];
     driver: Driver | undefined;
-    tableName?: string;
+    target?: SqlTarget;
     pkColumnNames?: string[];
   },
 ): string {
-  const { columns, driver, tableName, pkColumnNames } = ctx;
+  const { columns, driver, target, pkColumnNames } = ctx;
   if (fmt === "json") {
     const arr = rows.map((r) => {
       const obj: Record<string, unknown> = {};
@@ -271,9 +294,9 @@ export function toBulk(
     return JSON.stringify(arr, null, 2);
   }
   if (fmt === "insert") {
-    return rows.map((r) => toSqlInsert(r, columns, driver, tableName)).join("\n");
+    return rows.map((r) => toSqlInsert(r, columns, driver, target)).join("\n");
   }
   return rows
-    .map((r) => toSqlUpdate(r, columns, driver, tableName, pkColumnNames))
+    .map((r) => toSqlUpdate(r, columns, driver, target, pkColumnNames))
     .join("\n");
 }

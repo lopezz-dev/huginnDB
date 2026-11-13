@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Copy as SQL from a query's results names the real table.** In a SQL
+  Query tab, *Copy row as ▸ SQL INSERT / SQL UPDATE* (and the same for
+  several selected rows) used to write `<table>` and the column names as the
+  query showed them, aliases and computed columns included. For the results
+  of a single-table `SELECT` the snippet now names the table, writes each
+  aliased column as the table column it stands for, leaves computed columns
+  out, and keys the `UPDATE` by the table's primary key. When the results do
+  not carry the whole key, the `UPDATE` keeps a `<pk> = <value>` placeholder
+  rather than a `WHERE` on part of it, which could match more rows than the
+  one you copied. Results over several tables keep the placeholders as
+  before.
+
 - **Paste into a query's results.** A block copied from a spreadsheet or
   another grid can now be pasted onto the results of a single-table `SELECT`
   in a SQL Query tab, the same way as in a table tab: it lands on the
