@@ -29,6 +29,7 @@
 import type { CellValue, DraftRow, RowValue } from "@/types";
 import type { PastePlan } from "@/lib/grid/pastePlan";
 import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
+import type { SqlTarget } from "@/lib/grid/copyFormats";
 
 /**
  * A gesture's state.
@@ -161,6 +162,13 @@ export interface GridSource {
   pkResultNames: string[] | undefined;
   /** Rows are documents (MongoDB): the paste dialog words itself that way. */
   documentMode: boolean;
+  /**
+   * The table "Copy as SQL" addresses, and which table column each result
+   * column is. Not a capability — copying is always offered — but a fact only
+   * the source knows; `undefined` when the rows map onto no single table, and
+   * the snippet keeps a `<table>` placeholder.
+   */
+  sqlTarget: SqlTarget | undefined;
 
   /** The row's full key tuple, in the relation's key order. Throws when
    *  the row cannot be addressed. */

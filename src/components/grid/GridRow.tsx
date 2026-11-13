@@ -51,6 +51,7 @@ import {
   toJson as rowToJson,
   toSqlInsert as rowToSqlInsert,
   toSqlUpdate as rowToSqlUpdate,
+  type SqlTarget,
   sqlLiteral,
 } from "@/lib/grid/copyFormats";
 import { formatValue } from "@/lib/grid/formatValue";
@@ -171,6 +172,8 @@ interface GridRowProps {
   fkColumnSet: ReadonlySet<string>;
   driver?: Driver;
   tableName?: string;
+  /** What "Copy as SQL" addresses (see `DataGrid`'s prop). */
+  sqlTarget?: SqlTarget;
   pkColumnNames?: string[];
   editable?: boolean;
   /** Why the policy locks a column (ADR #113); stable identity expected. */
@@ -252,6 +255,7 @@ export const GridRow = memo(function GridRow({
   fkColumnSet,
   driver,
   tableName,
+  sqlTarget,
   pkColumnNames,
   editable,
   columnLock,
@@ -742,7 +746,7 @@ export const GridRow = memo(function GridRow({
                             onSelect={() =>
                               callbacksRef.current.withFullRow(rowValues, (r) =>
                                 callbacksRef.current.copyToClipboard(
-                                  rowToSqlInsert(r, resultColumns, driver, tableName),
+                                  rowToSqlInsert(r, resultColumns, driver, sqlTarget),
                                 ),
                               )
                             }
@@ -757,7 +761,7 @@ export const GridRow = memo(function GridRow({
                                     r,
                                     resultColumns,
                                     driver,
-                                    tableName,
+                                    sqlTarget,
                                     pkColumnNames,
                                   ),
                                 ),

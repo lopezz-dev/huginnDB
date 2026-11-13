@@ -160,6 +160,24 @@ export function useQuerySource({
     return m;
   }, [columns]);
   const fkColumnNames = useMemo(() => [...fkByName.keys()], [fkByName]);
+
+  /**
+   * "Copy as SQL" addresses the table the result reads, by its column names:
+   * an alias becomes its column, an expression is left out. Needs only the
+   * alignment, not the key — an `UPDATE` without the whole key in the result
+   * falls back to a `<pk>` placeholder rather than a partial `WHERE`.
+   */
+  const sqlTarget = useMemo(
+    () =>
+      columns
+        ? {
+            table: columns.table,
+            columnOf: (name: string) => columns.byName.get(name)?.name ?? null,
+            pkColumns: columns.pkColumns,
+          }
+        : undefined,
+    [columns],
+  );
   const navigateFk = useCallback(
     (column: string, value: CellValue) => {
       const fk = fkByName.get(column);
@@ -295,6 +313,7 @@ export function useQuerySource({
     const shared = {
       pkResultNames: relation?.pkResultNames,
       documentMode: false,
+      sqlTarget,
       keyOf,
       hydrate: asIs,
       refreshPage: onRefresh,
@@ -362,5 +381,6 @@ export function useQuerySource({
     qualified,
     planResultPaste,
     applyPaste,
+    sqlTarget,
   ]);
 }

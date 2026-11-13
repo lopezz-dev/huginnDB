@@ -146,6 +146,8 @@ function copyDraft(
   return { cells, error: null, saving: false };
 }
 
+const sameColumn = (name: string) => name;
+
 /** The first reason that applies, as a capability; available when none does. */
 function gate<Ops>(
   reasons: (string | null)[],
@@ -384,6 +386,13 @@ export function useTableSource({
     [fkColumns, connectionId],
   );
 
+  /** "Copy as SQL": a table's result names are its column names. Memoised:
+   *  every visible row's memo keys on it. */
+  const sqlTarget = useMemo(
+    () => ({ table, columnOf: sameColumn, pkColumns: pkColumnNames }),
+    [table, pkColumnNames],
+  );
+
   // Why the rows cannot be written at all, when they cannot.
   const keyMissing = hasPk
     ? null
@@ -425,6 +434,7 @@ export function useTableSource({
       addressable: hasPk,
       pkResultNames: pkColumnNames,
       documentMode: isMongo,
+      sqlTarget,
       keyOf,
       getRowKey,
       hydrate: trimmedRows.hydrate,
@@ -504,5 +514,6 @@ export function useTableSource({
     unsetField,
     navigateFk,
     fkColumnNames,
+    sqlTarget,
   ]);
 }

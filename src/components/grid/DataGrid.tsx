@@ -91,7 +91,7 @@ import { GRID_BLANK_ATTR, GridBlankMenu } from "@/components/grid/GridBlankMenu"
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/clipboard";
 import { notify } from "@/lib/notify";
-import { toBulk } from "@/lib/grid/copyFormats";
+import { toBulk, type SqlTarget } from "@/lib/grid/copyFormats";
 import { cellDisplayText, formatValue } from "@/lib/grid/formatValue";
 import {
   GRID_GUTTER_WIDTH,
@@ -156,6 +156,12 @@ interface Props {
   connectionId?: string;
   tableSchema?: string;
   tableName?: string;
+  /**
+   * The table "Copy as SQL" addresses and how the result's columns map onto
+   * it — from the grid's source (`GridSource.sqlTarget`). Absent, a snippet
+   * keeps the result's names and a `<table>` placeholder.
+   */
+  sqlTarget?: SqlTarget;
   /** Id of the tab hosting this grid. Threaded to the docked side editor so it
    *  can close itself when this tab is closed (it lives outside the subtree). */
   tabId?: string;
@@ -457,6 +463,7 @@ export function DataGrid({
   connectionId,
   tableSchema,
   tableName,
+  sqlTarget,
   tabId,
   driver,
   pkColumnNames,
@@ -1339,7 +1346,7 @@ export function DataGrid({
     return toBulk(rows, fmt, {
       columns: result.columns,
       driver,
-      tableName,
+      target: sqlTarget,
       pkColumnNames,
     });
   }
@@ -1738,6 +1745,7 @@ export function DataGrid({
                                 fkColumnSet={fkNameSet}
                                 driver={driver}
                                 tableName={tableName}
+                                sqlTarget={sqlTarget}
                                 pkColumnNames={pkColumnNames}
                                 editable={editable}
                                 columnLock={columnLock}

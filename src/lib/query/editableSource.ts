@@ -577,6 +577,9 @@ export interface ResultColumns {
    * share with different meanings).
    */
   byName: Map<string, ColumnInfo>;
+  /** The table's primary key by catalog name, whether or not the result
+   *  carries it — a snippet must keep it out of an `UPDATE`'s `SET`. */
+  pkColumns: string[];
 }
 
 /** An alignment, with the table column (or `null`, an expression) at each
@@ -625,7 +628,13 @@ function align(
   const byName = new Map<string, ColumnInfo>();
   for (const [name, src] of seen) if (src) byName.set(name, src);
 
-  return { schema: select.schema, table: select.table, byName, sources };
+  return {
+    schema: select.schema,
+    table: select.table,
+    byName,
+    pkColumns: tableColumns.filter((c) => c.is_primary_key).map((c) => c.name),
+    sources,
+  };
 }
 
 /** The writable view of an alignment: `null` without the whole key. */

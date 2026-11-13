@@ -425,3 +425,24 @@ describe("QueryResultGrid — paste (ADR #114)", () => {
     expect(plan.updates).toEqual([]);
   });
 });
+
+describe("QueryResultGrid — Copy as SQL", () => {
+  it("addresses the table the statement reads, through its aliases", async () => {
+    await mount();
+    const target = grid().sqlTarget;
+    expect(target.table).toBe("items");
+    expect(target.pkColumns).toEqual(["shop_id", "id"]);
+    expect(target.columnOf("p")).toBe("price");
+    expect(target.columnOf("doubled")).toBeNull();
+  });
+
+  it("has one even without the key — the snippet then leaves a placeholder", async () => {
+    await mount("SELECT id, price FROM shop.items", result(["id", "price"], [[7, "9.50"]]));
+    expect(grid().sqlTarget.table).toBe("items");
+  });
+
+  it("has none over several tables", async () => {
+    await mount("SELECT i.id FROM shop.items i JOIN shop.shops s ON s.id = i.shop_id");
+    expect(grid().sqlTarget).toBeUndefined();
+  });
+});
