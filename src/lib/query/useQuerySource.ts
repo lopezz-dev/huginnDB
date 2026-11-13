@@ -179,6 +179,23 @@ export function useQuerySource({
         : undefined,
     [columns],
   );
+  /** Where an FK cell's new value must exist — an alias edits as the column it
+   *  stands for. The referenced schema defaults to the relation's. */
+  const fkRefOf = useCallback(
+    (column: string) => {
+      const fk = fkByName.get(column);
+      return fk
+        ? {
+            connectionId,
+            schema: fk.referenced_schema ?? columns?.schema,
+            table: fk.referenced_table,
+            column: fk.referenced_column,
+            nullable: fk.nullable,
+          }
+        : undefined;
+    },
+    [fkByName, connectionId, columns],
+  );
   const navigateFk = useCallback(
     (column: string, value: CellValue) => {
       const fk = fkByName.get(column);
@@ -356,7 +373,7 @@ export function useQuerySource({
       }),
       update: policy.update
         ? blocked(policy.update)
-        : available({ saveField, columnLock }),
+        : available({ saveField, columnLock, fkRefOf }),
       delete: policy.delete
         ? blocked(policy.delete)
         : available({
@@ -387,5 +404,6 @@ export function useQuerySource({
     planResultPaste,
     applyPaste,
     sqlTarget,
+    fkRefOf,
   ]);
 }

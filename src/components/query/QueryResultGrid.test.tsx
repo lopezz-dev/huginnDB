@@ -363,6 +363,33 @@ describe("QueryResultGrid — foreign keys", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it("edits an aliased FK by picking from the referenced table's values", async () => {
+    h.api.listColumns.mockResolvedValue(ORDERS);
+    await mount(
+      "SELECT id, customer_id AS c FROM shop.orders",
+      result(["id", "c"], [[1, 5]]),
+    );
+    expect(grid().fkRefOf("c")).toEqual({
+      connectionId: "c1",
+      schema: "shop",
+      table: "customers",
+      column: "id",
+      nullable: true,
+    });
+    expect(grid().fkRefOf("id")).toBeUndefined();
+  });
+
+  it("offers no picking when the cells cannot be changed", async () => {
+    h.api.listColumns.mockResolvedValue(ORDERS);
+    // No key in the result: read-only, though the FK still navigates.
+    await mount(
+      "SELECT customer_id AS c FROM shop.orders",
+      result(["c"], [[5]]),
+    );
+    expect(grid().fkRefOf).toBeUndefined();
+    expect(grid().onNavigateFk).toBeTypeOf("function");
+  });
+
   it("offers no FK navigation where no column is a foreign key", async () => {
     await mount();
     expect(grid().onNavigateFk).toBeUndefined();

@@ -49,8 +49,7 @@ function baseOptions(
     },
     sort: undefined,
     onSortChange: undefined,
-    connectionId: "conn-1",
-    tableSchema: "public",
+    fkRefOf: undefined,
     onCellSave: async () => {},
     ...overrides,
   };

@@ -26,7 +26,7 @@ function setup() {
       tableName: "pedidos",
       tabId: "t1",
       cellEditorMode: "modal",
-      columnInfoByName: new Map(),
+      fkRefOf: undefined,
       columnIndexByName: new Map([
         ["estado", 0],
         ["importe", 1],
@@ -52,6 +52,55 @@ describe("useCellEditing with a column lock", () => {
     expect(result.current.inlineEdit).toBeNull();
     expect(result.current.editorOpen).toBe(true);
     expect(result.current.editorTarget?.value).toBe("12.50");
+  });
+});
+
+/**
+ * An FK cell opens the combobox of referenced values when — and only when —
+ * the source says where its value must exist (`UpdateOps.fkRefOf`): the grid
+ * no longer infers it from catalog columns and a connection id.
+ */
+describe("useCellEditing on a foreign-key cell", () => {
+  const ref = { connectionId: "erp", schema: "dbo", table: "clientes", column: "id", nullable: false };
+  const withFk = (fkRefOf?: (c: string) => typeof ref | undefined) =>
+    renderHook(() =>
+      useCellEditing({
+        editable: true,
+        connectionId: undefined,
+        tableSchema: undefined,
+        tableName: undefined,
+        tabId: "t1",
+        cellEditorMode: "modal",
+        fkRefOf,
+        columnIndexByName: new Map([
+          ["estado", 0],
+          ["importe", 1],
+        ]),
+        columnLock: (c) => (c === "importe" ? "locked" : null),
+        onCellSave: async () => {},
+        onFieldSave: undefined,
+      }),
+    );
+
+  it("picks from the referenced values when the source names them", () => {
+    const { result } = withFk((c) => (c === "estado" ? ref : undefined));
+    act(() => result.current.openCellEdit(row, estado));
+    expect(result.current.fkEditCell?.column.name).toBe("estado");
+    expect(result.current.inlineEdit).toBeNull();
+  });
+
+  it("edits as text when the source names none", () => {
+    const { result } = withFk(undefined);
+    act(() => result.current.openCellEdit(row, estado));
+    expect(result.current.fkEditCell).toBeNull();
+    expect(result.current.inlineEdit?.column.name).toBe("estado");
+  });
+
+  it("never picks on a column the policy locks", () => {
+    const { result } = withFk(() => ref);
+    act(() => result.current.openCellEdit(row, importe));
+    expect(result.current.fkEditCell).toBeNull();
+    expect(result.current.editorOpen).toBe(true);
   });
 });
 
@@ -82,7 +131,7 @@ describe("useCellEditing on a row with a cut cell", () => {
         tableName: "aiAgentLog",
         tabId: "t1",
         cellEditorMode: mode,
-        columnInfoByName: new Map(),
+        fkRefOf: undefined,
         columnIndexByName: new Map([
           ["_id", 0],
           ["log", 1],
@@ -132,7 +181,7 @@ describe("useCellEditing on a row with a cut cell", () => {
         tableName: "aiAgentLog",
         tabId: "t1",
         cellEditorMode: "modal",
-        columnInfoByName: new Map(),
+        fkRefOf: undefined,
         columnIndexByName: new Map([
           ["_id", 0],
           ["log", 1],
@@ -171,7 +220,7 @@ describe("useCellEditing on a row with a cut cell", () => {
         tableName: "documentEntityFile",
         tabId: "t1",
         cellEditorMode: "modal",
-        columnInfoByName: new Map(),
+        fkRefOf: undefined,
         columnIndexByName: new Map([
           ["_id", 0],
           ["log", 1],

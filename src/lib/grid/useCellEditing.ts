@@ -8,7 +8,8 @@ import {
 } from "@/stores/grid/cellEditor";
 import { useSessionPanelLayout } from "@/stores/session/panelLayout";
 import type { FieldSave } from "@/components/grid/DocumentListView";
-import type { CellValue, ColumnInfo, ColumnMeta } from "@/types";
+import type { FkRef } from "@/lib/grid/gridSource";
+import type { CellValue, ColumnMeta } from "@/types";
 
 /** A field addressed inside a document, for the MongoDB list view. */
 export interface FieldRef {
@@ -65,8 +66,9 @@ export interface CellEditingOptions {
   tabId: string | undefined;
   /** Modal or docked side panel, from the user's preference. */
   cellEditorMode: "modal" | "side";
-  /** Catalog metadata by column name — what makes a cell an FK. */
-  columnInfoByName: ReadonlyMap<string, ColumnInfo>;
+  /** Where an FK cell's value must exist (the source's `UpdateOps.fkRefOf`):
+   *  opening such a cell picks from those values rather than typing. */
+  fkRefOf: ((column: string) => FkRef | undefined) | undefined;
   /** Backend index by column name; display order can differ. */
   columnIndexByName: ReadonlyMap<string, number>;
   /**
@@ -121,7 +123,7 @@ export function useCellEditing(opts: CellEditingOptions) {
     tableName,
     tabId,
     cellEditorMode,
-    columnInfoByName,
+    fkRefOf,
     columnIndexByName,
     columnLock,
     onCellSave,
@@ -312,10 +314,9 @@ export function useCellEditing(opts: CellEditingOptions) {
   }
 
   function openCellEditNow(rowValues: CellValue[], column: ColumnMeta) {
-    const info = columnInfoByName.get(column.name);
     // A column the policy locks opens as a viewer, like a read-only grid.
     const writable = !!(editable && onCellSave && !columnLock?.(column.name));
-    if (writable && connectionId && info?.referenced_table) {
+    if (writable && fkRefOf?.(column.name)) {
       setFkEditCell({ rowValues, column });
       return;
     }

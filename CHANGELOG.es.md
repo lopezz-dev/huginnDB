@@ -10,6 +10,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Elegir el valor de una clave ajena al editar los resultados de una
+  consulta.** Editar una celda de clave ajena en los resultados de un
+  `SELECT` de una sola tabla abre ahora la misma lista con búsqueda de los
+  valores de la tabla referenciada que en una pestaña de tabla, en lugar de
+  un cuadro de texto, también cuando la columna lleva alias (`SELECT
+  customer_id AS c …`). Solo se ofrece donde la celda se puede cambiar: con
+  la clave primaria en los resultados y la política permitiendo la
+  actualización.
+
 - **Exportar los resultados de una consulta.** El grid de resultados de una
   pestaña SQL Query tiene un menú *Exportar datos*: CSV, JSON y, cuando los
   resultados vienen de una sola tabla, SQL INSERT. Escribe todas las filas

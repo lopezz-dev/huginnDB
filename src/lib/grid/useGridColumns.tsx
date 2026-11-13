@@ -23,6 +23,7 @@ import { defaultColumnWidth } from "@/lib/grid/columnKinds";
 import { describeTrimmed, type TrimmedRows } from "@/lib/grid/trimmedCells";
 import { formatComboForDisplay } from "@/lib/keybindings";
 import type { FkEdit, InlineEdit } from "@/lib/grid/useCellEditing";
+import type { FkRef } from "@/lib/grid/gridSource";
 import type {
   CellValue,
   ColumnInfo,
@@ -103,8 +104,9 @@ export interface GridColumnsOptions {
   editing: ColumnEditing;
   sort: SortSpec[] | undefined;
   onSortChange: ((column: string, additive: boolean) => void) | undefined;
-  connectionId: string | undefined;
-  tableSchema: string | undefined;
+  /** Where an FK cell's value must exist (the source's `UpdateOps.fkRefOf`):
+   *  the cell being edited then shows a combobox of those values. */
+  fkRefOf: ((column: string) => FkRef | undefined) | undefined;
   onCellSave:
     | ((rowValues: CellValue[], column: string, value: string | null) => Promise<void>)
     | undefined;
@@ -142,8 +144,7 @@ export function useGridColumns(
   opts: GridColumnsOptions,
 ): ColumnDef<CellValue[]>[] {
   const { t } = useTranslation();
-  const { resultColumns, display, meta, editing, connectionId, tableSchema } =
-    opts;
+  const { resultColumns, display, meta, editing, fkRefOf } = opts;
   const { sort, onSortChange, onCellSave } = opts;
   const {
     numericColNames,
@@ -313,20 +314,19 @@ export function useGridColumns(
           const editingFk =
             fkEditCell?.rowValues === rowValues &&
             fkEditCell.column.name === col.name;
-          if (editingFk && connectionId && colInfo?.referenced_table) {
+          const fkRef = editingFk ? fkRefOf?.(col.name) : undefined;
+          if (fkRef) {
             // Inline overlay: replace the read-only cell content with a
             // combobox of valid referenced values. The popover panel
             // hangs below this anchor so the user keeps the row in view.
             return (
               <FkCombobox
-                connectionId={connectionId}
-                refSchema={
-                  colInfo.referenced_schema ?? tableSchema ?? undefined
-                }
-                refTable={colInfo.referenced_table}
-                refColumn={colInfo.referenced_column ?? "id"}
+                connectionId={fkRef.connectionId}
+                refSchema={fkRef.schema}
+                refTable={fkRef.table}
+                refColumn={fkRef.column}
                 value={v === null ? null : formatValue(v)}
-                nullable={colInfo.nullable}
+                nullable={fkRef.nullable}
                 onChange={(picked) => {
                   setFkEditCell(null);
                   // Skip the round-trip if the user picks the same value
@@ -502,8 +502,7 @@ export function useGridColumns(
       expandCellCombo,
       columnInfoByName,
       columnIndexByName,
-      connectionId,
-      tableSchema,
+      fkRefOf,
       onCellSave,
       boundSchemaNames,
       t,
