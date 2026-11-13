@@ -33,7 +33,7 @@ function input(over: Partial<PastePlanInput> = {}): PastePlanInput {
     ]),
     bitColumns: new Set(),
     canUpdate: true,
-    canInsert: true,
+    newRows: "allowed",
     ...over,
   };
 }
@@ -113,9 +113,14 @@ describe("planPaste", () => {
 
   it("adds no rows where the role may not insert, and limits them to the policy's columns", () => {
     const block = [["", "Ruiz", "x", "y"], ["", "Nava", "a", "b"], ["", "Lema", "c", "d"]];
-    const denied = planPaste(input({ block, canInsert: false }));
+    const denied = planPaste(input({ block, newRows: "policy" }));
     expect(denied.inserts).toEqual([]);
     expect(denied.skipped).toContainEqual({ column: "cliente", reason: "noInsert", count: 1 });
+
+    // A view is not a policy matter, and the dialog must not say it is.
+    const view = planPaste(input({ block, newRows: "view" }));
+    expect(view.inserts).toEqual([]);
+    expect(view.skipped).toContainEqual({ column: "cliente", reason: "view", count: 1 });
 
     const limited = planPaste(input({ block, insertLock: (c) => (c === "obs" ? "locked" : null) }));
     expect(limited.inserts[0].map((v) => v.column)).toEqual(["cliente", "estado"]);

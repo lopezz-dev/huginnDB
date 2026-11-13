@@ -12,7 +12,8 @@
  * resolved (`lib/policy/useRelationPolicy.ts`); no producer reads it itself.
  *
  * Each gesture is a {@link Capability}: **available, with the operations that
- * perform it**, blocked with the sentence that says why, or pending. The
+ * perform it**, blocked with the sentence that says why, pending, or
+ * unsupported. The
  * operations live inside the available branch, so a source cannot claim a
  * gesture it has no way to perform, and a source that never offers one (a
  * query result never inserts) states why instead of stubbing it.
@@ -30,13 +31,22 @@ import type { PastePlan } from "@/lib/grid/pastePlan";
 import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
 
 /**
- * A gesture's state. `pending` is "not decidable yet" — the table's Insert
- * while its columns load, which must neither be offered nor flash a reason the
- * columns are about to contradict.
+ * A gesture's state.
+ *
+ * - `blocked` — this person cannot do it here *now* (a policy lock, a key the
+ *   projection hid): shown disabled with the reason, because the reason is
+ *   something they can act on or need to know (ADR #96, #267).
+ * - `unsupported` — the relation can never do it, for anyone (a view takes no
+ *   rows from the grid): not offered at all, since a disabled control would
+ *   only advertise something that does not exist (ADR #136).
+ * - `pending` — not decidable yet (the table's Insert while its columns
+ *   load): neither offered nor explained, so no reason flashes that the
+ *   columns are about to contradict.
  */
 export type Capability<Ops> =
   | { state: "available"; ops: Ops }
   | { state: "blocked"; reason: string }
+  | { state: "unsupported" }
   | { state: "pending" };
 
 /** A gesture the controller does not perform itself (the caller's chrome
@@ -52,6 +62,7 @@ export const blocked = (reason: string): { state: "blocked"; reason: string } =>
   reason,
 });
 export const pending: { state: "pending" } = { state: "pending" };
+export const unsupported: { state: "unsupported" } = { state: "unsupported" };
 /** The availability of a gesture with no operations of its own. */
 export const AVAILABLE: Availability = { state: "available", ops: {} };
 
@@ -60,7 +71,8 @@ export function opsOf<Ops>(c: Capability<Ops>): Ops | undefined {
   return c.state === "available" ? c.ops : undefined;
 }
 
-/** Why a capability is unavailable — `null` when it is available or pending. */
+/** Why a capability is unavailable — `null` when it is available, pending or
+ *  unsupported (the last two are not explained, they are not offered). */
 export function reasonOf(c: Capability<unknown>): string | null {
   return c.state === "blocked" ? c.reason : null;
 }

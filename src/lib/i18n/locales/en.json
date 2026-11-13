@@ -687,7 +687,6 @@
       "documentsOnly": "Removing a field from one row only exists for documents"
     },
     "insertBlocked": {
-      "view": "A view can't take new rows here — insert into the table it reads from",
       "noPk": "This table has no primary key, so a new row couldn't be edited or deleted from the grid",
       "pkHidden": "The primary key is hidden by the current projection — show it to insert rows"
     },
@@ -792,7 +791,8 @@
         "policy": "your organization's policy doesn't let you write this column",
         "generated": "set by the database on a new row",
         "noUpdate": "your organization's policy doesn't allow editing rows here",
-        "noInsert": "your organization's policy doesn't allow adding rows here"
+        "noInsert": "your organization's policy doesn't allow adding rows here",
+        "view": "a view doesn't take new rows — add them to the table it reads from"
       },
       "unchanged_one": "{{count}} cell already holds that value",
       "unchanged_other": "{{count}} cells already hold those values",

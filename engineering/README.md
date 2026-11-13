@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-135 entries: 108 ADRs, 18 gotchas, 9 conventions.
+136 entries: 109 ADRs, 18 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -175,4 +175,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 133 | ADR | [a MongoDB browse leaves oversized fields on the server until their row is used](adr/adr-133-a-mongodb-browse-leaves-oversized-fields-on-the-server.md) | accepted | 2026-11-03 |
 | 134 | ADR | [An AI's read is stopped on the server when it runs out of time or its caller goes away](adr/adr-134-an-ai-read-is-stopped-on-the-server-when-it-runs-out-or-its-caller-leaves.md) | accepted | 2026-11-05 |
 | 135 | ADR | [a grid is driven by a source that states what it can write, and one controller acts on it](adr/adr-135-a-grid-is-driven-by-a-source-that-states-what-it-can-write.md) | accepted | 2026-11-12 |
+| 136 | ADR | [a gesture the relation can never perform is not offered; one this person cannot perform now is shown disabled with why](adr/adr-136-a-gesture-the-relation-can-never-perform-is-not-offered.md) | accepted | 2026-11-13 |
 <!-- index:end -->

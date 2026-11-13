@@ -638,13 +638,41 @@ describe("TableDataTab — when the rows are not writable", () => {
     expect(grid().getRowKey([2, 3, 100, 1, 8])).toBe("[100,2]");
   });
 
-  it("a view takes no inserts but keeps its other writes", () => {
+  // ADR #136: a view never takes rows from the grid, so neither Insert nor
+  // Duplicate is offered — not disabled with a reason, absent. (Until 1.40
+  // Insert was disabled with "A view can't take new rows here", and Duplicate
+  // was offered and failed on the server.)
+  it("a view offers neither insert nor duplicate, and keeps its other writes", () => {
     seedSchema("order_lines", LINE_COLS, { view: true });
     mount();
     expect(grid().onInsertRow).toBeUndefined();
-    expect(grid().insertBlocked).toBe("dataGrid.insertBlocked.view");
+    expect(grid().insertBlocked).toBeNull();
+    expect(grid().onDuplicateRow).toBeUndefined();
     expect(grid().editable).toBe(true);
     expect(grid().onDeleteRow).toBeTypeOf("function");
+    expect(grid().onPasteBlock).toBeTypeOf("function");
+  });
+
+  it("a paste into a view leaves its overflow rows out, saying it is a view", async () => {
+    seedSchema("order_lines", LINE_COLS, { view: true });
+    mount();
+    await act(() =>
+      grid().onPasteBlock({
+        text: "42\n43",
+        rows: [[1, 5, 100, 0, 7]],
+        columns: [{ name: "qty", data_type: "INT" }],
+      }),
+    );
+    const plan = h.props.pasteDialog!.plan as {
+      updates: unknown[];
+      inserts: unknown[];
+      skipped: { column: string; reason: string }[];
+    };
+    expect(plan.updates).toHaveLength(1);
+    expect(plan.inserts).toEqual([]);
+    expect(plan.skipped).toContainEqual(
+      expect.objectContaining({ column: "qty", reason: "view" }),
+    );
   });
 
   it("no insert is offered or blocked until the columns have loaded", () => {
