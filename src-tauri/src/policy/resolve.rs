@@ -27,6 +27,12 @@ pub enum Need {
     FreeSql(Verbs),
     /// Pulse, sessions, users and privileges.
     Monitor,
+    /// Writing the rows a free-form query returned out of the app, to a file.
+    /// The query may have read any relation, so — as for [`Need::FreeSql`] —
+    /// a scoped rule refuses it (D3), and an unscoped rule must grant both
+    /// `select` and `export`: which is `export` on every relation the query
+    /// could have read, without having to tell from its text which they were.
+    FreeExport,
     /// Writing a relation's rows out of the app, to a file. Needs `export`
     /// *and* `select` on it: exporting is reading, plus letting it leave.
     Export {
@@ -341,6 +347,30 @@ impl<'a> Ctx<'a> {
                     Err(self.refuse(format!(
                         "this statement needs {}, which {actor} may not do on {connection}",
                         verbs_phrase(*verbs)
+                    )))
+                } else {
+                    Err(self.refuse(format!("{actor} may not use {connection}")))
+                }
+            }
+            Need::FreeExport => {
+                let unscoped_export = |r: &Rule| {
+                    let g = self.grant(r);
+                    !r.is_scoped() && g.export && g.verbs.contains(Verbs::SELECT)
+                };
+                if rules.iter().any(|r| unscoped_export(r)) {
+                    Ok(())
+                } else if rules
+                    .iter()
+                    .any(|r| r.is_scoped() && !self.grant(r).is_empty())
+                {
+                    Err(self.refuse(format!(
+                        "exporting a query's results is disabled on {connection}, because the \
+                         policy limits which databases or relations {actor} may see and a \
+                         query's text cannot be checked against that"
+                    )))
+                } else if reachable(&rules) {
+                    Err(self.refuse(format!(
+                        "{actor} may not export query results from {connection}"
                     )))
                 } else {
                     Err(self.refuse(format!("{actor} may not use {connection}")))
@@ -894,6 +924,34 @@ mod tests {
         let me = person(&doc, "anyone", &erp, None);
         assert!(me.decide(&cols("t", Verbs::UPDATE, &["b"])).is_ok());
         assert_eq!(me.relation_columns(None, "t"), None);
+    }
+
+    #[test]
+    fn exporting_query_results_needs_export_on_an_unscoped_rule() {
+        let erp = erp();
+        let with = doc(r#"{"version":1,"defaultRole":"r","roles":{"r":{"rules":[
+            {"endpoint":"*","human":["select","export"]}]}}}"#);
+        assert!(person(&with, "anyone", &erp, None)
+            .decide(&Need::FreeExport)
+            .is_ok());
+
+        let without = doc(r#"{"version":1,"defaultRole":"r","roles":{"r":{"rules":[
+            {"endpoint":"*","human":["select"]}]}}}"#);
+        let err = person(&without, "anyone", &erp, None)
+            .decide(&Need::FreeExport)
+            .unwrap_err();
+        assert!(err.contains("may not export query results"), "{err}");
+
+        // Export granted on some relations only: a query's text cannot say
+        // which it read, so its results stay in the app.
+        let doc = doc(COMPANY);
+        let err = ctx(&doc, "ana", &erp, Some("billing"))
+            .decide(&Need::FreeExport)
+            .unwrap_err();
+        assert!(
+            err.contains("exporting a query's results is disabled"),
+            "{err}"
+        );
     }
 
     #[test]

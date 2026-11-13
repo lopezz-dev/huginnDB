@@ -446,3 +446,20 @@ describe("QueryResultGrid — Copy as SQL", () => {
     expect(grid().sqlTarget).toBeUndefined();
   });
 });
+
+describe("QueryResultGrid — export", () => {
+  it("offers Export data beside the grid", async () => {
+    await mount();
+    expect((grid().insertExtra as { id: string }[]).map((i) => i.id)).toEqual([
+      "export-results",
+    ]);
+  });
+
+  it("still shows it under an export lock — disabled, with the reason", async () => {
+    h.locks = { export: "no export" };
+    await mount();
+    expect((grid().insertExtra as { id: string }[]).map((i) => i.id)).toEqual([
+      "export-results",
+    ]);
+  });
+});

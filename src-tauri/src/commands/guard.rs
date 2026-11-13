@@ -128,6 +128,13 @@ pub(crate) fn mongosh(state: &AppState, connection_id: &str) -> AppResult<()> {
     require(state, connection_id, Need::FreeSql(Verbs::ALL))
 }
 
+/// Writing a free-form query's rows to a file (the query tab's "Export
+/// results"). Asked as its own need rather than `export` on a relation: the
+/// rows may come from any relation the statement read (`Need::FreeExport`).
+pub(crate) fn free_export(state: &AppState, connection_id: &str) -> AppResult<()> {
+    require(state, connection_id, Need::FreeExport)
+}
+
 /// Several statements run as one batch (the editor's "run all", a SQL file
 /// import): whatever any of them does.
 pub(crate) fn free_sql_batch(
@@ -330,6 +337,7 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("dump::export_databases", "export"),
     ("dump::export_table", "export"),
     ("dump::export_table_rows", "export"),
+    ("dump::export_query_result", "export"),
     ("mongo::export_collection", "export"),
     ("pulse::pulse_health", "monitor"),
     ("pulse::pulse_top_queries", "monitor"),

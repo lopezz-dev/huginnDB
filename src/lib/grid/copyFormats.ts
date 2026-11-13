@@ -263,6 +263,27 @@ export function selectSnippet(
 }
 
 /**
+ * Rows as CSV (RFC 4180): a header of the column names as shown, then one line
+ * per row, CRLF-separated. A field is quoted when it holds a comma, a quote or
+ * a line break, with inner quotes doubled; NULL is an empty field and a JSON
+ * value its compact JSON. Prefixed with a UTF-8 byte-order mark, which is what
+ * makes Excel read accented text as UTF-8 rather than the system code page.
+ */
+export function toCsv(rows: CellValue[][], columns: ColumnMeta[]): string {
+  const field = (v: CellValue): string => {
+    if (v === null || v === undefined) return "";
+    const text =
+      typeof v === "object" ? JSON.stringify(jsonSafe(v)) : String(jsonSafe(v));
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+  const lines = [
+    columns.map((c) => field(c.name)).join(","),
+    ...rows.map((r) => columns.map((_, i) => field(r[i])).join(",")),
+  ];
+  return `\uFEFF${lines.join("\r\n")}\r\n`;
+}
+
+/**
  * Serialise several rows for the bulk "Copy N rows as ▸" menu, reusing the same
  * per-row formatters as the single-row submenu. JSON yields one array;
  * INSERT/UPDATE yield newline-joined statements.

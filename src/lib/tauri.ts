@@ -1634,6 +1634,25 @@ export const api = {
     invoke<string>("export_table_rows", { query }),
 
   /**
+   * Write a query's result set, already serialised (`lib/query/exportResult`),
+   * to a file the person picks. The backend checks the managed policy first —
+   * the rows may come from any relation the query read — and opens the save
+   * dialog itself. Returns the written path; rejects if the user cancels.
+   */
+  exportQueryResult: (
+    connectionId: string,
+    fileName: string,
+    extension: "csv" | "json" | "sql",
+    contents: string,
+  ) =>
+    invoke<string>("export_query_result", {
+      connectionId,
+      fileName,
+      extension,
+      contents,
+    }),
+
+  /**
    * Export a MongoDB collection's documents matching `filters` (all of them
    * when omitted/empty) to a user-chosen `.json` file as canonical Extended
    * JSON (#65). The save dialog opens on the Rust side; returns the written

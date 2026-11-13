@@ -10,6 +10,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Exportar los resultados de una consulta.** El grid de resultados de una
+  pestaña SQL Query tiene un menú *Exportar datos*: CSV, JSON y, cuando los
+  resultados vienen de una sola tabla, SQL INSERT. Escribe todas las filas
+  que devolvió la consulta, no solo las que deja ver la búsqueda del grid.
+  CSV y JSON mantienen las columnas como las nombró la consulta; SQL INSERT
+  nombra la tabla real, escribe las columnas con alias como las columnas de
+  la tabla a las que corresponden y deja fuera las calculadas. El CSV va en
+  UTF-8 con marca de orden de bytes, para que Excel lea bien los acentos.
+  Con una política gestionada, exportar los resultados de una consulta
+  necesita `select` y `export` en una regla que no limite bases de datos ni
+  relaciones, porque la consulta puede haber leído cualquiera; el menú
+  muestra el motivo cuando no está permitido, y la app lo deniega
+  igualmente.
+
 - **Copiar como SQL desde los resultados de una consulta nombra la tabla
   real.** En una pestaña SQL Query, *Copiar fila como ▸ SQL INSERT / SQL
   UPDATE* (y lo mismo con varias filas seleccionadas) escribía `<table>` y
