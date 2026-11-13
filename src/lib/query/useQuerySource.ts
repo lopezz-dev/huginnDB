@@ -21,7 +21,7 @@
  * - **Insert and duplicate** — a result is a view the user filtered by hand;
  *   a new row need not match the `WHERE` it would appear under, so new rows
  *   belong to the table's own tab (ADR #135).
- * - **Paste, export, bulk update** — not offered by this
+ * - **Export, bulk update** — not offered by this
  *   source *yet*: each needs result columns translated to table columns
  *   beyond a single cell save (an alias is not a column of the table), and
  *   each lands in its own change. `unsupported` here means "this source does
@@ -29,6 +29,11 @@
  *
  * FK navigation needs only `columns`, not the key: it reads, so a `SELECT`
  * that left the key out can still follow its foreign keys.
+ *
+ * A paste writes the cells of existing rows, each to the table column its
+ * result column stands for; an expression's cells are left out, and so are
+ * the block's rows below the last result row, which a result does not add
+ * (`pastePlan.ts`, ADR #114).
  *
  * After a write the statement runs again (`onRefresh`) rather than the row
  * being patched, so the grid shows what the server now holds — defaults,
@@ -47,6 +52,10 @@ import {
   type ResultColumns,
 } from "@/lib/query/editableSource";
 import { isFkColumn, openReferencedRow } from "@/lib/grid/fkNavigation";
+import { isBitType } from "@/lib/grid/columnKinds";
+import { parsePasteBlock } from "@/lib/grid/pasteBlock";
+import { planPaste, type PastePlan } from "@/lib/grid/pastePlan";
+import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
 import {
   available,
   blocked,
@@ -112,6 +121,8 @@ export interface QuerySourceInput {
   connectionId: string;
   /** From {@link useQueryRelation}; `null` → read-only, no FK navigation. */
   resolved: QueryRelation | null;
+  /** The result's columns, in row order — what a pasted block lands on. */
+  resultColumns: ColumnMeta[];
   /** The managed policy, resolved for the relation. */
   policy: RelationPolicy;
   /** Run the statement again and replace this result. */
@@ -127,6 +138,7 @@ const asFk = (c: ColumnInfo) => (isFkColumn(c) ? c : null);
 export function useQuerySource({
   connectionId,
   resolved,
+  resultColumns,
   policy,
   onRefresh,
 }: QuerySourceInput): GridSource {
@@ -219,6 +231,52 @@ export function useQuerySource({
     [relation, qualified, updatePolicyLock, t],
   );
 
+  /**
+   * Plan a pasted block against the result. Judged on table columns (the key,
+   * the policy, the catalogue's types and `BIT`s), shown by result names.
+   */
+  const planResultPaste = useCallback(
+    (paste: GridPaste, rows: CellValue[][]): PastePlan => {
+      const byName = relation?.writable ?? new Map<string, ColumnInfo>();
+      const catalog = new Map([...byName.values()].map((c) => [c.name, c]));
+      return planPaste({
+        block: parsePasteBlock(paste.text),
+        rows,
+        columns: paste.columns,
+        columnIndexByName: new Map(
+          resultColumns.map((c, i) => [c.name, i]),
+        ),
+        columnOf: (name) => byName.get(name)?.name ?? null,
+        keyOf,
+        pkColumns: relation?.pkColumns ?? [],
+        columnInfo: catalog,
+        bitColumns: new Set(
+          [...catalog.values()].filter((c) => isBitType(c.data_type)).map((c) => c.name),
+        ),
+        canUpdate: !policy.update,
+        newRows: "result",
+        updateLock: policy.updateColumnLock,
+      });
+    },
+    [relation, resultColumns, keyOf, policy.update, policy.updateColumnLock],
+  );
+
+  const applyPaste = useCallback(
+    (plan: PastePlan) => {
+      if (!relation) throw new Error("This result cannot be written back");
+      return api.applyPaste({
+        connectionId,
+        schema: relation.schema,
+        table: relation.table,
+        pkColumns: relation.pkColumns,
+        updates: plan.updates,
+        // A result adds no rows; the plan never holds any, and this says so.
+        inserts: [],
+      });
+    },
+    [relation, connectionId],
+  );
+
   const deleteRows = useCallback(
     async (pkValueRows: CellValue[][]) => {
       if (!relation) return;
@@ -243,7 +301,6 @@ export function useQuerySource({
       refreshAll: onRefresh,
       insert: unsupported,
       duplicate: unsupported,
-      paste: unsupported,
       fieldUnset: unsupported,
       fkNavigate: fkColumnNames.length
         ? available({ columns: fkColumnNames, navigateFk })
@@ -258,6 +315,7 @@ export function useQuerySource({
         ...shared,
         addressable: false,
         getRowKey: undefined,
+        paste: unsupported,
         update: unsupported,
         delete: unsupported,
       };
@@ -266,6 +324,13 @@ export function useQuerySource({
       ...shared,
       addressable: true,
       getRowKey,
+      // The plan skips what the update lock refuses, so a paste needs only
+      // addressable rows — as on a table.
+      paste: available({
+        relationLabel: qualified,
+        planPaste: planResultPaste,
+        applyPaste,
+      }),
       update: policy.update
         ? blocked(policy.update)
         : available({ saveField, columnLock }),
@@ -294,5 +359,8 @@ export function useQuerySource({
     deleteRows,
     fkColumnNames,
     navigateFk,
+    qualified,
+    planResultPaste,
+    applyPaste,
   ]);
 }

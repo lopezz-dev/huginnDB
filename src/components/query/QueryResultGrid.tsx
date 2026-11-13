@@ -60,6 +60,7 @@ export function QueryResultGrid({
   const source = useQuerySource({
     connectionId,
     resolved,
+    resultColumns: result.columns,
     policy,
     onRefresh,
   });

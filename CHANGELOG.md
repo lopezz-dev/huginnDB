@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Paste into a query's results.** A block copied from a spreadsheet or
+  another grid can now be pasted onto the results of a single-table `SELECT`
+  in a SQL Query tab, the same way as in a table tab: it lands on the
+  selected cell, the confirmation shows what changes and what is left out,
+  and nothing is written until you accept. A column under an alias (`SELECT
+  price AS p …`) is written to the table column it stands for; a computed
+  column (`price * 2`) and the key are left out, each saying why; and rows
+  of the block below the last result row are left out too — a query's
+  results take no new rows, so add those in the table's own tab. The
+  statement runs again afterwards, so the grid shows what the database now
+  holds.
+
 - **Follow a foreign key from a query's results.** In a SQL Query tab, a
   column of a single-table `SELECT` that is a foreign key now shows the key
   icon in its header and offers *Go to referenced row* in the cell's menu

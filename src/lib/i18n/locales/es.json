@@ -792,7 +792,9 @@
         "generated": "la pone la base de datos en una fila nueva",
         "noUpdate": "la política de tu organización no permite editar filas aquí",
         "noInsert": "la política de tu organización no permite añadir filas aquí",
-        "view": "una vista no admite filas nuevas: añádelas a la tabla de la que lee"
+        "view": "una vista no admite filas nuevas: añádelas a la tabla de la que lee",
+        "computed": "una expresión de la consulta, no una columna de la tabla",
+        "result": "por debajo de la última fila de la consulta: un resultado no admite filas nuevas, añádelas en la pestaña de la tabla"
       },
       "unchanged_one": "{{count}} celda ya tiene ese valor",
       "unchanged_other": "{{count}} celdas ya tienen esos valores",

@@ -792,7 +792,9 @@
         "generated": "set by the database on a new row",
         "noUpdate": "your organization's policy doesn't allow editing rows here",
         "noInsert": "your organization's policy doesn't allow adding rows here",
-        "view": "a view doesn't take new rows — add them to the table it reads from"
+        "view": "a view doesn't take new rows — add them to the table it reads from",
+        "computed": "an expression in the query, not a column of the table",
+        "result": "below the query's last row — a result takes no new rows; add them in the table's own tab"
       },
       "unchanged_one": "{{count}} cell already holds that value",
       "unchanged_other": "{{count}} cells already hold those values",
