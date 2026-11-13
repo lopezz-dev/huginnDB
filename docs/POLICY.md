@@ -186,7 +186,7 @@ allows there.
   | `insert`, `update`, `delete` | each row-level write, separately |
   | `ddl` | schema changes: create, alter, drop, truncate, indexes, views |
   | `monitor` | Pulse, server sessions, users and privileges — they show *other people's* statements, which can carry data this role cannot read |
-  | `export` | writing a table's rows out to a file — needs `select` on it too |
+  | `export` | writing a table's rows out to a file — needs `select` on it too. Exporting a SQL query's results needs `select` and `export` on a rule that limits no databases or relations, since the query may have read any of them (the same reason a scoped rule disables free-form queries) |
 
   The AI never gets more than the person: whatever `ai` lists beyond `human` is
   ignored, and Settings → Policy shows a warning.

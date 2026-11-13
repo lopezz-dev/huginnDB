@@ -8,7 +8,8 @@
  * an aggregate, a key left out — renders exactly the read-only grid. Edit and
  * delete go through the shared controller, so they confirm, reload and report
  * the selection exactly as a table tab does; inserting and duplicating are not
- * offered from a result set (see `useQuerySource`).
+ * offered from a result set (see `useQuerySource`). Exporting the rows is the
+ * one piece of chrome this grid adds (`useResultExportItem`).
  */
 
 import { useMemo } from "react";
@@ -16,6 +17,7 @@ import { DataGrid } from "@/components/grid/DataGrid";
 import { useGridController } from "@/components/grid/useGridController";
 import { useRelationPolicy } from "@/lib/policy/useRelationPolicy";
 import { useQueryRelation, useQuerySource } from "@/lib/query/useQuerySource";
+import { useResultExportItem } from "@/components/query/useResultExportItem";
 import type { Driver, QueryResult } from "@/types";
 
 interface Props {
@@ -71,6 +73,8 @@ export function QueryResultGrid({
     onError: ignore,
   });
 
+  const exportItem = useResultExportItem(source, connectionId, driver, result);
+
   // `DataGrid` sizes itself with `h-full`, so it needs a box with a definite
   // height: a flex share of the results column, `overflow-hidden` so it may
   // shrink to it (contract K in `uiContracts.test.ts`).
@@ -83,6 +87,7 @@ export function QueryResultGrid({
         driver={driver}
         globalFilter={globalFilter}
         onGlobalFilterChange={onGlobalFilterChange}
+        insertExtra={exportItem}
       />
       {dialogs}
     </div>

@@ -196,7 +196,7 @@ permite en él.
   | `insert`, `update`, `delete` | cada escritura de filas, por separado |
   | `ddl` | cambios de esquema: crear, alterar, borrar, truncar, índices, vistas |
   | `monitor` | Pulse, sesiones del servidor, usuarios y privilegios: muestran sentencias *de otras personas*, que pueden contener datos que este rol no puede leer |
-  | `export` | sacar las filas de una tabla a un fichero; necesita también `select` sobre ella |
+  | `export` | sacar las filas de una tabla a un fichero; necesita también `select` sobre ella. Exportar los resultados de una consulta SQL necesita `select` y `export` en una regla que no limite bases de datos ni relaciones, porque la consulta puede haber leído cualquiera (el mismo motivo por el que una regla con alcance desactiva las consultas libres) |
 
   La IA nunca tiene más que la persona: lo que `ai` añada respecto a `human` se
   ignora, y Ajustes → Política muestra un aviso.

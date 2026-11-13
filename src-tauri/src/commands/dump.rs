@@ -312,6 +312,52 @@ pub fn write_text_file(file_path: String, contents: String) -> AppResult<()> {
     Ok(std::fs::write(&file_path, contents)?)
 }
 
+/// The formats a query's results can be exported as, by file extension.
+const QUERY_RESULT_FORMATS: &[(&str, &str)] = &[("csv", "CSV"), ("json", "JSON"), ("sql", "SQL")];
+
+/// Write a query tab's result set to a file the person picks — the query
+/// results' "Export results" (ADR #135).
+///
+/// The rows are already in the frontend, whole: a query the person ran
+/// returns every row (it is not paged), so the frontend serialises what the
+/// grid holds (`lib/query/exportResult.ts`) and this writes it. What this adds
+/// over [`write_text_file`] is the policy: the rows may come from any relation
+/// the statement read, so it asks [`crate::policy::Need::FreeExport`] — refused
+/// under a scoped rule, and needing `select` + `export` on an unscoped one —
+/// before the save dialog opens (ADR #96: the interface's lock is advisory).
+/// The save dialog runs here, like the table exports, so the path never
+/// comes from the webview.
+#[tauri::command]
+pub async fn export_query_result(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+    file_name: String,
+    extension: String,
+    contents: String,
+) -> AppResult<String> {
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::free_export(state.inner(), &connection_id)?;
+    let (ext, label) = QUERY_RESULT_FORMATS
+        .iter()
+        .find(|(e, _)| *e == extension)
+        .ok_or_else(|| AppError::InvalidInput(format!("unknown export format: {extension}")))?;
+
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .set_title("Export query results")
+        .set_file_name(format!("{file_name}.{ext}"))
+        .add_filter(*label, &[*ext])
+        .blocking_save_file()
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
+    let dest = path.to_string();
+    std::fs::write(&dest, contents)?;
+    Ok(dest)
+}
+
 /// Export a single table (schema + data) to a user-chosen `.sql` file — the
 /// same DDL+data format [`export_databases`] produces, scoped to one table.
 /// Always plain `INSERT` ([`DataMode::Insert`]) — this is the DataGrid

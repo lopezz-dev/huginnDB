@@ -21,7 +21,7 @@
  * - **Insert and duplicate** — a result is a view the user filtered by hand;
  *   a new row need not match the `WHERE` it would appear under, so new rows
  *   belong to the table's own tab (ADR #135).
- * - **Export, bulk update** — not offered by this
+ * - **Bulk update** — not offered by this
  *   source *yet*: each needs result columns translated to table columns
  *   beyond a single cell save (an alias is not a column of the table), and
  *   each lands in its own change. `unsupported` here means "this source does
@@ -57,6 +57,7 @@ import { parsePasteBlock } from "@/lib/grid/pasteBlock";
 import { planPaste, type PastePlan } from "@/lib/grid/pastePlan";
 import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
 import {
+  AVAILABLE,
   available,
   blocked,
   unsupported,
@@ -325,7 +326,10 @@ export function useQuerySource({
         ? available({ columns: fkColumnNames, navigateFk })
         : unsupported,
       bulkUpdate: unsupported,
-      export: unsupported,
+      // Writing the rows to a file: the caller's chrome performs it
+      // (`exportResult.ts`); the backend asks the policy again
+      // (`Need::FreeExport`), whatever this says.
+      export: policy.export ? blocked(policy.export) : AVAILABLE,
     } as const;
     if (!relation) {
       // Not one table with its key: the plain read-only grid, with no row
@@ -369,6 +373,7 @@ export function useQuerySource({
     relation,
     policy.update,
     policy.delete,
+    policy.export,
     keyOf,
     getRowKey,
     onRefresh,

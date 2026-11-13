@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Export a query's results.** The results grid of a SQL Query tab has an
+  *Export data* menu: CSV, JSON and — when the results come from a single
+  table — SQL INSERT. It writes every row the query returned, not only those
+  the grid's search shows. CSV and JSON keep the columns as the query named
+  them; SQL INSERT names the real table, writes aliased columns as the table
+  columns they stand for and leaves computed columns out. CSV is UTF-8 with
+  a byte-order mark, so Excel reads accented text correctly. Under a managed
+  policy, exporting a query's results needs `select` and `export` on a rule
+  that does not limit databases or relations, since the query may have read
+  any of them; the menu shows the reason when it is not allowed, and the app
+  refuses it regardless.
+
 - **Copy as SQL from a query's results names the real table.** In a SQL
   Query tab, *Copy row as ▸ SQL INSERT / SQL UPDATE* (and the same for
   several selected rows) used to write `<table>` and the column names as the

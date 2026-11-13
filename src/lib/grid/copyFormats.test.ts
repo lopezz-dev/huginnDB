@@ -5,6 +5,7 @@ import {
   selectSnippet,
   sqlLiteral,
   toBulk,
+  toCsv,
   toSqlInsert,
   toSqlUpdate,
   type SqlTarget,
@@ -221,5 +222,23 @@ describe("Copy as SQL through a target", () => {
     expect(toSqlUpdate([1, "a"], [{ name: "x", data_type: "int" }, { name: "y", data_type: "text" }], "postgres", undefined, ["x"])).toBe(
       'UPDATE <table> SET "y" = \'a\' WHERE "x" = 1;',
     );
+  });
+});
+
+describe("toCsv", () => {
+  const cols = [
+    { name: "a", data_type: "text" },
+    { name: "b,c", data_type: "text" },
+  ];
+  it("quotes what needs it, doubles quotes, writes NULL empty and JSON compact", () => {
+    expect(
+      toCsv(
+        [
+          ['say "hi"', "x\ny"],
+          [null, { k: 1 }],
+        ],
+        cols,
+      ),
+    ).toBe('\uFEFFa,"b,c"\r\n"say ""hi""","x\ny"\r\n,"{""k"":1}"\r\n');
   });
 });

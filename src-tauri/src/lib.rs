@@ -521,6 +521,7 @@ pub fn run() {
             commands::dump::write_text_file,
             commands::dump::export_table,
             commands::dump::export_table_rows,
+            commands::dump::export_query_result,
             commands::mongo::export_collection,
             commands::mongo::import_collection,
             commands::aggregation::format_mongo_pipeline,
