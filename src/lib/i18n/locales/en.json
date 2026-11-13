@@ -680,6 +680,12 @@
     "noRows": "No rows",
     "emptyInsertFiltered": "Filters are active: a new row that doesn't match them won't be shown after it is saved.",
     "ctxReload": "Reload",
+    "writeBlocked": {
+      "noPk": "This table has no primary key, so its rows can't be told apart to change them",
+      "pkHidden": "The primary key isn't in these rows, so they can't be told apart to change them",
+      "projected": "The current projection hides columns a copy would need — remove it to duplicate rows",
+      "documentsOnly": "Removing a field from one row only exists for documents"
+    },
     "insertBlocked": {
       "view": "A view can't take new rows here — insert into the table it reads from",
       "noPk": "This table has no primary key, so a new row couldn't be edited or deleted from the grid",
