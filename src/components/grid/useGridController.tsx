@@ -60,7 +60,7 @@ export interface GridControllerProps {
   columnLock: ColumnLock | undefined;
   draftColumnLock: ColumnLock | undefined;
   pkColumnNames: string[] | undefined;
-  getRowKey: (row: CellValue[]) => string | null;
+  getRowKey: ((row: CellValue[]) => string | null) | undefined;
   onSelectionChange: ((count: number, total: number) => void) | undefined;
   onCellSave:
     | ((row: CellValue[], column: string, value: string | null) => Promise<void>)
