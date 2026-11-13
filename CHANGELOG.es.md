@@ -10,6 +10,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Una vista ya no ofrece añadir filas.** Al navegar una vista aparecía el
+  botón Insertar deshabilitado con una explicación, pero el menú de fila
+  seguía ofreciendo *Duplicar fila…*, que es una inserción con otro nombre.
+  En una vista no se añaden filas desde el grid, así que ahora no se ofrece
+  ninguna de las dos: Insertar, sus alternativas *Pegar filas como JSON…* /
+  *Nuevo documento…* / *Importar JSON…* y *Duplicar fila…* simplemente no
+  están. Al pegar un bloque más alto que la página de una vista se escriben
+  las celdas que existen y se dejan fuera las filas sobrantes, explicando
+  que es por ser una vista y no culpando a la política de tu organización.
+  Editar y borrar en una vista no cambian, en una tabla donde *tú* no puedes
+  insertar, Insertar sigue deshabilitado con el motivo, y una vista
+  actualizable puede seguir recibiendo un `INSERT` desde el editor SQL.
+
 - **Menos trabajo por pulsación en el editor SQL.** Cada tecla escrita en una
   pestaña de consulta volvía a dibujar partes de la ventana que nunca muestran
   el SQL: el área de pestañas, el selector de pestañas, el título de la

@@ -13,8 +13,11 @@
  *   UPDATE/DELETE never run with an incomplete key.
  * - **The type sent with a value is the catalog's on SQL** and the field's own
  *   BSON type on MongoDB (gotcha #15, ADR #29); see `saveField`.
- * - **A view takes no inserts, and a duplicate under a projection would drop
- *   the hidden columns**, so both say why instead.
+ * - **A view never takes rows from the grid**: insert and duplicate are
+ *   unsupported there — not offered, rather than disabled with a reason
+ *   (ADR #136) — and a paste's overflow rows are left out saying why.
+ * - **A duplicate under a projection would drop the hidden columns**, so it is
+ *   blocked with that reason.
  *
  * What the policy allows arrives resolved (`policy`, from
  * `useRelationPolicy`): this producer turns it into capabilities, it does not
@@ -42,6 +45,7 @@ import {
   available,
   blocked,
   pending,
+  unsupported,
   type Availability,
   type Capability,
   type DraftCommitOps,
@@ -320,12 +324,12 @@ export function useTableSource({
         ),
         // The plan respects the locks itself: it skips what they refuse.
         canUpdate: !policy.update,
-        canInsert: !policy.insert,
+        newRows: isView ? "view" : policy.insert ? "policy" : "allowed",
         updateLock: policy.updateColumnLock,
         insertLock: policy.insertColumnLock,
       });
     },
-    [result, pkColumnNames, cols, policy],
+    [result, pkColumnNames, cols, policy, isView],
   );
 
   const applyPaste = useCallback(
@@ -405,18 +409,20 @@ export function useTableSource({
       insertRow,
       columnLock: policy.insertColumnLock,
     };
-    // Whether an insert can begin, and if not why (#267). Pending until the
-    // columns load, so a table never flashes "no primary key" while its key
-    // is still on the way.
+    // Whether an insert can begin, and if not why (#267). A view never can,
+    // so it is not offered (ADR #136); otherwise pending until the columns
+    // load, so a table never flashes "no primary key" while its key is still
+    // on the way.
     const insertBlock = cols
       ? insertAvailability({
-          isView,
           pkColumnCount: pkColumns.length,
           pkInResult: hasPk,
           policyLock: policy.insert,
         })
       : null;
-    const insert: GridSource["insert"] = !cols
+    const insert: GridSource["insert"] = isView
+      ? unsupported
+      : !cols
       ? pending
       : insertBlock
         ? blocked(insertBlockReason(insertBlock, t))
@@ -443,10 +449,9 @@ export function useTableSource({
         deleteRows,
       })),
       insert,
-      // A duplicate copies the row as the page holds it, so under a projection
-      // it would silently drop every hidden column's value. It is not gated on
-      // `isView`, which is how the tab behaved before the extraction.
-      duplicate: gate(
+      // A duplicate is an insert, so a view does not offer it either. Under a
+      // projection it would silently drop every hidden column's value.
+      duplicate: isView ? unsupported : gate(
         [
           keyMissing,
           projected ? t("dataGrid.writeBlocked.projected") : null,

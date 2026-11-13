@@ -9,7 +9,6 @@ import {
 } from "./insertAvailability";
 
 const table: InsertInputs = {
-  isView: false,
   pkColumnCount: 1,
   pkInResult: true,
   policyLock: null,
@@ -22,17 +21,6 @@ describe("insertAvailability", () => {
 
   it("allows it on a composite key too", () => {
     expect(insertAvailability({ ...table, pkColumnCount: 3 })).toBeNull();
-  });
-
-  it("refuses a view, whatever else holds", () => {
-    expect(
-      insertAvailability({
-        ...table,
-        isView: true,
-        pkColumnCount: 0,
-        policyLock: "nope",
-      }),
-    ).toEqual({ kind: "view" });
   });
 
   it("refuses a table without a primary key before naming the policy", () => {

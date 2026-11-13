@@ -36,9 +36,15 @@ export interface PastePlanInput {
   columnInfo: ReadonlyMap<string, ColumnInfo>;
   /** MySQL `BIT` columns, whose text the backend expects as `0`/`1`. */
   bitColumns: ReadonlySet<string>;
-  /** Whether existing rows may be changed at all, and new ones added. */
+  /** Whether existing rows may be changed at all. */
   canUpdate: boolean;
-  canInsert: boolean;
+  /**
+   * Whether the block's overflow may become new rows, and if not, why: the
+   * policy refuses inserts here, or the relation is a view, which never takes
+   * rows from the grid (ADR #136). One field rather than a flag plus a reason,
+   * so the two cannot disagree.
+   */
+  newRows: "allowed" | "policy" | "view";
   /** Why the policy will not let a column be changed, or given a value on a
    *  new row (ADR #113) — `null` when it may. */
   updateLock?: (column: string) => string | null;
@@ -46,7 +52,13 @@ export interface PastePlanInput {
 }
 
 /** Why a pasted cell is left out. */
-export type SkipReason = "key" | "policy" | "generated" | "noUpdate" | "noInsert";
+export type SkipReason =
+  | "key"
+  | "policy"
+  | "generated"
+  | "noUpdate"
+  | "noInsert"
+  | "view";
 
 export interface PasteCellWrite {
   pkValues: CellValue[];
@@ -95,7 +107,7 @@ export function planPaste(input: PastePlanInput): PastePlan {
     columnInfo,
     bitColumns,
     canUpdate,
-    canInsert,
+    newRows,
     updateLock,
     insertLock,
   } = input;
@@ -173,8 +185,8 @@ export function planPaste(input: PastePlanInput): PastePlan {
         if (c >= cells.length) return;
         const text = cells[c];
         let state: PreviewCell["state"] = "new";
-        if (!canInsert) {
-          skip(col.name, "noInsert");
+        if (newRows !== "allowed") {
+          skip(col.name, newRows === "view" ? "view" : "noInsert");
           state = "skip";
         } else if (isAutoPkColumn(columnInfo.get(col.name))) {
           skip(col.name, "generated");

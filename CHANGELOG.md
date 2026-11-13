@@ -8,6 +8,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **A view no longer offers to add rows.** Browsing a view showed a disabled
+  Insert button with an explanation, yet still offered *Duplicate row…* in
+  the row menu — an insert by another name. Rows are not added to a view
+  from the grid, so neither is offered there now — Insert, its *Paste rows
+  as JSON…* / *New document…* / *Import JSON…* alternatives and *Duplicate
+  row…* are simply absent. Pasting a block taller than a view's page writes
+  the cells that exist and leaves the extra rows out, saying it is because
+  this is a view rather than blaming your organization's policy. Edit and
+  delete on a view are unchanged, a table where *you* may not insert still
+  shows Insert disabled with the reason, and an updatable view can still
+  take an `INSERT` from the SQL editor.
+
 - **Less work per keystroke in the SQL editor.** Every key typed in a query
   tab re-rendered parts of the window that never show the SQL: the tab area,
   the tab switcher, the window title, the command palette, the side editor and

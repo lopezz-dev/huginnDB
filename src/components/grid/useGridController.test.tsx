@@ -22,6 +22,7 @@ import {
   available,
   blocked,
   pending,
+  unsupported,
   type GridSource,
 } from "@/lib/grid/gridSource";
 import type { PastePlan } from "@/lib/grid/pastePlan";
@@ -195,6 +196,15 @@ describe("useGridController — capabilities", () => {
       expect(p[k], k).toBeUndefined();
     }
     expect(p.insertBlocked).toBe("Inserts are off");
+  });
+
+  it("an unsupported Insert or Duplicate is neither offered nor explained", () => {
+    const { props } = setup(
+      fakeSource(spies(), { insert: unsupported, duplicate: unsupported }),
+    );
+    expect(props().onInsertRow).toBeUndefined();
+    expect(props().onDuplicateRow).toBeUndefined();
+    expect(props().insertBlocked).toBeNull();
   });
 
   it("a pending Insert is neither offered nor explained", () => {

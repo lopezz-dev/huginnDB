@@ -687,7 +687,6 @@
       "documentsOnly": "Quitar un campo de una sola fila solo existe en documentos"
     },
     "insertBlocked": {
-      "view": "Una vista no admite filas nuevas aquí: inserta en la tabla de la que lee",
       "noPk": "Esta tabla no tiene clave primaria, así que una fila nueva no se podría editar ni borrar desde el grid",
       "pkHidden": "La proyección actual oculta la clave primaria: muéstrala para insertar filas"
     },
@@ -792,7 +791,8 @@
         "policy": "la política de tu organización no te deja escribir esta columna",
         "generated": "la pone la base de datos en una fila nueva",
         "noUpdate": "la política de tu organización no permite editar filas aquí",
-        "noInsert": "la política de tu organización no permite añadir filas aquí"
+        "noInsert": "la política de tu organización no permite añadir filas aquí",
+        "view": "una vista no admite filas nuevas: añádelas a la tabla de la que lee"
       },
       "unchanged_one": "{{count}} celda ya tiene ese valor",
       "unchanged_other": "{{count}} celdas ya tienen esos valores",

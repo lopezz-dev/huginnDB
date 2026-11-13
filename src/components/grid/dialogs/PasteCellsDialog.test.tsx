@@ -47,7 +47,7 @@ function plan(block: string[][], locked = false) {
     ]),
     bitColumns: new Set(),
     canUpdate: true,
-    canInsert: true,
+    newRows: "allowed",
     updateLock: locked ? (c) => (c === "importe" ? "locked" : null) : undefined,
   });
 }
