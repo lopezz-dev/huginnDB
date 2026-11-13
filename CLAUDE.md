@@ -36,6 +36,20 @@ Project context for Claude Code sessions on this repo. Skim this first; reach fo
 - PR title mirrors the commit's `type(scope): …`; PR body states the maintainer's authorship above the agent's own footer, per the signature rule above.
 - **The one exception: a version cut.** `chore(release): cut X.Y.Z` is committed directly on `develop` (no PR), `develop` is then fast-forwarded into `main`, and the annotated tag `vX.Y.Z` is pushed — the maintainer has done it this way since 1.26.0 and asks for it with `/release X.Y.Z` (project skill `.claude/skills/release/SKILL.md`; the manual version is in `RELEASING.md`). It runs end to end without asking for confirmation, never force-pushes, and never publishes the draft release — that click stays Alex's. This exception covers the cut commit only: any fix or feature that goes into a release still lands via its own PR beforehand.
 
+## Design review before code — mandatory, never skipped
+
+**Every change that adds, moves or splits a module, hook, component, store, command or contract — or that crosses a layer — gets an explicit design review before the first edit and a second one before the PR.** A local bug fix inside one function is exempt; anything that decides *where code lives or who does what* is not. An existing ADR is an input to this review, not a substitute for it: an ADR fixes the direction, the review checks the concrete shapes against it. Following the plan is not the same as having checked the plan — that is how a refactor ships a contract with a sentinel value and members its next consumer has to stub.
+
+**Before the first edit**, write down (in the session, and later in the PR's `### Design` section):
+
+1. **Responsibilities.** One sentence per new or changed unit. If it needs "and", it is two units. Name who *decides* and who *acts* (e.g. a source states what may be written, a controller does it), and who *shows* versus who *enforces* (the interface's locks are advisory, the backend refuses — ADR #96).
+2. **Boundaries and layering.** The frontend never talks to a database; `components/` may use `lib/`, not the other way round except where it already does; a store is not a service locator. Say which layer each unit is in and why.
+3. **Reuse and the next consumer.** Search for what already does this (`lib/`, `stores/`, `engineering/` indexes) before writing a new one. If a second consumer exists or is planned (the ADR names it, the card's checklist has it), design for it *now*: anything it would have to duplicate — a policy read, a key rule, a dialog flow — belongs in the shared piece, not in the first producer.
+4. **Contracts.** Minimal interfaces: no member a consumer must stub to satisfy the type (split into optional groups gated by what they enable). Invalid states unrepresentable: no sentinel values (`""` meaning "pending"), no capability flag that can disagree with the operation it gates. Stable identities wherever a React memo or effect keys on them, stated next to the dependency array.
+5. **Alternatives.** At least two serious alternatives and why each lost. A decision that will outlive the PR is an ADR (`engineering/templates/`); a deviation from an existing ADR is stated, not silent.
+
+**Before opening the PR**, re-read the diff against those five points as a reviewer would, not as its author: what a second consumer would have to copy, what a new contributor would misread, what the types still allow that the code never means. Fix what you find; what you knowingly leave goes in the PR under *Known trade-offs*. The PR body's `### Design` section (responsibilities, layering, alternatives, trade-offs) is required — a PR without it is not ready for review. When the user asks whether this was done, answer from that section; if it is missing, say so plainly.
+
 ## Tech stack quick reference
 
 | Layer       | Choice                                                   |
