@@ -5,17 +5,27 @@
  * contract as any source sees it, apart from the table that first produced
  * one (`TableDataTab.test.tsx` pins the table's own rules):
  *
- * - each capability gates exactly its gesture: `null` wires it, a reason
- *   withholds it, and the empty reason withholds Insert without a sentence;
+ * - a gesture is wired only when its capability is available, and performed
+ *   only through the operations that capability carries;
+ * - a blocked Insert shows its reason, a pending one shows nothing;
+ * - a draft commits through the operations of the gesture that started it, so
+ *   a duplicate commits where Insert itself is blocked;
  * - a save reloads the page, a delete / paste / insert reloads everything;
  * - a row whose key cannot be read goes to `onError`, not to the server;
- * - the selection is reported unless the caller says not to.
+ * - the selection is reported, and cleared on unmount, unless told not to.
  */
 
 import { act, cleanup, render, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { GridSource } from "@/lib/grid/gridSource";
+import {
+  AVAILABLE,
+  available,
+  blocked,
+  pending,
+  type GridSource,
+} from "@/lib/grid/gridSource";
 import type { PastePlan } from "@/lib/grid/pastePlan";
+import type { DraftRow } from "@/types";
 
 const h = vi.hoisted(() => ({
   notify: { error: vi.fn(), success: vi.fn() },
@@ -46,48 +56,66 @@ import { usePreferences } from "@/stores/preferences/preferences";
 import { useGridSelection } from "@/stores/grid/gridSelection";
 
 const PLAN = { updates: [], inserts: [] } as unknown as PastePlan;
+const DRAFT: DraftRow = {
+  cells: {
+    id: { value: null, touched: false },
+    name: { value: null, touched: false },
+  },
+  error: null,
+  saving: false,
+};
 
-function fakeSource(over: Partial<GridSource> = {}): GridSource {
+/** Every operation as a spy, so a test can say which one ran. */
+function spies() {
   return {
-    identity: {
-      connectionId: "c1",
-      schema: "shop",
-      table: "items",
-      pkColumns: ["id"],
-    },
-    can: {
-      update: null,
-      delete: null,
-      insert: null,
-      duplicate: null,
-      paste: null,
-      bulkUpdate: null,
-      export: null,
-      fieldUnset: null,
-      updateColumnLock: undefined,
-      insertColumnLock: undefined,
-    },
+    saveField: vi.fn(() => Promise.resolve()),
+    deleteRows: vi.fn(() => Promise.resolve()),
+    insertRow: vi.fn(() => Promise.resolve()),
+    dupInsertRow: vi.fn(() => Promise.resolve()),
+    planPaste: vi.fn(() => PLAN),
+    applyPaste: vi.fn(() => Promise.resolve({ updated: 2, inserted: 1 })),
+    unsetField: vi.fn(() => Promise.resolve()),
+    navigateFk: vi.fn(),
+    refreshPage: vi.fn(() => Promise.resolve()),
+    refreshAll: vi.fn(() => Promise.resolve()),
+  };
+}
+type Spies = ReturnType<typeof spies>;
+
+function fakeSource(s: Spies, over: Partial<GridSource> = {}): GridSource {
+  return {
+    addressable: true,
     pkResultNames: ["id"],
     documentMode: false,
     keyOf: (row) => [row[0]],
     getRowKey: (row) => JSON.stringify([row[0]]),
-    hydrate: vi.fn((row) => Promise.resolve(row)),
-    saveField: vi.fn(() => Promise.resolve()),
-    unsetField: vi.fn(() => Promise.resolve()),
-    deleteRows: vi.fn(() => Promise.resolve()),
-    planPaste: vi.fn(() => PLAN),
-    applyPaste: vi.fn(() => Promise.resolve({ updated: 2, inserted: 1 })),
-    newDraft: () => ({
-      cells: { id: { value: null, touched: false }, name: { value: null, touched: false } },
-      error: null,
-      saving: false,
+    hydrate: (row) => Promise.resolve(row),
+    refreshPage: s.refreshPage,
+    refreshAll: s.refreshAll,
+    update: available({ saveField: s.saveField }),
+    delete: available({
+      target: { connectionId: "c1", schema: "shop", table: "items", pkColumns: ["id"] },
+      deleteRows: s.deleteRows,
     }),
-    duplicateDraft: () => null,
-    columnType: (c) => (c === "name" ? "text" : undefined),
-    insertRow: vi.fn(() => Promise.resolve()),
-    refreshPage: vi.fn(() => Promise.resolve()),
-    refreshAll: vi.fn(() => Promise.resolve()),
-    navigateFk: vi.fn(),
+    insert: available({
+      newDraft: () => DRAFT,
+      columnType: (c: string) => (c === "name" ? "text" : undefined),
+      insertRow: s.insertRow,
+    }),
+    duplicate: available({
+      duplicateDraft: () => DRAFT,
+      columnType: () => "dup-type",
+      insertRow: s.dupInsertRow,
+    }),
+    paste: available({
+      relationLabel: "shop.items",
+      planPaste: s.planPaste,
+      applyPaste: s.applyPaste,
+    }),
+    fieldUnset: available({ unsetField: s.unsetField }),
+    fkNavigate: available({ navigateFk: s.navigateFk }),
+    bulkUpdate: AVAILABLE,
+    export: AVAILABLE,
     ...over,
   };
 }
@@ -95,8 +123,8 @@ function fakeSource(over: Partial<GridSource> = {}): GridSource {
 function setup(source: GridSource, opts: { reportSelection?: boolean } = {}) {
   const onError = vi.fn();
   const hook = renderHook(
-    ({ s }) => useGridController(s, { tabId: "t1", onError, ...opts }),
-    { initialProps: { s: source } },
+    ({ src }) => useGridController(src, { tabId: "t1", onError, ...opts }),
+    { initialProps: { src: source } },
   );
   return { hook, onError, props: () => hook.result.current.gridProps };
 }
@@ -110,19 +138,22 @@ beforeEach(() => {
   h.dialogs = {};
   h.notify.error.mockClear();
   h.notify.success.mockClear();
-  usePreferences.setState((s) => ({
-    prefs: { ...s.prefs, ui: { ...s.prefs.ui, confirmDestructive: true } },
+  usePreferences.setState((st) => ({
+    prefs: { ...st.prefs, ui: { ...st.prefs.ui, confirmDestructive: true } },
   }));
 });
 afterEach(() => cleanup());
 
 describe("useGridController — capabilities", () => {
   it("wires every gesture when everything is available", () => {
-    const { props } = setup(fakeSource());
+    const { props } = setup(fakeSource(spies()));
     const p = props();
     expect(p.editable).toBe(true);
     for (const k of [
+      "onCellSave",
+      "onFieldSave",
       "onFieldDelete",
+      "onNavigateFk",
       "onPasteBlock",
       "onDeleteRow",
       "onBulkDelete",
@@ -135,76 +166,97 @@ describe("useGridController — capabilities", () => {
     expect(p.insertBlocked).toBeNull();
   });
 
-  it("withholds each gesture whose capability carries a reason", () => {
+  it("withholds every gesture whose capability is blocked, and says why for Insert", () => {
+    const no = blocked("no");
     const { props } = setup(
-      fakeSource({
-        can: {
-          update: "no",
-          delete: "no",
-          insert: "Inserts are off",
-          duplicate: "no",
-          paste: "no",
-          bulkUpdate: "no",
-          export: "no",
-          fieldUnset: "no",
-          updateColumnLock: undefined,
-          insertColumnLock: undefined,
-        },
+      fakeSource(spies(), {
+        update: no,
+        delete: no,
+        insert: blocked("Inserts are off"),
+        duplicate: no,
+        paste: no,
+        fieldUnset: no,
+        fkNavigate: no,
       }),
     );
     const p = props();
     expect(p.editable).toBe(false);
-    expect(p.onFieldDelete).toBeUndefined();
-    expect(p.onPasteBlock).toBeUndefined();
-    expect(p.onDeleteRow).toBeUndefined();
-    expect(p.onBulkDelete).toBeUndefined();
-    expect(p.onInsertRow).toBeUndefined();
-    expect(p.onDuplicateRow).toBeUndefined();
+    for (const k of [
+      "onCellSave",
+      "onFieldSave",
+      "onFieldDelete",
+      "onNavigateFk",
+      "onPasteBlock",
+      "onDeleteRow",
+      "onBulkDelete",
+      "onInsertRow",
+      "onDuplicateRow",
+    ] as const) {
+      expect(p[k], k).toBeUndefined();
+    }
     expect(p.insertBlocked).toBe("Inserts are off");
   });
 
-  it("the empty reason withholds Insert without a sentence", () => {
-    const base = fakeSource();
-    const { props } = setup({ ...base, can: { ...base.can, insert: "" } });
+  it("a pending Insert is neither offered nor explained", () => {
+    const { props } = setup(fakeSource(spies(), { insert: pending }));
     expect(props().onInsertRow).toBeUndefined();
     expect(props().insertBlocked).toBeNull();
   });
 
-  it("does not report the selection when told not to", () => {
-    const { props } = setup(fakeSource(), { reportSelection: false });
-    expect(props().onSelectionChange).toBeUndefined();
+  it("hands the grid the update and insert column locks", () => {
+    const upd = (c: string) => (c === "a" ? "locked" : null);
+    const ins = (c: string) => (c === "b" ? "no fill" : null);
+    const s = spies();
+    const base = fakeSource(s);
+    const { props } = setup({
+      ...base,
+      update: available({ saveField: s.saveField, columnLock: upd }),
+      insert: available({
+        newDraft: () => DRAFT,
+        columnType: () => undefined,
+        insertRow: s.insertRow,
+        columnLock: ins,
+      }),
+    });
+    expect(props().columnLock).toBe(upd);
+    expect(props().draftColumnLock).toBe(ins);
   });
 
   it("reports the selection under the tab's id and clears it on unmount", () => {
-    const { hook, props } = setup(fakeSource());
+    const { hook, props } = setup(fakeSource(spies()));
     act(() => props().onSelectionChange!(2, 10));
     expect(useGridSelection.getState().byTab.t1).toEqual({ count: 2, total: 10 });
     hook.unmount();
     expect(useGridSelection.getState().byTab.t1).toBeUndefined();
   });
+
+  it("does not report the selection when told not to", () => {
+    const { props } = setup(fakeSource(spies()), { reportSelection: false });
+    expect(props().onSelectionChange).toBeUndefined();
+  });
 });
 
-describe("useGridController — what reloads after a write", () => {
-  it("a cell save reloads the page only", async () => {
-    const s = fakeSource();
-    const { props } = setup(s);
-    await act(() => props().onCellSave([1, "a"], "name", "b"));
+describe("useGridController — what each write does and reloads", () => {
+  it("a cell save goes through update's saveField and reloads the page only", async () => {
+    const s = spies();
+    const { props } = setup(fakeSource(s));
+    await act(() => props().onCellSave!([1, "a"], "name", "b"));
     expect(s.saveField).toHaveBeenCalledWith([1, "a"], ["name"], "b", undefined);
     expect(s.refreshPage).toHaveBeenCalledTimes(1);
     expect(s.refreshAll).not.toHaveBeenCalled();
   });
 
   it("a field removal reloads the page only", async () => {
-    const s = fakeSource();
-    const { props } = setup(s);
+    const s = spies();
+    const { props } = setup(fakeSource(s));
     await act(() => props().onFieldDelete!([1], ["tags", "0"]));
     expect(s.unsetField).toHaveBeenCalledWith([1], ["tags", "0"]);
     expect(s.refreshPage).toHaveBeenCalledTimes(1);
   });
 
-  it("a confirmed delete reloads everything", async () => {
-    const s = fakeSource();
-    const { hook, props } = setup(s);
+  it("a confirmed delete sends one key tuple per row and reloads everything", async () => {
+    const s = spies();
+    const { hook, props } = setup(fakeSource(s));
     act(() => props().onBulkDelete!([[1], [2]]));
     renderDialogs(hook.result.current.dialogs);
     expect(h.dialogs.delete).toMatchObject({
@@ -220,11 +272,11 @@ describe("useGridController — what reloads after a write", () => {
   });
 
   it("a confirmed paste reports its counts and reloads everything", async () => {
-    const s = fakeSource();
-    const { hook, props } = setup(s);
-    const paste = { text: "x", rows: [[1, "a"]], columns: [] };
-    await act(() => props().onPasteBlock!(paste));
-    expect(s.planPaste).toHaveBeenCalledWith(paste, [[1, "a"]]);
+    const s = spies();
+    const { hook, props } = setup(fakeSource(s));
+    const block = { text: "x", rows: [[1, "a"]], columns: [] };
+    await act(() => props().onPasteBlock!(block));
+    expect(s.planPaste).toHaveBeenCalledWith(block, [[1, "a"]]);
     renderDialogs(hook.result.current.dialogs);
     expect(h.dialogs.paste).toMatchObject({ plan: PLAN, table: "shop.items" });
     await act(() => (h.dialogs.paste!.onApply as () => Promise<void>)());
@@ -233,9 +285,9 @@ describe("useGridController — what reloads after a write", () => {
     expect(s.refreshAll).toHaveBeenCalledTimes(1);
   });
 
-  it("an insert sends the touched cells with the source's types and reloads everything", async () => {
-    const s = fakeSource();
-    const { props } = setup(s);
+  it("an insert sends the touched cells with the insert's types and reloads everything", async () => {
+    const s = spies();
+    const { props } = setup(fakeSource(s));
     act(() => props().onInsertRow!());
     act(() => props().onDraftCellChange("name", { value: "n", touched: true }));
     await act(() => props().onDraftCommit());
@@ -245,16 +297,42 @@ describe("useGridController — what reloads after a write", () => {
     expect(s.refreshAll).toHaveBeenCalledTimes(1);
     expect(props().draftRow).toBeNull();
   });
+
+  it("a duplicate commits through its own operations, even where Insert is blocked", async () => {
+    const s = spies();
+    const { props } = setup(fakeSource(s, { insert: blocked("view") }));
+    await act(() => props().onDuplicateRow!([1, "a"]));
+    act(() => props().onDraftCellChange("name", { value: "n", touched: true }));
+    await act(() => props().onDraftCommit());
+    expect(s.insertRow).not.toHaveBeenCalled();
+    expect(s.dupInsertRow).toHaveBeenCalledWith([
+      { column: "name", value: "n", columnType: "dup-type" },
+    ]);
+  });
+});
+
+describe("useGridController — the draft keeps the operations that started it", () => {
+  it("a duplicate commits through duplicate's operations even when Insert is available", async () => {
+    const s = spies();
+    const { props } = setup(fakeSource(s));
+    await act(() => props().onDuplicateRow!([1, "a"]));
+    act(() => props().onDraftCellChange("name", { value: "n", touched: true }));
+    await act(() => props().onDraftCommit());
+    expect(s.insertRow).not.toHaveBeenCalled();
+    expect(s.dupInsertRow).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("useGridController — failures", () => {
   it("a row whose key cannot be read goes to onError, not to the server", () => {
-    const s = fakeSource({
-      keyOf: () => {
-        throw new Error("Primary-key columns missing from the result set");
-      },
-    });
-    const { props, onError } = setup(s);
+    const s = spies();
+    const { props, onError } = setup(
+      fakeSource(s, {
+        keyOf: () => {
+          throw new Error("Primary-key columns missing from the result set");
+        },
+      }),
+    );
     act(() => props().onDeleteRow!([1]));
     expect(onError).toHaveBeenCalledWith(
       "Error: Primary-key columns missing from the result set",
@@ -262,17 +340,32 @@ describe("useGridController — failures", () => {
     expect(s.deleteRows).not.toHaveBeenCalled();
   });
 
-  it("an unconfirmed delete the server refuses is toasted", async () => {
+  it("an unconfirmed delete the server refuses is toasted and reloads nothing", async () => {
     usePreferences.setState((st) => ({
       prefs: { ...st.prefs, ui: { ...st.prefs.ui, confirmDestructive: false } },
     }));
-    const s = fakeSource({ deleteRows: vi.fn(() => Promise.reject("in use")) });
-    const { props } = setup(s);
+    const s = spies();
+    s.deleteRows.mockImplementation(() => Promise.reject("in use"));
+    const { props } = setup(fakeSource(s));
     act(() => props().onDeleteRow!([1]));
     await act(async () => {});
     expect(h.notify.error).toHaveBeenCalledWith("tableData.deleteFailedTitle", {
       description: "in use",
     });
     expect(s.refreshAll).not.toHaveBeenCalled();
+  });
+
+  it("a refused insert keeps the draft with the server's error", async () => {
+    const s = spies();
+    s.insertRow.mockImplementation(() => Promise.reject("not null: id"));
+    const { props } = setup(fakeSource(s));
+    act(() => props().onInsertRow!());
+    act(() => props().onDraftCellChange("name", { value: "n", touched: true }));
+    await act(() => props().onDraftCommit());
+    expect(props().draftRow).toMatchObject({
+      saving: false,
+      error: "not null: id",
+      cells: { name: { value: "n", touched: true } },
+    });
   });
 });

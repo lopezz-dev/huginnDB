@@ -103,9 +103,10 @@ import { SortByMenuItems, type SortField } from "@/components/grid/SortControls"
 import { pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import { PolicyLockHint, PolicyVerbNotice } from "@/components/common/PolicyLock";
-import { usePolicyLocker } from "@/lib/policy/access";
+import { useRelationPolicy } from "@/lib/policy/useRelationPolicy";
 import { usePrimaryKey, useTableSource } from "@/lib/grid/useTableSource";
 import { useGridController } from "@/components/grid/useGridController";
+import { reasonOf } from "@/lib/grid/gridSource";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -140,12 +141,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // identifier quoting (backticks for MySQL, brackets for SQL Server, double
   // quotes for PG/SQLite).
   const driver = useConnectionDriver(connectionId);
+  // What the managed policy lets the person do on this table, read once: the
+  // source turns it into capabilities, and this tab's own chrome (the verb
+  // notice, the query panel's expression) reads the same answer.
+  const relation = useMemo(() => ({ schema, name: table }), [schema, table]);
+  const policy = useRelationPolicy(connectionId, relation, driver === "mongodb");
   // On SQL the query panel's expression is a `WHERE` fragment — free SQL, a
   // subquery reads any table — so a rule that limits relations refuses it
   // (`guard::raw_filter`). On MongoDB it is a filter over this one collection.
-  // Every other verb's lock comes with the source (`useTableSource`).
-  const lock = usePolicyLocker(connectionId, { schema, name: table });
-  const rawLock = driver === "mongodb" ? null : lock("freeSql");
+  const rawLock = driver === "mongodb" ? null : policy.freeSql;
   const tableKey = `${schema ?? ""}.${table}`;
   // Subscribe to THIS tab's own column entry, not the whole per-connection
   // `columns` map. `loadColumns` (schema.ts) writes a new map reference on
@@ -447,7 +451,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
 
   // What may be written through these rows, and how (ADR #135); the
   // controller acts on it the way every grid source is acted on.
-  const { source, hasPk, locks, policyColumns } = useTableSource({
+  const source = useTableSource({
     connectionId,
     schema,
     table,
@@ -457,12 +461,13 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     result,
     isView,
     projected,
+    policy,
     trimmedRows,
     fetchData,
     reloadAll,
   });
-  const exportLock = locks.export;
-  const bulkUpdateBlocked = source.can.bulkUpdate;
+  const exportLock = reasonOf(source.export);
+  const canBulkUpdate = source.bulkUpdate.state === "available";
   const { gridProps, dialogs } = useGridController(source, {
     tabId,
     onError: setError,
@@ -1051,7 +1056,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </DropdownMenuSub>
         ),
       },
-      ...(bulkUpdateBlocked === null
+      ...(canBulkUpdate
         ? [
             {
               id: "bulk-update",
@@ -1082,7 +1087,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     ],
     [
       isMongo,
-      bulkUpdateBlocked,
+      canBulkUpdate,
       exportLock,
       t,
       importCollectionJsonForTab,
@@ -1277,16 +1282,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           {error}
         </div>
       )}
-      {hasPk && (
+      {source.addressable && (
         <PolicyVerbNotice
           locked={{
-            insert: !!locks.insert,
-            update: !!locks.update,
-            delete: !!locks.delete,
+            insert: !!policy.insert,
+            update: !!policy.update,
+            delete: !!policy.delete,
           }}
           columns={{
-            insert: locks.insert ? null : policyColumns.insert,
-            update: locks.update ? null : policyColumns.update,
+            insert: policy.insert ? null : policy.columns.insert,
+            update: policy.update ? null : policy.columns.update,
           }}
         />
       )}
@@ -1412,7 +1417,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           initialFilters={serverFilters}
           isMongo={isMongo}
           expressionIgnored={!!raw}
-          columnLock={source.can.updateColumnLock}
+          columnLock={policy.updateColumnLock}
           onApplied={() => void fetchData()}
           onClose={() => setBulkUpdateOpen(false)}
         />

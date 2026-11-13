@@ -8,6 +8,10 @@
  * the status bar. It hands back the `DataGrid` props that wire all of that,
  * and the dialogs to render beside the grid.
  *
+ * It wires a gesture only when the source's capability is available, and
+ * performs it only through the operations that capability carries — there is
+ * no path from a blocked gesture to a write.
+ *
  * What it reloads after a write is part of the behaviour, not a detail:
  *
  * - a cell or field save, and a field removal, reload the **page** — the row
@@ -26,7 +30,13 @@ import { usePreferences } from "@/stores/preferences/preferences";
 import { useGridSelection } from "@/stores/grid/gridSelection";
 import { DeleteRowsDialog } from "@/components/grid/dialogs/DeleteRowsDialog";
 import { PasteCellsDialog } from "@/components/grid/dialogs/PasteCellsDialog";
-import type { GridSource } from "@/lib/grid/gridSource";
+import {
+  opsOf,
+  reasonOf,
+  type ColumnLock,
+  type DraftCommitOps,
+  type GridSource,
+} from "@/lib/grid/gridSource";
 import type { PastePlan } from "@/lib/grid/pastePlan";
 import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
 import type { CellValue, DraftCell, DraftRow, RowValue } from "@/types";
@@ -47,20 +57,24 @@ export interface GridControllerOptions {
 /** The `DataGrid` props the controller owns. Spread them onto the grid. */
 export interface GridControllerProps {
   editable: boolean;
-  columnLock: ((column: string) => string | null) | undefined;
-  draftColumnLock: ((column: string) => string | null) | undefined;
+  columnLock: ColumnLock | undefined;
+  draftColumnLock: ColumnLock | undefined;
   pkColumnNames: string[] | undefined;
   getRowKey: (row: CellValue[]) => string | null;
   onSelectionChange: ((count: number, total: number) => void) | undefined;
-  onCellSave: (row: CellValue[], column: string, value: string | null) => Promise<void>;
-  onFieldSave: (
-    row: CellValue[],
-    path: string[],
-    value: string | null,
-    typeHint?: string,
-  ) => Promise<void>;
+  onCellSave:
+    | ((row: CellValue[], column: string, value: string | null) => Promise<void>)
+    | undefined;
+  onFieldSave:
+    | ((
+        row: CellValue[],
+        path: string[],
+        value: string | null,
+        typeHint?: string,
+      ) => Promise<void>)
+    | undefined;
   onFieldDelete: ((row: CellValue[], path: string[]) => Promise<void>) | undefined;
-  onNavigateFk: (column: string, value: CellValue) => void;
+  onNavigateFk: ((column: string, value: CellValue) => void) | undefined;
   onPasteBlock: ((paste: GridPaste) => Promise<void>) | undefined;
   onDeleteRow: ((row: CellValue[]) => void) | undefined;
   onBulkDelete: ((rows: CellValue[][]) => void) | undefined;
@@ -79,12 +93,26 @@ export interface GridController {
   dialogs: React.ReactNode;
 }
 
+/** A draft row and the operations that will commit it — those of the gesture
+ *  that started it, so a duplicate commits even where Insert is blocked. */
+interface DraftState {
+  row: DraftRow;
+  commit: DraftCommitOps;
+}
+
 export function useGridController(
   source: GridSource,
   { tabId, reportSelection = true, onError }: GridControllerOptions,
 ): GridController {
   const { t } = useTranslation();
-  const { can, identity } = source;
+  const { refreshPage, refreshAll, keyOf, hydrate } = source;
+  const update = opsOf(source.update);
+  const del = opsOf(source.delete);
+  const insert = opsOf(source.insert);
+  const duplicate = opsOf(source.duplicate);
+  const paste = opsOf(source.paste);
+  const unset = opsOf(source.fieldUnset);
+  const fk = opsOf(source.fkNavigate);
 
   // --- selection --------------------------------------------------------------
   const report = useGridSelection((s) => s.report);
@@ -99,10 +127,11 @@ export function useGridController(
 
   // --- saves ------------------------------------------------------------------
   /**
-   * A list-view field save, and the base of the cell save below. Its identity
-   * follows the source's `saveField`, which only moves when what it closes
-   * over does.
+   * A list-view field save, and the base of the cell save below. Keyed on the
+   * operation itself, not on the ops object around it (rebuilt whenever any
+   * capability moves), so it is exactly as stable as the source's `saveField`.
    */
+  const saveField = update?.saveField;
   const onFieldSave = useCallback(
     async (
       row: CellValue[],
@@ -110,13 +139,11 @@ export function useGridController(
       value: string | null,
       typeHint?: string,
     ) => {
-      await source.saveField(row, path, value, typeHint);
-      await source.refreshPage();
+      if (!saveField) return;
+      await saveField(row, path, value, typeHint);
+      await refreshPage();
     },
-    // `source` itself is rebuilt whenever any of its parts move; depending on
-    // the two parts used keeps this as stable as they are.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [source.saveField, source.refreshPage],
+    [saveField, refreshPage],
   );
 
   /**
@@ -131,31 +158,32 @@ export function useGridController(
     [onFieldSave],
   );
 
+  const unsetField = unset?.unsetField;
   const onFieldDelete = useCallback(
     async (row: CellValue[], path: string[]) => {
-      await source.unsetField(row, path);
-      await source.refreshPage();
+      if (!unsetField) return;
+      await unsetField(row, path);
+      await refreshPage();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [source.unsetField, source.refreshPage],
+    [unsetField, refreshPage],
   );
 
   // --- delete -----------------------------------------------------------------
-  /** One tuple per row to delete, each parallel to `identity.pkColumns`. A
+  /** One tuple per row to delete, each in the target's key order. A
    *  single-row delete is a one-element list: one path for one and many. */
   const [pendingDelete, setPendingDelete] = useState<CellValue[][] | null>(null);
 
+  const deleteRows = del?.deleteRows;
   /** Perform the delete and reload. Rejects when the server refuses: the
    *  dialog says why in place, and without a dialog the caller toasts. */
   const runDelete = useCallback(
     async (pkValueRows: CellValue[][]) => {
-      if (!identity) return;
-      await source.deleteRows(pkValueRows);
+      if (!deleteRows) return;
+      await deleteRows(pkValueRows);
       setPendingDelete(null);
-      await source.refreshAll();
+      await refreshAll();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [identity, source.deleteRows, source.refreshAll],
+    [deleteRows, refreshAll],
   );
 
   /** With `ui.confirmDestructive` on (default) open the confirmation; off,
@@ -179,13 +207,12 @@ export function useGridController(
   const onDeleteRows = useCallback(
     (rows: CellValue[][]) => {
       try {
-        requestDelete(rows.map((r) => source.keyOf(r)));
+        requestDelete(rows.map((r) => keyOf(r)));
       } catch (e) {
         onError(String(e));
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [requestDelete, source.keyOf, onError],
+    [requestDelete, keyOf, onError],
   );
   const onDeleteRow = useCallback(
     (row: CellValue[]) => onDeleteRows([row]),
@@ -201,21 +228,22 @@ export function useGridController(
    * would not change, so it needs the rows whole: a value the page left on the
    * server stands in as `null`, which is not what is there (ADR #133).
    */
+  const planPaste = paste?.planPaste;
   const onPasteBlock = useCallback(
-    async (paste: GridPaste) => {
-      const rows = await Promise.all(paste.rows.map(source.hydrate)).catch(
-        () => null,
-      );
+    async (block: GridPaste) => {
+      if (!planPaste) return;
+      const rows = await Promise.all(block.rows.map(hydrate)).catch(() => null);
       if (!rows) return;
-      setPendingPaste(source.planPaste(paste, rows));
+      setPendingPaste(planPaste(block, rows));
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [source.hydrate, source.planPaste],
+    [planPaste, hydrate],
   );
 
+  const applyPasteOp = paste?.applyPaste;
   const applyPaste = useCallback(
     async (plan: PastePlan) => {
-      const summary = await source.applyPaste(plan);
+      if (!applyPasteOp) return;
+      const summary = await applyPasteOp(plan);
       setPendingPaste(null);
       notify.success(
         t("dataGrid.paste.done", {
@@ -223,10 +251,9 @@ export function useGridController(
           count: summary.inserted,
         }),
       );
-      await source.refreshAll();
+      await refreshAll();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [source.applyPaste, source.refreshAll, t],
+    [applyPasteOp, refreshAll, t],
   );
 
   // --- insert / duplicate: the inline draft row -------------------------------
@@ -236,48 +263,55 @@ export function useGridController(
    * refused insert keeps the draft with the server's error, so nothing typed
    * is lost.
    */
-  const [draft, setDraft] = useState<DraftRow | null>(null);
+  const [draft, setDraft] = useState<DraftState | null>(null);
 
   const onInsertRow = useCallback(() => {
-    if (draft) return;
-    const next = source.newDraft();
-    if (next) setDraft(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, source.newDraft]);
+    if (draft || !insert) return;
+    setDraft({ row: insert.newDraft(), commit: insert });
+  }, [draft, insert]);
 
   const onDuplicateRow = useCallback(
     async (original: CellValue[]) => {
-      if (draft) return;
+      if (draft || !duplicate) return;
       // A copy of a cut cell would insert the `null` that stands in for it.
-      const row = await source.hydrate(original).catch(() => null);
+      const row = await hydrate(original).catch(() => null);
       if (!row) return;
-      const next = source.duplicateDraft(row);
-      if (next) setDraft(next);
+      setDraft({ row: duplicate.duplicateDraft(row), commit: duplicate });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [draft, source.hydrate, source.duplicateDraft],
+    [draft, duplicate, hydrate],
   );
 
   const onDraftCellChange = useCallback((column: string, cell: DraftCell) => {
     setDraft((prev) =>
       prev
-        ? { ...prev, cells: { ...prev.cells, [column]: cell }, error: null }
+        ? {
+            ...prev,
+            row: {
+              ...prev.row,
+              cells: { ...prev.row.cells, [column]: cell },
+              error: null,
+            },
+          }
         : prev,
     );
   }, []);
 
   const onDraftCancel = useCallback(() => setDraft(null), []);
 
+  const setDraftRow = (patch: Partial<DraftRow>) =>
+    setDraft((prev) => (prev ? { ...prev, row: { ...prev.row, ...patch } } : prev));
+
   const onDraftCommit = useCallback(async () => {
-    if (!draft || draft.saving) return;
-    const values: RowValue[] = Object.entries(draft.cells)
-      .filter(([column, c]) => c.touched && !can.insertColumnLock?.(column))
+    if (!draft || draft.row.saving) return;
+    const { commit } = draft;
+    const values: RowValue[] = Object.entries(draft.row.cells)
+      .filter(([column, c]) => c.touched && !commit.columnLock?.(column))
       .map(([column, c]) => ({
         column,
         value: c.value,
         // A per-cell type wins: the list view's draft card lets a MongoDB
         // field be written as a chosen BSON type, and only the cell knows it.
-        columnType: c.type ?? source.columnType(column),
+        columnType: c.type ?? commit.columnType(column),
       }));
     // Nothing typed → cancel rather than send an `INSERT () VALUES ()` the
     // backend would reject.
@@ -285,66 +319,60 @@ export function useGridController(
       setDraft(null);
       return;
     }
-    setDraft((prev) => (prev ? { ...prev, saving: true, error: null } : prev));
+    setDraftRow({ saving: true, error: null });
     try {
-      await source.insertRow(values);
+      await commit.insertRow(values);
       setDraft(null);
-      await source.refreshAll();
+      await refreshAll();
     } catch (e) {
-      setDraft((prev) =>
-        prev ? { ...prev, saving: false, error: String(e) } : prev,
-      );
+      setDraftRow({ saving: false, error: String(e) });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft, can.insertColumnLock, source.columnType, source.insertRow, source.refreshAll]);
+  }, [draft, refreshAll]);
 
   // --- wiring -----------------------------------------------------------------
   const gridProps: GridControllerProps = {
-    editable: can.update === null,
-    columnLock: can.updateColumnLock,
-    draftColumnLock: can.insertColumnLock,
+    editable: !!update,
+    columnLock: update?.columnLock,
+    // The open draft's own locks; with none open, Insert's — the grid reads
+    // them to tell "locked" from "only when adding a row" in its headers.
+    draftColumnLock: draft ? draft.commit.columnLock : insert?.columnLock,
     pkColumnNames: source.pkResultNames,
     getRowKey: source.getRowKey,
     onSelectionChange: reportSelection ? onSelectionChange : undefined,
-    onCellSave,
-    onFieldSave,
-    onFieldDelete: can.fieldUnset === null ? onFieldDelete : undefined,
-    onNavigateFk: source.navigateFk,
-    onPasteBlock: can.paste === null ? onPasteBlock : undefined,
-    onDeleteRow: can.delete === null ? onDeleteRow : undefined,
-    onBulkDelete: can.delete === null ? onDeleteRows : undefined,
-    onInsertRow: can.insert === null ? onInsertRow : undefined,
-    // The empty reason is "not decided yet": nothing to show.
-    insertBlocked: can.insert || null,
-    onDuplicateRow: can.duplicate === null ? onDuplicateRow : undefined,
-    draftRow: draft,
+    onCellSave: update ? onCellSave : undefined,
+    onFieldSave: update ? onFieldSave : undefined,
+    onFieldDelete: unset ? onFieldDelete : undefined,
+    onNavigateFk: fk?.navigateFk,
+    onPasteBlock: paste ? onPasteBlock : undefined,
+    onDeleteRow: del ? onDeleteRow : undefined,
+    onBulkDelete: del ? onDeleteRows : undefined,
+    onInsertRow: insert ? onInsertRow : undefined,
+    insertBlocked: reasonOf(source.insert),
+    onDuplicateRow: duplicate ? onDuplicateRow : undefined,
+    draftRow: draft?.row ?? null,
     onDraftCellChange,
     onDraftCommit,
     onDraftCancel,
   };
 
-  const qualified = identity
-    ? `${identity.schema ? `${identity.schema}.` : ""}${identity.table}`
-    : "";
-
   const dialogs = useMemo(
     () => (
       <>
-        {pendingPaste && (
+        {pendingPaste && paste && (
           <PasteCellsDialog
             plan={pendingPaste}
-            table={qualified}
+            table={paste.relationLabel}
             documentMode={source.documentMode}
             onApply={() => applyPaste(pendingPaste)}
             onClose={() => setPendingPaste(null)}
           />
         )}
-        {pendingDelete && identity && (
+        {pendingDelete && del && (
           <DeleteRowsDialog
-            connectionId={identity.connectionId}
-            schema={identity.schema}
-            table={identity.table}
-            pkColumns={identity.pkColumns}
+            connectionId={del.target.connectionId}
+            schema={del.target.schema}
+            table={del.target.table}
+            pkColumns={del.target.pkColumns}
             pkValueRows={pendingDelete}
             onDelete={() => runDelete(pendingDelete)}
             onClose={() => setPendingDelete(null)}
@@ -355,9 +383,9 @@ export function useGridController(
     [
       pendingPaste,
       pendingDelete,
-      qualified,
+      paste,
+      del,
       source.documentMode,
-      identity,
       applyPaste,
       runDelete,
     ],

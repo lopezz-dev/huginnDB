@@ -13,10 +13,12 @@
  *   UPDATE/DELETE never run with an incomplete key.
  * - **The type sent with a value is the catalog's on SQL** and the field's own
  *   BSON type on MongoDB (gotcha #15, ADR #29); see `saveField`.
- * - **The policy is a lock reason per verb, plus per-column limits**
- *   (ADR #113); the backend enforces both regardless.
  * - **A view takes no inserts, and a duplicate under a projection would drop
  *   the hidden columns**, so both say why instead.
+ *
+ * What the policy allows arrives resolved (`policy`, from
+ * `useRelationPolicy`): this producer turns it into capabilities, it does not
+ * read it.
  */
 
 import { useCallback, useMemo } from "react";
@@ -25,7 +27,6 @@ import { api } from "@/lib/tauri";
 import { tableTabTitle } from "@/lib/connectionLabel";
 import { useTabs } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
-import { usePolicyColumns, usePolicyLocker } from "@/lib/policy/access";
 import {
   insertAvailability,
   insertBlockReason,
@@ -35,7 +36,17 @@ import { parsePasteBlock } from "@/lib/grid/pasteBlock";
 import { planPaste, type PastePlan } from "@/lib/grid/pastePlan";
 import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
 import type { TrimmedRows } from "@/lib/grid/trimmedCells";
-import type { GridSource } from "@/lib/grid/gridSource";
+import type { RelationPolicy } from "@/lib/policy/useRelationPolicy";
+import {
+  AVAILABLE,
+  available,
+  blocked,
+  pending,
+  type Availability,
+  type Capability,
+  type DraftCommitOps,
+  type GridSource,
+} from "@/lib/grid/gridSource";
 import type {
   CellValue,
   ColumnInfo,
@@ -60,6 +71,8 @@ export interface TableSourceInput {
   isView: boolean;
   /** The browse sends a projection (the key columns ride along with it). */
   projected: boolean;
+  /** What the managed policy allows on this table. */
+  policy: RelationPolicy;
   trimmedRows: TrimmedRows;
   /** Reload the page on screen. */
   fetchData: () => Promise<void>;
@@ -67,30 +80,15 @@ export interface TableSourceInput {
   reloadAll: () => Promise<void>;
 }
 
-/** What the table tab needs beyond the source itself: the policy state its
- *  own chrome (the verb notice, the export menu) renders from. */
-export interface TableSource {
-  source: GridSource;
-  /** The rows carry the whole key, so they can be written back. */
-  hasPk: boolean;
-  locks: {
-    insert: string | null;
-    update: string | null;
-    delete: string | null;
-    export: string | null;
-  };
-  /** Column limits per verb, as `usePolicyColumns` reports them. */
-  policyColumns: ReturnType<typeof usePolicyColumns>;
-}
-
 /**
  * Every column that participates in the table's PRIMARY KEY, in catalog
  * order, plus their names. Composite keys surface every entry; a table with no
  * key yields an empty list (its rows are then read-only).
  *
- * Using `find` instead of `filter` here once silently corrupted data on
- * composite-key tables — always operate on the full list. Memoised on `cols`
- * so the names array keeps its identity: `DataGrid` reads it as
+ * A separate hook because the browse needs the key names before the page
+ * exists — the projection it sends carries them. Using `find` instead of
+ * `filter` here once silently corrupted data on composite-key tables. Memoised
+ * on `cols` so the names keep their identity: `DataGrid` reads them as
  * `pkColumnNames`, and a new array each render would defeat `GridRow`'s memo.
  */
 export function usePrimaryKey(cols: ColumnInfo[] | undefined): {
@@ -146,6 +144,15 @@ function copyDraft(
   return { cells, error: null, saving: false };
 }
 
+/** The first reason that applies, as a capability; available when none does. */
+function gate<Ops>(
+  reasons: (string | null)[],
+  ops: () => Ops,
+): Capability<Ops> {
+  const reason = reasons.find((r): r is string => r !== null);
+  return reason !== undefined ? blocked(reason) : available(ops());
+}
+
 export function useTableSource({
   connectionId,
   schema,
@@ -156,43 +163,13 @@ export function useTableSource({
   result,
   isView,
   projected,
+  policy,
   trimmedRows,
   fetchData,
   reloadAll,
-}: TableSourceInput): TableSource {
+}: TableSourceInput): GridSource {
   const { t } = useTranslation();
   const isMongo = driver === "mongodb";
-
-  // What the managed policy lets the person do on this relation. The browse
-  // itself is gated one level up (`PolicyGate`), so everything here is about
-  // the verbs of a table they may read.
-  const lock = usePolicyLocker(connectionId, { schema, name: table });
-  const insertLock = lock("insert");
-  const updateLock = lock("update");
-  const deleteLock = lock("delete");
-  const exportLock = lock("export");
-  // Which columns the role may write, when it limits them (ADR #113). Each
-  // lock is `undefined` when the verb is not limited, so the grid's paths stay
-  // exactly as they were for everyone else.
-  const policyColumns = usePolicyColumns(
-    connectionId,
-    { schema, name: table },
-    isMongo,
-  );
-  const updateColumnLock = useMemo(
-    () =>
-      policyColumns.update
-        ? (column: string) => policyColumns.lock("update", column)
-        : undefined,
-    [policyColumns],
-  );
-  const insertColumnLock = useMemo(
-    () =>
-      policyColumns.insert
-        ? (column: string) => policyColumns.lock("insert", column)
-        : undefined,
-    [policyColumns],
-  );
 
   const pkColumnNames = useMemo(() => pkColumns.map((c) => c.name), [pkColumns]);
 
@@ -271,6 +248,9 @@ export function useTableSource({
    * The catalog side prefers the schema store (`cols`) over the result set,
    * because a MongoDB result reports a generic `"bson"` per column while the
    * store carries the inferred per-field type.
+   *
+   * Its identity reaches the grid as `onCellSave`, which keys the column memo
+   * (`useGridColumns`): the list below is exactly what it closes over.
    */
   const saveField = useCallback(
     async (
@@ -279,9 +259,6 @@ export function useTableSource({
       value: string | null,
       typeHint?: string,
     ) => {
-      if (pkColumns.length === 0) {
-        throw new Error("Cannot update: table has no primary key");
-      }
       const pkValues = keyOf(rowValues);
       const column = path.join(".");
       const catalogType =
@@ -298,17 +275,7 @@ export function useTableSource({
         columnType: isMongo ? (typeHint ?? catalogType) : catalogType,
       });
     },
-    [
-      pkColumns,
-      pkColumnNames,
-      keyOf,
-      cols,
-      result,
-      connectionId,
-      schema,
-      table,
-      isMongo,
-    ],
+    [pkColumnNames, keyOf, cols, result, connectionId, schema, table, isMongo],
   );
 
   /** MongoDB `$unset` on the document addressed by its `_id`. */
@@ -327,7 +294,6 @@ export function useTableSource({
 
   const deleteRows = useCallback(
     async (pkValueRows: CellValue[][]) => {
-      if (pkColumns.length === 0) return;
       await api.deleteRows({
         connectionId,
         schema,
@@ -336,7 +302,7 @@ export function useTableSource({
         pkValueRows,
       });
     },
-    [pkColumns, pkColumnNames, connectionId, schema, table],
+    [pkColumnNames, connectionId, schema, table],
   );
 
   const planTablePaste = useCallback(
@@ -352,21 +318,14 @@ export function useTableSource({
         bitColumns: new Set(
           columns.filter((c) => isBitType(c.data_type)).map((c) => c.name),
         ),
-        canUpdate: !updateLock,
-        canInsert: !insertLock,
-        updateLock: updateColumnLock,
-        insertLock: insertColumnLock,
+        // The plan respects the locks itself: it skips what they refuse.
+        canUpdate: !policy.update,
+        canInsert: !policy.insert,
+        updateLock: policy.updateColumnLock,
+        insertLock: policy.insertColumnLock,
       });
     },
-    [
-      result,
-      pkColumnNames,
-      cols,
-      updateLock,
-      insertLock,
-      updateColumnLock,
-      insertColumnLock,
-    ],
+    [result, pkColumnNames, cols, policy],
   );
 
   const applyPaste = useCallback(
@@ -380,24 +339,6 @@ export function useTableSource({
         inserts: plan.inserts,
       }),
     [connectionId, schema, table, pkColumnNames],
-  );
-
-  const newDraft = useCallback(
-    () => (cols ? emptyDraft(cols.map((c) => c.name)) : null),
-    [cols],
-  );
-
-  const duplicateDraft = useCallback(
-    (rowValues: CellValue[]) =>
-      result && cols
-        ? copyDraft(
-            result.columns.map((c) => c.name),
-            rowValues,
-            pkColumns[0],
-            insertColumnLock,
-          )
-        : null,
-    [result, cols, pkColumns, insertColumnLock],
   );
 
   const columnType = useCallback(
@@ -457,120 +398,113 @@ export function useTableSource({
           ? "dataGrid.writeBlocked.noPk"
           : "dataGrid.writeBlocked.pkHidden",
       );
-  // Whether an insert can begin, and if not why (#267). Undecided (`null`)
-  // until the columns load, so a table never flashes "no primary key" while
-  // its key is still on the way — the grid then shows no Insert at all.
-  const insertBlock = cols
-    ? insertAvailability({
-        isView,
-        pkColumnCount: pkColumns.length,
-        pkInResult: hasPk,
-        policyLock: insertLock,
-      })
-    : null;
-  const insert = !cols
-    ? ""
-    : insertBlock
-      ? insertBlockReason(insertBlock, t)
+
+  return useMemo((): GridSource => {
+    const commit: DraftCommitOps = {
+      columnType,
+      insertRow,
+      columnLock: policy.insertColumnLock,
+    };
+    // Whether an insert can begin, and if not why (#267). Pending until the
+    // columns load, so a table never flashes "no primary key" while its key
+    // is still on the way.
+    const insertBlock = cols
+      ? insertAvailability({
+          isView,
+          pkColumnCount: pkColumns.length,
+          pkInResult: hasPk,
+          policyLock: policy.insert,
+        })
       : null;
-
-  const can = useMemo(
-    () => ({
-      update: keyMissing ?? updateLock,
-      delete: keyMissing ?? deleteLock,
-      insert,
-      // A duplicate copies the row as the page holds it, so under a projection
-      // it would silently drop every hidden column's value.
-      duplicate:
-        keyMissing ??
-        (projected ? t("dataGrid.writeBlocked.projected") : null) ??
-        insertLock,
-      // The plan itself respects the update/insert locks (it skips what they
-      // refuse), so a paste needs only addressable rows.
-      paste: keyMissing,
-      bulkUpdate: keyMissing ?? updateLock,
-      export: exportLock,
-      fieldUnset: isMongo ? null : t("dataGrid.writeBlocked.documentsOnly"),
-      updateColumnLock,
-      insertColumnLock,
-    }),
-    [
-      keyMissing,
-      updateLock,
-      deleteLock,
-      insert,
-      projected,
-      insertLock,
-      exportLock,
-      isMongo,
-      updateColumnLock,
-      insertColumnLock,
-      t,
-    ],
-  );
-
-  const identity = useMemo(
-    () =>
-      hasPk
-        ? { connectionId, schema, table, pkColumns: pkColumnNames }
-        : null,
-    [hasPk, connectionId, schema, table, pkColumnNames],
-  );
-
-  const source: GridSource = useMemo(
-    () => ({
-      identity,
-      can,
+    const insert: GridSource["insert"] = !cols
+      ? pending
+      : insertBlock
+        ? blocked(insertBlockReason(insertBlock, t))
+        : available({
+            ...commit,
+            newDraft: () => emptyDraft(cols.map((c) => c.name)),
+          });
+    const bulkUpdate: Availability = gate([keyMissing, policy.update], () => ({}));
+    return {
+      addressable: hasPk,
       pkResultNames: pkColumnNames,
       documentMode: isMongo,
       keyOf,
       getRowKey,
       hydrate: trimmedRows.hydrate,
-      saveField,
-      unsetField,
-      deleteRows,
-      planPaste: planTablePaste,
-      applyPaste,
-      newDraft,
-      duplicateDraft,
-      columnType,
-      insertRow,
       refreshPage: fetchData,
       refreshAll: reloadAll,
-      navigateFk,
-    }),
-    [
-      identity,
-      can,
-      pkColumnNames,
-      isMongo,
-      keyOf,
-      getRowKey,
-      trimmedRows.hydrate,
-      saveField,
-      unsetField,
-      deleteRows,
-      planTablePaste,
-      applyPaste,
-      newDraft,
-      duplicateDraft,
-      columnType,
-      insertRow,
-      fetchData,
-      reloadAll,
-      navigateFk,
-    ],
-  );
-
-  return {
-    source,
+      update: gate([keyMissing, policy.update], () => ({
+        saveField,
+        columnLock: policy.updateColumnLock,
+      })),
+      delete: gate([keyMissing, policy.delete], () => ({
+        target: { connectionId, schema, table, pkColumns: pkColumnNames },
+        deleteRows,
+      })),
+      insert,
+      // A duplicate copies the row as the page holds it, so under a projection
+      // it would silently drop every hidden column's value. It is not gated on
+      // `isView`, which is how the tab behaved before the extraction.
+      duplicate: gate(
+        [
+          keyMissing,
+          projected ? t("dataGrid.writeBlocked.projected") : null,
+          policy.insert,
+        ],
+        () => ({
+          ...commit,
+          duplicateDraft: (row: CellValue[]) =>
+            copyDraft(
+              (result?.columns ?? []).map((c) => c.name),
+              row,
+              pkColumns[0],
+              policy.insertColumnLock,
+            ),
+        }),
+      ),
+      // The plan skips what the update/insert locks refuse, so a paste needs
+      // only addressable rows.
+      paste: gate([keyMissing], () => ({
+        relationLabel: `${schema ? `${schema}.` : ""}${table}`,
+        planPaste: planTablePaste,
+        applyPaste,
+      })),
+      fieldUnset: gate(
+        [isMongo ? null : t("dataGrid.writeBlocked.documentsOnly")],
+        () => ({ unsetField }),
+      ),
+      fkNavigate: available({ navigateFk }),
+      bulkUpdate,
+      export: policy.export ? blocked(policy.export) : AVAILABLE,
+    };
+  }, [
+    cols,
+    isView,
+    pkColumns,
     hasPk,
-    locks: {
-      insert: insertLock,
-      update: updateLock,
-      delete: deleteLock,
-      export: exportLock,
-    },
-    policyColumns,
-  };
+    keyMissing,
+    projected,
+    policy,
+    t,
+    connectionId,
+    schema,
+    table,
+    pkColumnNames,
+    isMongo,
+    keyOf,
+    getRowKey,
+    trimmedRows.hydrate,
+    fetchData,
+    reloadAll,
+    saveField,
+    deleteRows,
+    columnType,
+    insertRow,
+    result,
+    planTablePaste,
+    applyPaste,
+    unsetField,
+    navigateFk,
+  ]);
 }
