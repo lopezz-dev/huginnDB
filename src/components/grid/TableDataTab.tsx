@@ -1,16 +1,14 @@
 /**
- * Tab body for browsing one database table. Loads pages via
- * `api.fetchTableData`, supports sort + server-side column filters +
- * row mutations (insert / duplicate / delete), and routes cell edits
- * to `api.updateCell` (requires a PK column to be present in the
- * result set).
+ * Tab body for browsing one database table: pages via `useTableBrowse`, sort,
+ * server-side filters, the query panel, pagination and the toolbar around the
+ * grid.
  *
- * Insert / Duplicate model: rather than a dialog, the grid renders an
- * inline draft row pinned to the top. The user fills cells like in
- * HeidiSQL — Tab moves between fields, Esc cancels, and clicking
- * outside the row (or pressing Enter) commits the INSERT. If the
- * backend rejects the row, the draft survives with an inline error so
- * the user can fix and retry without losing what they typed.
+ * What writes through the rows is not here (ADR #135): `useTableSource`
+ * states what this table's rows allow — key, types, policy locks — and
+ * `useGridController` acts on it (cell saves, delete and paste with their
+ * confirmations, the inline insert/duplicate draft, selection), the same
+ * controller every grid source goes through. This file keeps only the
+ * browse-specific actions: bulk update, export, import and the JSON inserts.
  *
  * Filtering model: the toolbar input applies a server-side "any column
  * contains" search (case-insensitive `LIKE`/`ILIKE`), committed on
@@ -49,28 +47,17 @@ import { notify } from "@/lib/notify";
 import { IconButton } from "@/components/ui/icon-button";
 import { api } from "@/lib/tauri";
 import { useSchema } from "@/stores/session/schema";
-import {
-  insertAvailability,
-  insertBlockReason,
-} from "@/lib/grid/insertAvailability";
 import { useTabs } from "@/stores/session/tabs";
 import { useFilterHistory } from "@/stores/grid/filterHistory";
-import { useConnections } from "@/stores/session/connections";
 import { useConnectionDriver } from "@/lib/connection/useConnectionDriver";
-import { tableTabTitle } from "@/lib/connectionLabel";
-import { useGridSelection } from "@/stores/grid/gridSelection";
 import {
   usePreferences,
   selectGridPrefs,
 } from "@/stores/preferences/preferences";
 import { confirmDestructive } from "@/lib/confirmDestructive";
 import type {
-  CellValue,
   ColumnFilter,
-  DraftCell,
-  DraftRow,
   Projection,
-  RowValue,
   SortSpec,
 } from "@/types";
 import {
@@ -85,8 +72,6 @@ import {
 } from "@/components/grid/QueryPanel";
 import { GoToRowInput } from "@/components/grid/GoToRowInput";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
-import { DeleteRowsDialog } from "@/components/grid/dialogs/DeleteRowsDialog";
-import { PasteCellsDialog } from "@/components/grid/dialogs/PasteCellsDialog";
 import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
 import { InsertRowsDialog } from "@/components/grid/dialogs/InsertRowsDialog";
 import { Button } from "@/components/ui/button";
@@ -118,11 +103,10 @@ import { SortByMenuItems, type SortField } from "@/components/grid/SortControls"
 import { pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import { PolicyLockHint, PolicyVerbNotice } from "@/components/common/PolicyLock";
-import { usePolicyColumns, usePolicyLocker } from "@/lib/policy/access";
-import { isBitType } from "@/lib/grid/columnKinds";
-import { parsePasteBlock } from "@/lib/grid/pasteBlock";
-import { planPaste, type PastePlan } from "@/lib/grid/pastePlan";
-import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
+import { useRelationPolicy } from "@/lib/policy/useRelationPolicy";
+import { usePrimaryKey, useTableSource } from "@/lib/grid/useTableSource";
+import { useGridController } from "@/components/grid/useGridController";
+import { reasonOf } from "@/lib/grid/gridSource";
 import {
   registerTableRefresh,
   unregisterTableRefresh,
@@ -136,76 +120,12 @@ interface Props {
   table: string;
 }
 
-interface PendingDelete {
-  /**
-   * One tuple per row to delete, each parallel to `pkColumns`. A single-row
-   * delete is just a one-element list, so the confirmation dialog and the
-   * `deleteRows` call handle one and many rows through the same path.
-   */
-  pkValueRows: CellValue[][];
-}
-
-/** Build an empty draft (all cells untouched / NULL). */
-function emptyDraft(columnNames: string[]): DraftRow {
-  const cells: Record<string, DraftCell> = {};
-  for (const c of columnNames) {
-    cells[c] = { value: null, touched: false };
-  }
-  return { cells, error: null, saving: false };
-}
-
-/**
- * Build a draft prefilled from an existing row (for Duplicate). Auto-PK
- * columns (PK whose type contains int/serial/rowid) are left untouched
- * so the database picks the next value.
- */
-function duplicateDraft(
-  resultColumns: string[],
-  values: CellValue[],
-  pkColumn:
-    | { name: string; is_primary_key: boolean; data_type: string }
-    | undefined,
-  // A column the policy will not let the person fill is left untouched too,
-  // so the copy takes the database's default there (ADR #113).
-  insertLock?: (column: string) => string | null,
-): DraftRow {
-  const cells: Record<string, DraftCell> = {};
-  const pkIsAuto =
-    pkColumn &&
-    pkColumn.is_primary_key &&
-    /int|serial|rowid/i.test(pkColumn.data_type);
-  for (let i = 0; i < resultColumns.length; i++) {
-    const name = resultColumns[i];
-    if ((pkIsAuto && pkColumn?.name === name) || insertLock?.(name)) {
-      cells[name] = { value: null, touched: false };
-      continue;
-    }
-    const v = values[i];
-    if (v === null || v === undefined) {
-      cells[name] = { value: null, touched: true };
-    } else {
-      const s = typeof v === "object" ? JSON.stringify(v) : String(v);
-      cells[name] = { value: s, touched: true };
-    }
-  }
-  return { cells, error: null, saving: false };
-}
-
 // A connection with no filter history yet reads `filterHistory` as
 // `undefined`; `?? []` at the DataGrid call site would otherwise hand it a
 // fresh array every render, same trap as `NO_ROWS` in `DataGrid.tsx`.
 const NO_HISTORY: string[] = [];
 
 export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
-  const reportSelection = useGridSelection((s) => s.report);
-  const clearSelection = useGridSelection((s) => s.clear);
-  const onSelectionChange = useCallback(
-    (count: number, total: number) => reportSelection(tabId, count, total),
-    [reportSelection, tabId],
-  );
-  // Drop this tab's selection entry when the tab unmounts (close /
-  // disconnect) so the status bar never reads a stale count.
-  useEffect(() => () => clearSelection(tabId), [tabId, clearSelection]);
   // A view takes no inserts from the grid; the explorer's listing says which
   // relations are views (`TableInfo.kind`).
   const isView = useSchema(
@@ -221,40 +141,15 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   // identifier quoting (backticks for MySQL, brackets for SQL Server, double
   // quotes for PG/SQLite).
   const driver = useConnectionDriver(connectionId);
-  // What the managed policy lets the person do on this relation. The browse
-  // itself is gated one level up (`PolicyGate`), so everything here is about
-  // the verbs of a table they may read.
-  const lock = usePolicyLocker(connectionId, { schema, name: table });
-  const insertLock = lock("insert");
-  const updateLock = lock("update");
-  const deleteLock = lock("delete");
-  const exportLock = lock("export");
+  // What the managed policy lets the person do on this table, read once: the
+  // source turns it into capabilities, and this tab's own chrome (the verb
+  // notice, the query panel's expression) reads the same answer.
+  const relation = useMemo(() => ({ schema, name: table }), [schema, table]);
+  const policy = useRelationPolicy(connectionId, relation, driver === "mongodb");
   // On SQL the query panel's expression is a `WHERE` fragment — free SQL, a
   // subquery reads any table — so a rule that limits relations refuses it
   // (`guard::raw_filter`). On MongoDB it is a filter over this one collection.
-  const rawLock = driver === "mongodb" ? null : lock("freeSql");
-  // Which columns the role may write, when it limits them (ADR #113). Each
-  // lock is `undefined` when the verb is not limited, so the grid's paths
-  // stay exactly as they were for everyone else.
-  const policyColumns = usePolicyColumns(
-    connectionId,
-    { schema, name: table },
-    driver === "mongodb",
-  );
-  const columnLock = useMemo(
-    () =>
-      policyColumns.update
-        ? (column: string) => policyColumns.lock("update", column)
-        : undefined,
-    [policyColumns],
-  );
-  const draftColumnLock = useMemo(
-    () =>
-      policyColumns.insert
-        ? (column: string) => policyColumns.lock("insert", column)
-        : undefined,
-    [policyColumns],
-  );
+  const rawLock = driver === "mongodb" ? null : policy.freeSql;
   const tableKey = `${schema ?? ""}.${table}`;
   // Subscribe to THIS tab's own column entry, not the whole per-connection
   // `columns` map. `loadColumns` (schema.ts) writes a new map reference on
@@ -494,40 +389,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    *  nested-path walk below, like the filter dialogs gate theirs. */
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
-  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(
-    null,
-  );
-  /** A pasted block waiting for its confirmation (ADR #114). */
-  const [pendingPaste, setPendingPaste] = useState<PastePlan | null>(null);
-  const [draft, setDraft] = useState<DraftRow | null>(null);
   const [bulkUpdateOpen, setBulkUpdateOpen] = useState(false);
 
-  /**
-   * Every column that participates in the table's PRIMARY KEY, in
-   * catalog order. Composite PKs surface multiple entries here; tables
-   * without a PK yield an empty list (data is read-only in that case).
-   *
-   * Using `find` instead of `filter` here used to silently corrupt data
-   * on composite-PK tables: the cell-save path would send only the
-   * leading column to `update_cell`, and the backend's
-   * `WHERE first_pk_col = ?` predicate would match every row sharing
-   * that leading value. Always operate on the full list.
-   */
-  const pkColumns = useMemo(
-    () => cols?.filter((c) => c.is_primary_key) ?? [],
-    [cols],
-  );
-  /** Convenience: the first PK column, used for snippet generation and
-   *  the (legacy) `RETURNING <pk>` hint on inserts. Do NOT use this for
-   *  any UPDATE/DELETE predicate — that needs the full `pkColumns`. */
-  const pkColumn = pkColumns[0];
-  /** `DataGrid`'s `pkColumnNames` prop — a plain `.map()` on `pkColumns`
-   *  would otherwise hand it a new array (and, downstream, a defeated
-   *  `GridRow` memo — see that file's header comment) every render. */
-  const pkColumnNames = useMemo(
-    () => pkColumns.map((c) => c.name),
-    [pkColumns],
-  );
+  const { pkColumns, pkColumnNames } = usePrimaryKey(cols);
 
   /** What the browse and the export send for `projection` — the key columns
    *  added, so a projected row is still one the grid can write to. */
@@ -585,6 +449,30 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     reloadAll,
   } = browse;
 
+  // What may be written through these rows, and how (ADR #135); the
+  // controller acts on it the way every grid source is acted on.
+  const source = useTableSource({
+    connectionId,
+    schema,
+    table,
+    driver,
+    cols,
+    pkColumns,
+    result,
+    isView,
+    projected,
+    policy,
+    trimmedRows,
+    fetchData,
+    reloadAll,
+  });
+  const exportLock = reasonOf(source.export);
+  const canBulkUpdate = source.bulkUpdate.state === "available";
+  const { gridProps, dialogs } = useGridController(source, {
+    tabId,
+    onError: setError,
+  });
+
   /**
    * MongoDB's nested field paths for the two filter dialogs, read off the page
    * on screen (`lib/grid/fieldPaths.ts`). `infer_columns` only ever reports
@@ -632,161 +520,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     return () => unregisterTableRefresh(tabId);
   }, [tabId, reloadAll]);
 
-  /**
-   * Indices of every PK column inside `result.columns`, memoised so cell
-   * mutations don't re-scan the array on every keystroke. A negative
-   * entry means that PK column was excluded from the result set — the
-   * editable gate below treats the table as read-only in that case so
-   * UPDATE/DELETE never run with an incomplete key.
-   */
-  const pkColumnIndices = useMemo(() => {
-    if (!result || pkColumns.length === 0) return [];
-    return pkColumns.map((c) =>
-      result.columns.findIndex((rc) => rc.name === c.name),
-    );
-  }, [result, pkColumns]);
-
-  /**
-   * Resolve the row's full PK tuple directly from its payload. Returning
-   * one value per `pkColumns` entry — composite PKs ship every value to
-   * the backend so the WHERE clause stays unambiguous. Using
-   * `row.original` rather than a row index sidesteps the client-side
-   * filter / sort reshuffle problem documented in ADR #7.
-   */
-  function pkValuesFromRow(rowValues: CellValue[]): CellValue[] {
-    if (pkColumns.length === 0) throw new Error("Table has no primary key");
-    if (pkColumnIndices.some((i) => i < 0))
-      throw new Error("Primary-key columns missing from the result set");
-    return pkColumnIndices.map((i) => rowValues[i]);
-  }
-
-  /**
-   * Commit one field of one row, addressed by **path**.
-   *
-   * A table-view cell is the single-segment case of a list-view field, so both
-   * grids commit through here (`onCellSave` = `saveField(row, [column], value)`)
-   * — the two used to be near-copies, and the copy is exactly where the type
-   * rule below would drift.
-   *
-   * The `columnType` hint exists so the backend can cast a textual literal
-   * server-side where a plain string bind would be coerced wrongly (MySQL
-   * `BIT` — see `update_cell`; MongoDB Date/int/long — see `string_to_bson`).
-   * Which type to send is **not** uniform:
-   *
-   * - On MongoDB, prefer the field's real BSON type as reported by
-   *   `QueryResult.row_types`, never a guess at the display JSON: `Int32`,
-   *   `Int64` and `Double` all arrive as a plain JSON number, so inferring
-   *   would silently rewrite a `Long` as an `Int` the first time someone fixed
-   *   a typo in it (ADR #29). A dotted path (`customData.format`, `tags.2`)
-   *   is what `$set` takes natively.
-   * - On the SQL drivers the hint is deliberately IGNORED and the catalog type
-   *   wins. `update_cell` reads `columnType` to decide whether a MySQL `BIT`
-   *   needs its `CAST(? AS UNSIGNED)` (gotcha #15), and handing it the list
-   *   view's inferred `"string"` would both miss the cast and suppress the
-   *   backend's catalog fallback. Only a top-level column is addressable there
-   *   anyway.
-   *
-   * The catalog side prefers the schema store (`cols`) over the result set
-   * because a MongoDB result reports a generic `"bson"` per column while the
-   * store carries the inferred per-field type.
-   */
-  const saveField = useCallback(
-    async (
-      rowValues: CellValue[],
-      path: string[],
-      value: string | null,
-      typeHint?: string,
-    ) => {
-      if (pkColumns.length === 0) {
-        throw new Error("Cannot update: table has no primary key");
-      }
-      const pkValues = pkValuesFromRow(rowValues);
-      const column = path.join(".");
-      const catalogType =
-        cols?.find((c) => c.name === column)?.data_type ??
-        result?.columns.find((c) => c.name === column)?.data_type;
-      await api.updateCell({
-        connectionId,
-        schema,
-        table,
-        pkColumns: pkColumns.map((c) => c.name),
-        pkValues,
-        column,
-        value,
-        columnType: isMongo ? (typeHint ?? catalogType) : catalogType,
-      });
-      await fetchData();
-    },
-    // `pkValuesFromRow` isn't listed: it's a plain function recreated every
-    // render, but it closes over `pkColumns`/`pkColumnIndices` from THIS
-    // same render, and both are already listed — so whenever either
-    // changes, this callback is rebuilt anyway and picks up a `pkValuesFromRow`
-    // that agrees with it. Listing it too would just make eslint happy.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pkColumns, cols, result, connectionId, schema, table, isMongo, fetchData],
-  );
-
-  /**
-   * Table-view cell commit: one column, no type hint of its own.
-   *
-   * This has to be as stable as `saveField` itself: it's the one that
-   * reaches `useGridColumns` as `onCellSave` (`GridColumnsOptions`), whose
-   * whole `columns` array is rebuilt — and the entire table body remounted,
-   * per that file's "dependency array is load-bearing" note — every time
-   * this identity changes.
-   */
-  const onCellSave = useCallback(
-    (rowValues: CellValue[], columnName: string, value: string | null) =>
-      saveField(rowValues, [columnName], value),
-    [saveField],
-  );
-
-  /**
-   * List-view field removal — MongoDB `$unset` on the document addressed by
-   * its `_id`. Only wired for MongoDB: a SQL row's columns are a property of
-   * the table, not of the row, so "remove this field from this row" has no
-   * counterpart there (setting it to NULL does, and that is `saveField`).
-   */
-  async function onFieldDelete(rowValues: CellValue[], path: string[]) {
-    const idValue = pkValuesFromRow(rowValues)[0] ?? null;
-    await api.unsetField({
-      connectionId,
-      collection: table,
-      idValue,
-      field: path.join("."),
-    });
-    await fetchData();
-  }
-
-  /**
-   * "Go to referenced row": open (or focus) the table the FK column points at,
-   * pre-filtered to the clicked value. Resolves the referenced table/column
-   * from the schema-store column metadata (`cols`), which carries the
-   * single-column FK reference. No-op for non-FK columns. The referenced table
-   * lives in the same connection/database, so we reuse `connectionId`.
-   */
-  const onNavigateFk = useCallback(
-    (columnName: string, value: CellValue) => {
-      const col = cols?.find((c) => c.name === columnName);
-      if (!col?.referenced_table || !col.referenced_column) return;
-      // Both reads are `getState()` snapshots, not subscriptions — neither
-      // `profiles` nor the tab list needs to be a dependency here.
-      useTabs.getState().open({
-        kind: "table",
-        title: tableTabTitle(
-          useConnections.getState().profiles,
-          connectionId,
-          col.referenced_table,
-        ),
-        connectionId,
-        schema: col.referenced_schema ?? undefined,
-        table: col.referenced_table,
-        initialFilters: [{ column: col.referenced_column, op: "eq", value }],
-      });
-    },
-    [cols, connectionId],
-  );
-
   function onAddFilter(f: ColumnFilter) {
     setServerFilters((prev) => {
       const existing = prev.findIndex(
@@ -825,56 +558,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   function onEditFilter(index: number) {
     setQueryOpen(true);
     setQueryFocus((prev) => ({ index, epoch: (prev?.epoch ?? 0) + 1 }));
-  }
-
-  /** Stage rows for deletion. With `ui.confirmDestructive` on (default) this
-   *  opens the confirmation dialog; with it off the rows are deleted straight
-   *  away (the toggle's whole purpose is to skip the prompt). */
-  function requestDelete(pkValueRows: CellValue[][]) {
-    if (pkValueRows.length === 0) return;
-    if (usePreferences.getState().prefs.ui.confirmDestructive) {
-      setPendingDelete({ pkValueRows });
-    } else {
-      void runDelete(pkValueRows).catch((e: unknown) =>
-        notify.error(t("tableData.deleteFailedTitle"), {
-          description: String(e),
-        }),
-      );
-    }
-  }
-
-  function onDeleteRow(rowValues: CellValue[]) {
-    try {
-      requestDelete([pkValuesFromRow(rowValues)]);
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  /** Multi-selection delete — routes the whole selection through the same
-   *  confirmation + bulk `deleteRows` call as a single row. */
-  function onBulkDelete(rows: CellValue[][]) {
-    try {
-      requestDelete(rows.map((r) => pkValuesFromRow(r)));
-    } catch (e) {
-      setError(String(e));
-    }
-  }
-
-  /** Actually perform the bulk delete and refresh the page. Rejects when the
-   *  server refuses: the confirmation dialog says why in place, and with
-   *  `ui.confirmDestructive` off (no dialog) `requestDelete` raises a toast. */
-  async function runDelete(pkValueRows: CellValue[][]) {
-    if (pkColumns.length === 0) return;
-    await api.deleteRows({
-      connectionId,
-      schema,
-      table,
-      pkColumns: pkColumns.map((c) => c.name),
-      pkValueRows,
-    });
-    setPendingDelete(null);
-    await reloadAll();
   }
 
   /**
@@ -979,76 +662,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     }
   }, [t, table, connectionId, fetchData]);
 
-  function onInsertRow() {
-    if (!cols || draft) return;
-    setDraft(emptyDraft(cols.map((c) => c.name)));
-  }
-
-  async function onDuplicateRow(original: CellValue[]) {
-    if (!result || !cols || draft) return;
-    // A copy of a cut cell would insert the `null` that stands in for it.
-    const rowValues = await trimmedRows.hydrate(original).catch(() => null);
-    if (!rowValues) return;
-    setDraft(
-      duplicateDraft(
-        result.columns.map((c) => c.name),
-        rowValues,
-        pkColumn,
-        draftColumnLock,
-      ),
-    );
-  }
-
-  function onDraftCellChange(column: string, cell: DraftCell) {
-    setDraft((prev) =>
-      prev
-        ? { ...prev, cells: { ...prev.cells, [column]: cell }, error: null }
-        : prev,
-    );
-  }
-
-  function onDraftCancel() {
-    setDraft(null);
-  }
-
-  async function onDraftCommit() {
-    if (!draft || draft.saving) return;
-    const values: RowValue[] = Object.entries(draft.cells)
-      .filter(([column, c]) => c.touched && !draftColumnLock?.(column))
-      .map(([column, c]) => ({
-        column,
-        value: c.value,
-        // A per-cell type wins over the catalog one: the list view's draft card
-        // lets a MongoDB field be written as a chosen BSON type, and only the
-        // cell knows about it (see `DraftCell.type`).
-        columnType:
-          c.type ??
-          cols?.find((col) => col.name === column)?.data_type ??
-          result?.columns.find((col) => col.name === column)?.data_type,
-      }));
-    // Empty draft (user never typed) → silently cancel rather than send
-    // an `INSERT () VALUES ()` that the backend would reject.
-    if (values.length === 0) {
-      setDraft(null);
-      return;
-    }
-    setDraft((prev) => (prev ? { ...prev, saving: true, error: null } : prev));
-    try {
-      await api.insertRow({
-        connectionId,
-        schema,
-        table,
-        pkColumn: pkColumn?.name,
-        values,
-      });
-      setDraft(null);
-      await reloadAll();
-    } catch (e) {
-      setDraft((prev) =>
-        prev ? { ...prev, saving: false, error: String(e) } : prev,
-      );
-    }
-  }
 
   // Which rows this page covers and whether either arrow is live — see
   // `lib/grid/pagination.ts` for the estimated-total rule and its tests.
@@ -1059,110 +672,8 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     totalEstimated,
     rowsOnPage: result?.rows.length ?? 0,
   });
-  // Editable iff the table has at least one PK column AND every PK
-  // column is present in the result set (otherwise we couldn't build a
-  // safe WHERE clause).
-  const hasPk =
-    pkColumns.length > 0 &&
-    (result === null || pkColumnIndices.every((i) => i >= 0));
-  // Whether an insert can begin, and if not why (#267): the Insert button and
-  // the blank-space menu show it disabled with this reason rather than
-  // disappearing. Undecided until the columns load, so a table never flashes
-  // "no primary key" while its key is still on the way.
-  const insertBlock = cols
-    ? insertAvailability({
-        isView,
-        pkColumnCount: pkColumns.length,
-        pkInResult: hasPk,
-        policyLock: insertLock,
-      })
-    : null;
-  const canInsert = !!cols && insertBlock === null;
-  const insertBlocked = insertBlock ? insertBlockReason(insertBlock, t) : null;
   const filterActive =
     serverFilters.length > 0 || !!appliedFilter || rawFilter.trim() !== "";
-
-  /**
-   * A block pasted into the grid (ADR #114): work out what it writes — cells
-   * by their row's key, new rows from its overflow, and what it leaves out —
-   * and ask before sending any of it.
-   */
-  async function onPasteBlock(paste: GridPaste) {
-    if (!result) return;
-    // The plan compares each target cell with what is there to skip the ones
-    // that would not change; a cut cell's stand-in `null` is not what is
-    // there.
-    const rows = await Promise.all(paste.rows.map(trimmedRows.hydrate)).catch(
-      () => null,
-    );
-    if (!rows) return;
-    setPendingPaste(
-      planPaste({
-        block: parsePasteBlock(paste.text),
-        rows,
-        columns: paste.columns,
-        columnIndexByName: new Map(result.columns.map((c, i) => [c.name, i])),
-        pkColumns: pkColumnNames,
-        columnInfo: new Map((cols ?? []).map((c) => [c.name, c])),
-        bitColumns: new Set(
-          result.columns.filter((c) => isBitType(c.data_type)).map((c) => c.name),
-        ),
-        canUpdate: !updateLock,
-        canInsert: !insertLock,
-        updateLock: columnLock,
-        insertLock: draftColumnLock,
-      }),
-    );
-  }
-
-  async function applyPaste(plan: PastePlan) {
-    const summary = await api.applyPaste({
-      connectionId,
-      schema,
-      table,
-      pkColumns: pkColumnNames,
-      updates: plan.updates,
-      inserts: plan.inserts,
-    });
-    setPendingPaste(null);
-    notify.success(
-      t("dataGrid.paste.done", { cells: summary.updated, count: summary.inserted }),
-    );
-    await reloadAll();
-  }
-
-  /**
-   * Stable identity for a grid row, derived from its payload rather than a
-   * display index (ADR #7). Drives the grid's multi-row selection.
-   *
-   * With a usable PK the key is the PK tuple. Without one it falls back to the
-   * full values array: a no-PK table used to get no `getRowKey` at all, which
-   * switched `selectionEnabled` off in `DataGrid` and left the user with *no*
-   * selection whatsoever — no checkbox column, no Shift range, no Ctrl toggle
-   * (the third strand of #113). The fallback is honest about its limit: two
-   * byte-identical rows share a key and therefore select together, which a PK
-   * would have told apart. That's acceptable here because every gesture the
-   * fallback unlocks is read-only — copy, and the `IN` filter — while every
-   * mutating path (`editable`, insert/duplicate/delete, bulk delete) stays
-   * gated on `hasPk` at the call site below and never sees this key.
-   *
-   * `useCallback` matters beyond tidiness: `DataGrid` lists `getRowKey` in the
-   * deps of the memo that pairs every visible row with its key, so an unstable
-   * identity would recompute it on each render of a full page of rows.
-   */
-  const getRowKey = useCallback(
-    (rowValues: CellValue[]): string | null => {
-      try {
-        return JSON.stringify(hasPk ? pkValuesFromRow(rowValues) : rowValues);
-      } catch {
-        return null;
-      }
-    },
-    // `pkValuesFromRow` closes over `pkColumns`/`pkColumnIndices`; it is a plain
-    // function redeclared each render, so key off its inputs instead.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasPk, pkColumns, pkColumnIndices],
-  );
 
   // Leading toolbar content folded into the grid's own toolbar (via DataGrid's
   // `toolbarLeading`) so a table tab shows ONE header bar instead of two
@@ -1545,7 +1056,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           </DropdownMenuSub>
         ),
       },
-      ...(hasPk && !updateLock
+      ...(canBulkUpdate
         ? [
             {
               id: "bulk-update",
@@ -1576,8 +1087,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     ],
     [
       isMongo,
-      hasPk,
-      updateLock,
+      canBulkUpdate,
       exportLock,
       t,
       importCollectionJsonForTab,
@@ -1772,39 +1282,31 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           {error}
         </div>
       )}
-      {hasPk && (
+      {source.addressable && (
         <PolicyVerbNotice
           locked={{
-            insert: !!insertLock,
-            update: !!updateLock,
-            delete: !!deleteLock,
+            insert: !!policy.insert,
+            update: !!policy.update,
+            delete: !!policy.delete,
           }}
           columns={{
-            insert: insertLock ? null : policyColumns.insert,
-            update: updateLock ? null : policyColumns.update,
+            insert: policy.insert ? null : policy.columns.insert,
+            update: policy.update ? null : policy.columns.update,
           }}
         />
       )}
       <div className="flex-1 overflow-hidden">
         {result ? (
           <DataGrid
+            {...gridProps}
             result={result}
             trimmed={trimmedRows}
-            editable={hasPk && !updateLock}
-            columnLock={columnLock}
-            draftColumnLock={draftColumnLock}
-            onPasteBlock={hasPk ? onPasteBlock : undefined}
             connectionId={connectionId}
             tableSchema={schema}
             tableName={table}
             tabId={tabId}
             driver={driver}
-            pkColumnNames={pkColumnNames}
             fkColumnNames={fkColumnNames}
-            onNavigateFk={onNavigateFk}
-            onCellSave={onCellSave}
-            onFieldSave={saveField}
-            onFieldDelete={isMongo ? onFieldDelete : undefined}
             sort={sort}
             onSortChange={applySort}
             onSortSpecsChange={replaceSort}
@@ -1826,24 +1328,9 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             onAddFilter={onAddFilter}
             onRemoveFilter={onRemoveFilter}
             onEditFilter={onEditFilter}
-            onInsertRow={canInsert ? onInsertRow : undefined}
-            insertBlocked={insertBlocked}
             filterActive={filterActive}
             onReload={() => void reloadAll()}
-            // A duplicate copies the row as the page holds it, so under a
-            // projection it would silently drop every hidden column's value.
-            onDuplicateRow={
-              hasPk && !projected && !insertLock ? onDuplicateRow : undefined
-            }
-            onDeleteRow={hasPk && !deleteLock ? onDeleteRow : undefined}
-            onBulkDelete={hasPk && !deleteLock ? onBulkDelete : undefined}
-            getRowKey={getRowKey}
-            onSelectionChange={onSelectionChange}
-            draftRow={draft}
             draftColumns={cols}
-            onDraftCellChange={onDraftCellChange}
-            onDraftCommit={onDraftCommit}
-            onDraftCancel={onDraftCancel}
             loading={loading}
             toolbarLeading={leadingToolbar}
             insertExtra={insertExtraContent}
@@ -1918,27 +1405,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         )}
       </div>
 
-      {pendingPaste && (
-        <PasteCellsDialog
-          plan={pendingPaste}
-          table={`${schema ? `${schema}.` : ""}${table}`}
-          documentMode={isMongo}
-          onApply={() => applyPaste(pendingPaste)}
-          onClose={() => setPendingPaste(null)}
-        />
-      )}
-
-      {pendingDelete && (
-        <DeleteRowsDialog
-          connectionId={connectionId}
-          schema={schema}
-          table={table}
-          pkColumns={pkColumns.map((c) => c.name)}
-          pkValueRows={pendingDelete.pkValueRows}
-          onDelete={() => runDelete(pendingDelete.pkValueRows)}
-          onClose={() => setPendingDelete(null)}
-        />
-      )}
+      {dialogs}
 
       {bulkUpdateOpen && (
         <BulkUpdateDialog
@@ -1950,7 +1417,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           initialFilters={serverFilters}
           isMongo={isMongo}
           expressionIgnored={!!raw}
-          columnLock={columnLock}
+          columnLock={policy.updateColumnLock}
           onApplied={() => void fetchData()}
           onClose={() => setBulkUpdateOpen(false)}
         />
