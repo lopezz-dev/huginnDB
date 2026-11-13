@@ -41,7 +41,13 @@ import {
 import type { PastePlan } from "@/lib/grid/pastePlan";
 import type { SqlTarget } from "@/lib/grid/copyFormats";
 import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
-import type { CellValue, DraftCell, DraftRow, RowValue } from "@/types";
+import type {
+  CellValue,
+  ColumnInfo,
+  DraftCell,
+  DraftRow,
+  RowValue,
+} from "@/types";
 
 export interface GridControllerOptions {
   /** The owning tab — the selection report is scoped to it. */
@@ -79,6 +85,7 @@ export interface GridControllerProps {
   onNavigateFk: ((column: string, value: CellValue) => void) | undefined;
   fkColumnNames: string[] | undefined;
   sqlTarget: SqlTarget | undefined;
+  columnCatalog: ReadonlyMap<string, ColumnInfo>;
   fkRefOf: ((column: string) => FkRef | undefined) | undefined;
   onPasteBlock: ((paste: GridPaste) => Promise<void>) | undefined;
   onDeleteRow: ((row: CellValue[]) => void) | undefined;
@@ -350,6 +357,7 @@ export function useGridController(
     onNavigateFk: fk?.navigateFk,
     fkColumnNames: fk?.columns,
     sqlTarget: source.sqlTarget,
+    columnCatalog: source.columnCatalog,
     fkRefOf: update?.fkRefOf,
     onPasteBlock: paste ? onPasteBlock : undefined,
     onDeleteRow: del ? onDeleteRow : undefined,

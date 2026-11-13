@@ -204,8 +204,9 @@ export function useGridColumns(
                 : t("dataGrid.headerFk"),
             );
           }
-          // `info` is absent for ad-hoc query results (no catalog metadata),
-          // where nullability is unknown — say nothing rather than guess.
+          // `info` is absent for a column that is no table column — an
+          // expression, any column of a result over several tables — where
+          // nullability is unknown: say nothing rather than guess.
           if (info) {
             facts.push(
               info.nullable
