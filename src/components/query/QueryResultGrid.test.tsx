@@ -29,6 +29,7 @@ const h = vi.hoisted(() => ({
     listColumns: vi.fn(),
     updateCell: vi.fn(),
     deleteRows: vi.fn(),
+    applyPaste: vi.fn(),
     updatePreferences: vi.fn(),
   },
   notify: { error: vi.fn(), success: vi.fn() },
@@ -60,6 +61,12 @@ vi.mock("@/lib/policy/access", () => ({
 vi.mock("@/components/grid/DataGrid", () => ({
   DataGrid: (p: Record<string, unknown>) => {
     h.props.grid = p;
+    return null;
+  },
+}));
+vi.mock("@/components/grid/dialogs/PasteCellsDialog", () => ({
+  PasteCellsDialog: (p: Record<string, unknown>) => {
+    h.props.pasteDialog = p;
     return null;
   },
 }));
@@ -146,6 +153,7 @@ beforeEach(() => {
   h.api.listColumns.mockResolvedValue(ITEMS);
   h.api.updateCell.mockResolvedValue(undefined);
   h.api.deleteRows.mockResolvedValue(undefined);
+  h.api.applyPaste.mockResolvedValue({ updated: 1, inserted: 0 });
   h.notify.error.mockClear();
   onRefresh.mockClear();
   useTabs.setState({ open: originalOpen });
@@ -365,5 +373,55 @@ describe("QueryResultGrid — foreign keys", () => {
     h.api.listColumns.mockResolvedValue(ORDERS);
     await mount("SELECT o.customer_id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id");
     expect(grid().onNavigateFk).toBeUndefined();
+  });
+});
+
+describe("QueryResultGrid — paste (ADR #114)", () => {
+  const block = (text: string, anchor: string) => ({
+    text,
+    rows: RESULT.rows,
+    columns: RESULT.columns.slice(RESULT.columns.findIndex((c) => c.name === anchor)),
+  });
+
+  it("writes through the alias to the table column, by key, and runs the statement again", async () => {
+    await mount();
+    // Anchored on `p` (price): the block's second column lands on `doubled`,
+    // an expression, and its third row is below the result.
+    await act(() => grid().onPasteBlock(block("10\t99\n4\t1\n7\t7", "p")));
+    const dialog = h.props.pasteDialog!;
+    expect(dialog.table).toBe("shop.items");
+    const plan = dialog.plan as {
+      updates: unknown[];
+      inserts: unknown[];
+      skipped: { column: string; reason: string; count: number }[];
+    };
+    expect(plan.updates).toEqual([
+      { pkValues: [1, 7], column: "price", value: "10", columnType: "numeric" },
+      { pkValues: [1, 8], column: "price", value: "4", columnType: "numeric" },
+    ]);
+    expect(plan.inserts).toEqual([]);
+    expect(plan.skipped).toContainEqual({ column: "doubled", reason: "computed", count: 2 });
+    expect(plan.skipped).toContainEqual(
+      expect.objectContaining({ column: "p", reason: "result" }),
+    );
+
+    await act(() => (dialog.onApply as () => Promise<void>)());
+    expect(h.api.applyPaste).toHaveBeenCalledWith({
+      connectionId: "c1",
+      schema: "shop",
+      table: "items",
+      pkColumns: ["shop_id", "id"],
+      updates: plan.updates,
+      inserts: [],
+    });
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("plans no writes where the policy refuses updates", async () => {
+    h.locks = { update: "no update" };
+    await mount();
+    await act(() => grid().onPasteBlock(block("10", "p")));
+    const plan = h.props.pasteDialog!.plan as { updates: unknown[] };
+    expect(plan.updates).toEqual([]);
   });
 });

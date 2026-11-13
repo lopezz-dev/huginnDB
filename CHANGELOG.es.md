@@ -10,6 +10,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Pegar sobre los resultados de una consulta.** Un bloque copiado de una
+  hoja de cálculo o de otro grid se puede pegar ahora sobre los resultados
+  de un `SELECT` de una sola tabla en una pestaña SQL Query, igual que en
+  una pestaña de tabla: cae en la celda seleccionada, la confirmación
+  muestra qué cambia y qué se deja fuera, y no se escribe nada hasta que
+  aceptas. Una columna con alias (`SELECT price AS p …`) se escribe en la
+  columna de la tabla a la que corresponde; una columna calculada (`price *
+  2`) y la clave se dejan fuera, cada una explicando por qué; y también las
+  filas del bloque que quedan por debajo de la última fila del resultado:
+  los resultados de una consulta no admiten filas nuevas, así que añádelas
+  en la pestaña de la tabla. Después la consulta se vuelve a ejecutar, para
+  que el grid muestre lo que la base de datos tiene ahora.
+
 - **Seguir una clave ajena desde los resultados de una consulta.** En una
   pestaña SQL Query, una columna de un `SELECT` de una sola tabla que sea
   clave ajena muestra ahora el icono de llave en su cabecera y ofrece *Ir al

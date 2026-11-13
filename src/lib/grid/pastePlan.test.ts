@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { CellValue, ColumnInfo, ColumnMeta } from "@/types";
-import { planPaste, type PastePlanInput } from "./pastePlan";
+import en from "@/lib/i18n/locales/en.json";
+import es from "@/lib/i18n/locales/es.json";
+import { SKIP_REASONS, planPaste, type PastePlanInput } from "./pastePlan";
 
 const col = (name: string, data_type = "varchar") => ({ name, data_type }) as ColumnMeta;
 const info = (name: string, over: Partial<ColumnInfo> = {}): ColumnInfo => ({
@@ -24,6 +26,7 @@ function input(over: Partial<PastePlanInput> = {}): PastePlanInput {
     rows,
     columns,
     columnIndexByName: new Map(columns.map((c, i) => [c.name, i])),
+    keyOf: (row) => [row[0]],
     pkColumns: ["id"],
     columnInfo: new Map([
       ["id", info("id", { data_type: "int", nullable: false, is_primary_key: true })],
@@ -147,5 +150,79 @@ describe("planPaste", () => {
       { pkValues: [1], column: "flag", value: "1", columnType: "bit" },
       { pkValues: [1], column: "cliente", value: "", columnType: "varchar" },
     ]);
+  });
+});
+
+// A query's result: `SELECT estado AS st, upper(obs) AS o2, id AS pk FROM
+// pedidos` — an alias, an expression, and the key itself under an alias.
+describe("planPaste — result columns that are not table columns", () => {
+  const resultCols = [col("st"), col("o2"), col("pk", "int")];
+  const resultRows: CellValue[][] = [
+    ["Abierto", "X", 1],
+    ["Cerrado", "OK", 2],
+  ];
+  const tableOf: Record<string, string | null> = { st: "estado", o2: null, pk: "id" };
+  const query = (over: Partial<PastePlanInput> = {}) =>
+    input({
+      rows: resultRows,
+      columns: resultCols,
+      columnIndexByName: new Map(resultCols.map((c, i) => [c.name, i])),
+      columnOf: (name) => tableOf[name] ?? null,
+      keyOf: (row) => [row[2]],
+      newRows: "result",
+      ...over,
+    });
+
+  it("writes an alias to the table column it stands for, keyed by the row's key", () => {
+    const plan = planPaste(query({ block: [["En curso"]] }));
+    expect(plan.updates).toEqual([
+      { pkValues: [1], column: "estado", value: "En curso", columnType: "varchar" },
+    ]);
+    // What the person sees keeps the result's name.
+    expect(plan.previewColumns).toEqual(["st"]);
+  });
+
+  it("leaves an expression out, by the name shown", () => {
+    const plan = planPaste(query({ block: [["En curso", "nuevo"]] }));
+    expect(plan.updates.map((u) => u.column)).toEqual(["estado"]);
+    expect(plan.skipped).toContainEqual({ column: "o2", reason: "computed", count: 1 });
+  });
+
+  it("knows the key under its alias", () => {
+    const plan = planPaste(query({ columns: [resultCols[2]], block: [["9"]] }));
+    expect(plan.updates).toEqual([]);
+    expect(plan.skipped).toContainEqual({ column: "pk", reason: "key", count: 1 });
+  });
+
+  it("judges the policy on the table column", () => {
+    const plan = planPaste(
+      query({ block: [["En curso"]], updateLock: (c) => (c === "estado" ? "no" : null) }),
+    );
+    expect(plan.updates).toEqual([]);
+    expect(plan.skipped).toContainEqual({ column: "st", reason: "policy", count: 1 });
+  });
+
+  it("adds no rows below a result, saying why", () => {
+    const plan = planPaste(query({ block: [["a"], ["b"], ["c"]] }));
+    expect(plan.inserts).toEqual([]);
+    expect(plan.skipped).toContainEqual({ column: "st", reason: "result", count: 1 });
+  });
+
+  it("normalises a BIT by its table column", () => {
+    const plan = planPaste(
+      query({ block: [["true"]], bitColumns: new Set(["estado"]) }),
+    );
+    expect(plan.updates[0]).toMatchObject({ column: "estado", value: "1" });
+  });
+});
+
+describe("SKIP_REASONS", () => {
+  // The dialog builds the key from the reason, which `keys.test.ts` cannot see.
+  it.each(SKIP_REASONS)("%s has its sentence in both locales", (reason) => {
+    const at = (locale: unknown) =>
+      (locale as { dataGrid: { paste: { reason: Record<string, unknown> } } }).dataGrid
+        .paste.reason[reason];
+    expect(typeof at(en)).toBe("string");
+    expect(typeof at(es)).toBe("string");
   });
 });

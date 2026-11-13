@@ -39,6 +39,7 @@ function plan(block: string[][], locked = false) {
     rows,
     columns: columns.slice(1),
     columnIndexByName: new Map(columns.map((c, i) => [c.name, i])),
+    keyOf: (row) => [row[0]],
     pkColumns: ["id"],
     columnInfo: new Map([
       ["id", info("id", { data_type: "int", is_primary_key: true, nullable: false })],

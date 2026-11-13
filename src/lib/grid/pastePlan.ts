@@ -12,8 +12,17 @@
  * (ADR #113), a database-generated key on a new row. A value equal to what the
  * cell already holds is not sent at all.
  *
+ * Two names for one column. The grid shows **result** names — on a query, an
+ * alias (`price AS p`) or an expression (`price * 2`) — while the key, the
+ * policy, the catalogue and the write itself speak **table** columns. The
+ * caller says which table column each result column is (`columnOf`) and how
+ * to read a row's key (`keyOf`); everything judged is judged on the table
+ * column, everything shown — the preview, what was left out — keeps the name
+ * the person sees. On a table the two names are the same.
+ *
  * Pure: the grid's rows and columns, the catalogue and the locks go in; a
- * plan comes out. `TableDataTab` asks for it and `PasteCellsDialog` shows it.
+ * plan comes out. A grid source asks for it (`useTableSource`,
+ * `useQuerySource`) and `PasteCellsDialog` shows it.
  */
 
 import { isAutoPkColumn, normalizeBitValue } from "@/lib/grid/columnKinds";
@@ -28,37 +37,55 @@ export interface PastePlanInput {
   /** The columns on screen from the anchor's column rightwards, in the order
    *  they are shown. */
   columns: ColumnMeta[];
-  /** Backend index of each column in a row's values. */
+  /** Backend index of each result column in a row's values. */
   columnIndexByName: ReadonlyMap<string, number>;
-  /** The table's full primary key. */
+  /**
+   * The table column a result column writes to, or `null` for one that is no
+   * column of the table (an expression). Omitted: every result column is the
+   * table column of the same name, as on a table's own grid.
+   */
+  columnOf?: (resultColumn: string) => string | null;
+  /** The row's full key tuple, in `pkColumns` order. */
+  keyOf: (row: CellValue[]) => CellValue[];
+  /** The table's full primary key, by table column name. */
   pkColumns: string[];
-  /** Catalogue facts per column (nullability, key, type), when known. */
+  /** Catalogue facts per table column (nullability, key, type), when known. */
   columnInfo: ReadonlyMap<string, ColumnInfo>;
-  /** MySQL `BIT` columns, whose text the backend expects as `0`/`1`. */
+  /** MySQL `BIT` table columns, whose text the backend expects as `0`/`1`. */
   bitColumns: ReadonlySet<string>;
   /** Whether existing rows may be changed at all. */
   canUpdate: boolean;
   /**
    * Whether the block's overflow may become new rows, and if not, why: the
-   * policy refuses inserts here, or the relation is a view, which never takes
-   * rows from the grid (ADR #136). One field rather than a flag plus a reason,
-   * so the two cannot disagree.
+   * policy refuses inserts here, the relation is a view, which never takes
+   * rows from the grid (ADR #136), or the rows are a query's result, which
+   * adds none (ADR #135). One field rather than a flag plus a reason, so the
+   * two cannot disagree.
    */
-  newRows: "allowed" | "policy" | "view";
-  /** Why the policy will not let a column be changed, or given a value on a
-   *  new row (ADR #113) — `null` when it may. */
+  newRows: "allowed" | "policy" | "view" | "result";
+  /** Why the policy will not let a table column be changed, or given a value
+   *  on a new row (ADR #113) — `null` when it may. */
   updateLock?: (column: string) => string | null;
   insertLock?: (column: string) => string | null;
 }
 
-/** Why a pasted cell is left out. */
-export type SkipReason =
-  | "key"
-  | "policy"
-  | "generated"
-  | "noUpdate"
-  | "noInsert"
-  | "view";
+/**
+ * Why a pasted cell is left out — every reason the confirmation can name, each
+ * with its sentence under `dataGrid.paste.reason.*` (pinned by the tests).
+ */
+export const SKIP_REASONS = [
+  "key",
+  "policy",
+  "generated",
+  "noUpdate",
+  "noInsert",
+  "view",
+  /** No column of the table: an expression in a query's result. */
+  "computed",
+  /** Below the last row of a query's result, which takes no new rows. */
+  "result",
+] as const;
+export type SkipReason = (typeof SKIP_REASONS)[number];
 
 export interface PasteCellWrite {
   pkValues: CellValue[];
@@ -103,6 +130,8 @@ export function planPaste(input: PastePlanInput): PastePlan {
     rows,
     columns,
     columnIndexByName,
+    columnOf = (name: string) => name,
+    keyOf,
     pkColumns,
     columnInfo,
     bitColumns,
@@ -121,8 +150,10 @@ export function planPaste(input: PastePlanInput): PastePlan {
     entry.count += 1;
     skipped.set(key, entry);
   };
-  const typeOf = (column: string) =>
-    columnInfo.get(column)?.data_type ?? columns.find((c) => c.name === column)?.data_type;
+  /** The type to send: the catalogue's for the table column, else what the
+   *  result reported for the column as shown. */
+  const typeOf = (table: string, shown: string) =>
+    columnInfo.get(table)?.data_type ?? columns.find((c) => c.name === shown)?.data_type;
   // The text a pasted cell becomes: an empty cell is NULL where NULL is
   // allowed (or unknown), and an empty string where it is not; a BIT takes
   // the backend's `0`/`1`.
@@ -150,17 +181,21 @@ export function planPaste(input: PastePlanInput): PastePlan {
         if (c >= cells.length) return;
         const text = cells[c];
         let state: PreviewCell["state"] = "write";
-        if (pkSet.has(col.name)) {
+        const target = columnOf(col.name);
+        if (target === null) {
+          skip(col.name, "computed");
+          state = "skip";
+        } else if (pkSet.has(target)) {
           skip(col.name, "key");
           state = "skip";
         } else if (!canUpdate) {
           skip(col.name, "noUpdate");
           state = "skip";
-        } else if (updateLock?.(col.name)) {
+        } else if (updateLock?.(target)) {
           skip(col.name, "policy");
           state = "skip";
         } else {
-          const value = valueOf(col.name, text);
+          const value = valueOf(target, text);
           const cur = existing[columnIndexByName.get(col.name) ?? -1];
           const before = cur === null || cur === undefined ? null : formatValue(cur);
           if (value === before) {
@@ -168,10 +203,10 @@ export function planPaste(input: PastePlanInput): PastePlan {
             state = "same";
           } else {
             updates.push({
-              pkValues: pkColumns.map((k) => existing[columnIndexByName.get(k) ?? -1] ?? null),
-              column: col.name,
+              pkValues: keyOf(existing),
+              column: target,
               value,
-              columnType: typeOf(col.name),
+              columnType: typeOf(target, col.name),
             });
             changed = true;
           }
@@ -185,19 +220,27 @@ export function planPaste(input: PastePlanInput): PastePlan {
         if (c >= cells.length) return;
         const text = cells[c];
         let state: PreviewCell["state"] = "new";
+        const target = columnOf(col.name);
         if (newRows !== "allowed") {
-          skip(col.name, newRows === "view" ? "view" : "noInsert");
+          skip(col.name, newRows === "policy" ? "noInsert" : newRows);
           state = "skip";
-        } else if (isAutoPkColumn(columnInfo.get(col.name))) {
+        } else if (target === null) {
+          skip(col.name, "computed");
+          state = "skip";
+        } else if (isAutoPkColumn(columnInfo.get(target))) {
           skip(col.name, "generated");
           state = "skip";
-        } else if (insertLock?.(col.name)) {
+        } else if (insertLock?.(target)) {
           skip(col.name, "policy");
           state = "skip";
         } else if (text !== "") {
           // An empty cell on a new row is left out: the column takes its
           // default, as an untouched cell of the draft row does.
-          values.push({ column: col.name, value: valueOf(col.name, text), columnType: typeOf(col.name) });
+          values.push({
+            column: target,
+            value: valueOf(target, text),
+            columnType: typeOf(target, col.name),
+          });
         }
         previewRow.push({ text, state });
       });

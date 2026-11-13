@@ -315,6 +315,8 @@ export function useTableSource({
         rows,
         columns: paste.columns,
         columnIndexByName: new Map(columns.map((c, i) => [c.name, i])),
+        // A table's result names are its column names: no `columnOf`.
+        keyOf,
         pkColumns: pkColumnNames,
         columnInfo: new Map((cols ?? []).map((c) => [c.name, c])),
         bitColumns: new Set(
@@ -327,7 +329,7 @@ export function useTableSource({
         insertLock: policy.insertColumnLock,
       });
     },
-    [result, pkColumnNames, cols, policy, isView],
+    [result, keyOf, pkColumnNames, cols, policy, isView],
   );
 
   const applyPaste = useCallback(
