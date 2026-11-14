@@ -15,6 +15,7 @@ import {
   isForeignKeyViolation,
   requiresInitialCollection,
   supportsCreateDatabase,
+  stoppedOutcome,
   supportsDropDatabase,
 } from "@/lib/db/driver";
 import type { Driver } from "@/types";
@@ -99,5 +100,24 @@ describe("isForeignKeyViolation", () => {
     expect(isForeignKeyViolation(new Error("syntax error near 'WHERE'"))).toBe(
       false,
     );
+  });
+});
+
+describe("stoppedOutcome", () => {
+  // The exact shapes `AppError::Stopped` renders (src-tauri/src/error.rs).
+  it("reads both outcomes the backend renders", () => {
+    expect(
+      stoppedOutcome("query stopped (not applied): The server was told to stop it."),
+    ).toBe("not_applied");
+    expect(
+      stoppedOutcome("query stopped (may have applied): SQLite cannot stop a statement."),
+    ).toBe("may_have_applied");
+  });
+
+  it("is null for anything that is not a stop", () => {
+    expect(stoppedOutcome("database error: relation \"x\" does not exist")).toBeNull();
+    expect(stoppedOutcome("the query stopped (not applied): quoted")).toBeNull();
+    expect(stoppedOutcome("query stopped (someday): unknown marker")).toBeNull();
+    expect(stoppedOutcome(undefined)).toBeNull();
   });
 });

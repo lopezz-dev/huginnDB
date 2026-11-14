@@ -718,6 +718,29 @@ export interface StmtOutcome {
 export interface BatchResult {
   statements: StmtOutcome[];
   total_affected: number;
+  /**
+   * Set when a person stopped the batch (`cancelQuery`, ADR #137): the
+   * statement it stopped at — the last in `statements`, whose `error` says
+   * what happened on the server — and whether it may have applied. `null`
+   * when the batch was not stopped.
+   */
+  stopped: BatchStop | null;
+}
+
+/**
+ * What a stopped statement left behind, as far as the app can know it.
+ * `not_applied`: it was a read, or the server stopped it and rolled it back.
+ * `may_have_applied`: the stop raced its commit, the server was not told to
+ * stop it, or could not be (SQLite). Mirrors `StopOutcome` in
+ * `src-tauri/src/error.rs`.
+ */
+export type StopOutcome = "not_applied" | "may_have_applied";
+
+/** Where a stopped batch stopped. Mirrors `BatchStop` in `commands/query/types.rs`. */
+export interface BatchStop {
+  /** The statement's `index`, as in its `StmtOutcome`. */
+  index: number;
+  outcome: StopOutcome;
 }
 
 /** Tabs in the main workspace can host either table data or a query editor. */

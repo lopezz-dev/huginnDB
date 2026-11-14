@@ -6,7 +6,9 @@
 //! leaves behind is what the next one runs against — an explicit transaction,
 //! a `#temp` table, a `SET`, a MySQL `USE`:
 //!
-//! - the query editor's batch (`commands::query::execute_batch_inner`);
+//! - the query editor's batch (`commands::query::execute_batch_stoppable`),
+//!   which a person can stop (ADR #137: [`Session::backend_id`],
+//!   [`Session::abandon`]);
 //! - the MCP `run_script` tool (`commands::script`);
 //! - the MCP `run_writes` tool (`commands::write_batch`).
 //!
@@ -51,9 +53,19 @@ pub struct RowSet {
     pub truncated: bool,
 }
 
+/// The statement that returns a PostgreSQL session's backend pid: what
+/// `pg_cancel_backend` takes, from another connection, to stop its statement.
+pub const POSTGRES_SESSION_ID: &str = "SELECT pg_backend_pid()::int8";
+
+/// The statement that returns a MySQL session's connection id: what
+/// `KILL QUERY` takes, from another connection, to stop its statement. Cast
+/// because `CONNECTION_ID()` is unsigned and sqlx decodes an `i64`.
+pub const MYSQL_SESSION_ID: &str = "SELECT CAST(CONNECTION_ID() AS SIGNED)";
+
 /// A session borrowed from a SQL pool for a sequence of statements.
 pub struct Session {
-    conn: Conn,
+    /// `None` only once [`Self::abandon`] has given the connection up.
+    conn: Option<Conn>,
     /// Set by [`Self::begin`] and cleared by a successful [`Self::end`]; a
     /// session dropped while it is set is closed, never pooled.
     in_tx: bool,
@@ -91,14 +103,63 @@ impl Session {
             DbPool::MsSql(p) => Conn::MsSql(Box::new(p.acquire().await?)),
             DbPool::Mongo(_) => unreachable!("MongoDB is dispatched before a SQL session"),
         };
-        Ok(Self { conn, in_tx: false })
+        Ok(Self {
+            conn: Some(conn),
+            in_tx: false,
+        })
+    }
+
+    /// The connection, which a live session always holds: only
+    /// [`Self::abandon`] takes it, and that consumes the session.
+    fn conn(&mut self) -> &mut Conn {
+        self.conn
+            .as_mut()
+            .expect("a Session holds its connection until it is abandoned")
+    }
+
+    /// This session's id on the server, for the drivers whose running
+    /// statement another connection can stop by it ([`POSTGRES_SESSION_ID`],
+    /// [`MYSQL_SESSION_ID`]). `None` on SQLite and SQL Server, which have no
+    /// such thing to send. One round trip, so only a caller that may need to
+    /// stop a statement asks — a person's stoppable batch (ADR #137).
+    pub async fn backend_id(&mut self) -> AppResult<Option<i64>> {
+        use sqlx::{Executor, Row};
+        Ok(match self.conn() {
+            Conn::Postgres(c) => Some(
+                (&mut **c)
+                    .fetch_one(POSTGRES_SESSION_ID)
+                    .await?
+                    .try_get(0)?,
+            ),
+            Conn::Mysql(c) => Some((&mut **c).fetch_one(MYSQL_SESSION_ID).await?.try_get(0)?),
+            Conn::Sqlite(_) | Conn::MsSql(_) => None,
+        })
+    }
+
+    /// Give the session up after a stop: never back to the pool, whatever
+    /// state it is in.
+    ///
+    /// A `sqlx` connection is detached and dropped, which drops the socket at
+    /// once — `close_on_drop` would close it through the pool, which first
+    /// waits for a statement still running there to end (and on SQLite, where
+    /// nothing can stop it, lets it finish on the detached connection). A SQL
+    /// Server session is closed with its guard. Either way the server rolls
+    /// back whatever transaction the session had open.
+    pub fn abandon(mut self) {
+        match self.conn.take() {
+            Some(Conn::Postgres(c)) => drop(c.detach()),
+            Some(Conn::Mysql(c)) => drop(c.detach()),
+            Some(Conn::Sqlite(c)) => drop(c.detach()),
+            Some(Conn::MsSql(mut m)) => m.close_on_drop(),
+            None => {}
+        }
     }
 
     /// Close the session when it drops instead of returning it to the pool —
     /// for a caller whose statements may leave state (`#temp` tables, `SET`
     /// options) that the next borrower must not inherit.
     pub fn close_on_drop(&mut self) {
-        on_conn!(&mut self.conn, |c| c.close_on_drop(), |m| m.close_on_drop())
+        on_conn!(self.conn(), |c| c.close_on_drop(), |m| m.close_on_drop())
     }
 
     /// Run `sql` for its side effect and return the rows it affected.
@@ -117,7 +178,7 @@ impl Session {
     pub async fn exec(&mut self, sql: &str) -> AppResult<u64> {
         use sqlx::Executor;
         on_conn!(
-            &mut self.conn,
+            self.conn(),
             |c| Ok((&mut **c).execute(sql).await?.rows_affected()),
             |m| m.batch_execute(sql).await
         )
@@ -126,7 +187,7 @@ impl Session {
     /// Run transaction control: [`Self::exec`] without the row count, which on
     /// SQL Server saves the `@@ROWCOUNT` round trip.
     async fn control(&mut self, sql: &str) -> AppResult<()> {
-        match &mut self.conn {
+        match self.conn() {
             Conn::MsSql(m) => m.batch(sql).await,
             _ => self.exec(sql).await.map(|_| ()),
         }
@@ -142,7 +203,7 @@ impl Session {
     /// several and a `SET NOCOUNT ON` returns an empty one first.
     pub async fn fetch(&mut self, sql: &str, cap: usize) -> AppResult<Vec<RowSet>> {
         use crate::db::values::{mysql_result, pg_result, sqlite_result};
-        Ok(match &mut self.conn {
+        Ok(match self.conn() {
             Conn::Postgres(c) => vec![decoded(fetch_capped(&mut **c, sql, cap).await?, pg_result)],
             Conn::Mysql(c) => vec![decoded(
                 fetch_capped(&mut **c, sql, cap).await?,
@@ -213,9 +274,9 @@ impl Session {
     /// Stop the statement a deadline cut off. The session is closed when it
     /// drops either way: whatever state it was left in is not the next
     /// borrower's.
-    async fn cancel(&mut self) -> Cancelled {
+    pub async fn cancel(&mut self) -> Cancelled {
         self.close_on_drop();
-        match &mut self.conn {
+        match self.conn() {
             Conn::MsSql(m) => {
                 if m.cancel(CANCEL_ACK_WAIT).await {
                     Cancelled::Acknowledged
@@ -240,7 +301,7 @@ impl Session {
     /// server's own rollback after the socket closes — the same outcome, minus
     /// the confirmation.
     async fn roll_back_after_cancel(&mut self) -> AppResult<bool> {
-        let Conn::MsSql(m) = &mut self.conn else {
+        let Conn::MsSql(m) = self.conn() else {
             return Err(AppError::InvalidInput(
                 "only a SQL Server session survives a cancel".into(),
             ));
@@ -385,7 +446,7 @@ pub enum Cancelled {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        if self.in_tx {
+        if self.in_tx && self.conn.is_some() {
             self.close_on_drop();
         }
     }

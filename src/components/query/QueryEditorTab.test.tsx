@@ -293,6 +293,7 @@ const BATCH_OK: BatchResult = {
     }),
   ],
   total_affected: 5,
+  stopped: null,
 };
 const BATCH_FAILED: BatchResult = {
   statements: [
@@ -304,6 +305,7 @@ const BATCH_FAILED: BatchResult = {
     stmt(1, "UPDATE t SET a = 1", { error: "permission denied" }),
   ],
   total_affected: 0,
+  stopped: null,
 };
 
 const CONN = "pg1";
@@ -655,6 +657,7 @@ describe("batch", () => {
         stmt(1, "UPDATE b SET y = 2", { rows_affected: 2 }),
       ],
       total_affected: 3,
+      stopped: null,
     } satisfies BatchResult);
     renderTab();
     await runAll();
@@ -719,6 +722,7 @@ describe("batch", () => {
         stmt(1, "SELECT 1", { is_select: true, results: [rows(["x"], [[1]])] }),
       ],
       total_affected: 0,
+      stopped: null,
     } satisfies BatchResult);
     renderTab();
     await runAll();
@@ -748,6 +752,7 @@ describe("batch", () => {
         }),
       ],
       total_affected: 0,
+      stopped: null,
     } satisfies BatchResult);
     renderTab();
     await runAll();
@@ -866,6 +871,7 @@ describe("result tabs", () => {
         stmt(1, "SELECT 1", { is_select: true, results: [rows(["x"], [[1]])] }),
       ],
       total_affected: 0,
+      stopped: null,
     } satisfies BatchResult);
     renderTab();
     await runAll();
@@ -890,6 +896,7 @@ describe("result tabs", () => {
         }),
       ],
       total_affected: 0,
+      stopped: null,
     } satisfies BatchResult);
     renderTab();
     await runAll();
@@ -1022,7 +1029,7 @@ describe("history", () => {
     useConnections.setState({ profiles: [] });
     seed("db.a.countDocuments()\ndb.b.countDocuments()", "m1");
     usePendingRuns.getState().mark(tabId);
-    h.api.executeBatch.mockResolvedValue({ statements: [], total_affected: 0 });
+    h.api.executeBatch.mockResolvedValue({ statements: [], total_affected: 0, stopped: null });
     renderTab("m1");
     await flush();
     expect(h.api.executeBatch).not.toHaveBeenCalled();
@@ -1158,7 +1165,7 @@ describe("MongoDB", () => {
   it("runAll splits two lines into a batch with its own dialect (no `;` needed)", async () => {
     useConnections.setState({ profiles: [profile("m1", "mongodb")] });
     seed("db.a.countDocuments()\ndb.b.countDocuments()", "m1");
-    h.api.executeBatch.mockResolvedValue({ statements: [], total_affected: 0 });
+    h.api.executeBatch.mockResolvedValue({ statements: [], total_affected: 0, stopped: null });
     renderTab("m1");
     await runAll();
     expect(h.api.executeBatch).toHaveBeenCalledWith("m1", [
