@@ -39,7 +39,7 @@ export { isAutoPkColumn };
  */
 export function firstEditableColumn(
   columns: ColumnMeta[],
-  infoByName: Map<string, ColumnInfo>,
+  infoByName: ReadonlyMap<string, ColumnInfo>,
   columnLock?: (column: string) => string | null,
 ): number {
   for (let i = 0; i < columns.length; i++) {
@@ -48,7 +48,7 @@ export function firstEditableColumn(
     const info = infoByName.get(columns[i].name);
     // No catalog info → a plain input, which is focusable.
     if (!info) return i;
-    if (!isAutoPkColumn(info)) return i;
+    if (!isAutoPkColumn(info, infoByName)) return i;
   }
   return 0;
 }
@@ -76,6 +76,10 @@ interface DraftCellControlProps {
    * out of the INSERT, so the database fills it.
    */
   locked?: string | null;
+  /** The database generates this column's value, as `isAutoPkColumn` decides
+   *  from the table's whole catalog — which the caller holds and this one
+   *  cell does not. The cell then shows "auto" instead of a control. */
+  generated?: boolean;
   onChange: (cell: DraftCell) => void;
 }
 
@@ -89,10 +93,11 @@ export function DraftCellControl({
   tableSchema,
   bitDisplay,
   locked,
+  generated = false,
   onChange,
 }: DraftCellControlProps) {
   const { t } = useTranslation();
-  if (locked && !isAutoPkColumn(info)) {
+  if (locked && !generated) {
     return (
       <PolicyLockHint reason={`${locked} ${t("dataGrid.draftLocked")}`}>
         <span className="flex items-center gap-1 px-1 text-2xs text-muted-foreground/60">
@@ -101,7 +106,7 @@ export function DraftCellControl({
       </PolicyLockHint>
     );
   }
-  if (isAutoPkColumn(info)) {
+  if (generated) {
     return (
       <span
         className="block px-1 text-2xs italic text-muted-foreground/60"

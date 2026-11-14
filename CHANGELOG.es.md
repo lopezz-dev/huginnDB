@@ -84,6 +84,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Se pueden añadir filas a una tabla cuya clave son varias columnas
+  enteras.** En una tabla de unión como `playlist_track (playlist_id,
+  track_id)`, la fila nueva de Insertar o de *Duplicar fila…* mostraba cada
+  columna de la clave como «auto» sin forma de rellenarla, así que no se
+  podía añadir ninguna fila desde el grid; las filas sobrantes de un bloque
+  pegado perdían esas columnas igual. Ahora solo se trata como generada por
+  la base de datos una clave entera que es ella sola toda la clave de la
+  tabla; cada columna de una clave compuesta tiene su control (una lista con
+  búsqueda si es clave ajena) y las filas pegadas conservan los valores que
+  se le dan.
+
 - **Una vista ya no ofrece añadir filas.** Al navegar una vista aparecía el
   botón Insertar deshabilitado con una explicación, pero el menú de fila
   seguía ofreciendo *Duplicar fila…*, que es una inserción con otro nombre.
