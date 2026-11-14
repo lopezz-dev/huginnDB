@@ -76,6 +76,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- ***Copy row as ▸ SQL UPDATE* works on a table whose every column is key.**
+  On a junction table such as `playlist_track (playlist_id, track_id)` the
+  snippet came out as `UPDATE … SET  WHERE …`, which no database runs,
+  because key columns are left out of `SET`. With no other column the `SET`
+  now lists the key at its current values: the statement runs as copied,
+  and changing a key value in it is the one update such a row can take.
+
 - **A view no longer offers to add rows.** Browsing a view showed a disabled
   Insert button with an explanation, yet still offered *Duplicate row…* in
   the row menu — an insert by another name. Rows are not added to a view

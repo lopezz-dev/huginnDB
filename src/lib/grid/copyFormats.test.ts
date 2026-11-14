@@ -215,6 +215,24 @@ describe("Copy as SQL through a target", () => {
     );
   });
 
+  // A junction table has no column outside its key: an empty SET is not SQL,
+  // so the key is listed at its current values — valid, and the one thing
+  // such a row can have changed.
+  it("lists the key in SET when every column is part of it", () => {
+    const link: SqlTarget = {
+      table: "PlaylistTrack",
+      columnOf: (c) => c,
+      pkColumns: ["PlaylistId", "TrackId"],
+    };
+    const cols = [
+      { name: "PlaylistId", data_type: "INTEGER" },
+      { name: "TrackId", data_type: "INTEGER" },
+    ];
+    expect(toSqlUpdate([1, 3507], cols, "sqlite", link)).toBe(
+      'UPDATE "PlaylistTrack" SET "PlaylistId" = 1, "TrackId" = 3507 WHERE "PlaylistId" = 1 AND "TrackId" = 3507;',
+    );
+  });
+
   it("without a target keeps the result's names and a table placeholder", () => {
     expect(toSqlInsert([1, "a"], [{ name: "x", data_type: "int" }, { name: "y", data_type: "text" }], "postgres", undefined)).toBe(
       'INSERT INTO <table> ("x", "y") VALUES (1, \'a\');',

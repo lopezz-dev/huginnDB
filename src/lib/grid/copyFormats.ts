@@ -162,6 +162,13 @@ export function toSqlInsert(
  * the corruption the cell-save path once suffered. Without the whole key the
  * snippet falls back to `WHERE <pk> = <value>` for the user to fix before
  * running it.
+ *
+ * When every column is part of the key — a junction table such as
+ * `playlist_track (playlist_id, track_id)`, or a query that selects only the
+ * key — leaving the key out would leave `SET` empty, which no database
+ * parses. The `SET` then lists the key columns at their current values: the
+ * statement is valid as copied (and changes nothing), and changing a key
+ * value is the one update such a row can take.
  */
 export function toSqlUpdate(
   rowValues: CellValue[],
@@ -179,10 +186,8 @@ export function toSqlUpdate(
   const literal = (c: { index: number; name: string }) =>
     `${quoteIdent(driver, c.name)} = ${sqlLiteral(rowValues[c.index], driver)}`;
 
-  const setPairs = cols
-    .filter((c) => !pkSet.has(c.name))
-    .map(literal)
-    .join(", ");
+  const nonKey = cols.filter((c) => !pkSet.has(c.name));
+  const setPairs = (nonKey.length > 0 ? nonKey : cols).map(literal).join(", ");
 
   const keyCols = pk.map((k) => cols.find((c) => c.name === k));
   const whereClause =
