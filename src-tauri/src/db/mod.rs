@@ -37,6 +37,7 @@ pub mod mssql;
 pub mod mysql;
 pub mod pool;
 pub mod postgres;
+pub mod result_export;
 pub mod session;
 pub mod sql;
 pub mod sqlite;

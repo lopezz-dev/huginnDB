@@ -449,6 +449,64 @@ impl PooledClient {
         self.classify(result)
     }
 
+    /// Stream the rows of the first result set that carries any to `each`,
+    /// one at a time, holding none of them — the server export of a query's
+    /// rows (ADR #137), which has no row cap. Returns the column names of the
+    /// set it streamed, or of the last set announced when none had rows (an
+    /// empty result still has a header).
+    ///
+    /// The result sets after the one streamed are not read: the session is
+    /// closed with this guard instead ([`Overflow::Close`]'s reasoning, ADR
+    /// #127). So is it when `each` fails — a file that cannot be written —
+    /// since the stream is then mid-response.
+    pub async fn simple_query_each(
+        &mut self,
+        sql: &str,
+        mut each: impl FnMut(&Row) -> AppResult<()>,
+    ) -> AppResult<Vec<String>> {
+        let client = self.client_mut()?;
+        let mut names: Vec<String> = Vec::new();
+        let mut streamed = false;
+        let mut cut = false;
+        let mut failed: Option<AppError> = None;
+        let result = async {
+            let mut stream = client.simple_query(sql).await?;
+            while let Some(item) = stream.try_next().await? {
+                match item {
+                    tiberius::QueryItem::Metadata(meta) => {
+                        if streamed {
+                            cut = true;
+                            break;
+                        }
+                        names = meta
+                            .columns()
+                            .iter()
+                            .map(|c| c.name().to_string())
+                            .collect();
+                    }
+                    tiberius::QueryItem::Row(row) => {
+                        streamed = true;
+                        if let Err(e) = each(&row) {
+                            failed = Some(e);
+                            cut = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+        .await;
+        if cut {
+            self.close_on_drop();
+        }
+        self.classify(result)?;
+        match failed {
+            Some(e) => Err(e),
+            None => Ok(names),
+        }
+    }
+
     /// Open a transaction on this session.
     ///
     /// Sent as a plain SQL batch, never through [`Self::simple_execute`]: that

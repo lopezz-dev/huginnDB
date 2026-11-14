@@ -358,6 +358,83 @@ pub async fn export_query_result(
     Ok(dest)
 }
 
+/// Run a read the person ran again and write **every** row of it to a file
+/// they pick — the query results' "Everything, from the server…", offered
+/// for a result cut at the row cap (ADR #137). [`export_query_result`] writes
+/// the rows the grid holds; this one reads them from the server, without the
+/// cap, streaming each row to the file (`commands::query::export`).
+///
+/// `format` is the export menu's (`csv`, `csvSemicolon`, `json`, `sql`), and
+/// the bytes are the ones the grid's export writes for the same rows
+/// (`db::result_export`, pinned by a golden test shared with
+/// `lib/grid/copyFormats`). `target` is the table a `sql` export inserts
+/// into, with the table column each result column is, in result order.
+///
+/// The policy: what [`export_query_result`] asks (`guard::free_export`: the
+/// rows may come from any relation the statement read) **and** free SQL
+/// (`guard::free_sql`), since this runs the statement. Only a read is
+/// exported, inside the read-only barrier of ADR #93; MongoDB is refused for
+/// now. Both are refused before the save dialog opens, so the person is
+/// never asked where to save something that will not be written. A failed
+/// export removes the file it had started, rather than leave a partial one
+/// that reads like the whole result.
+#[tauri::command]
+pub async fn export_query_rows(
+    app: AppHandle,
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    connection_id: String,
+    sql: String,
+    format: crate::db::result_export::ResultFormat,
+    target: Option<crate::db::result_export::SqlExportTarget>,
+) -> AppResult<String> {
+    use crate::db::result_export::{ResultFormat, RowWriter};
+    crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
+    crate::commands::guard::free_export(state.inner(), &connection_id)?;
+    crate::commands::guard::free_sql(state.inner(), &connection_id, &sql)?;
+    let pool = state.pool_for(&connection_id)?;
+    crate::commands::query::check_exportable(&pool, &sql)?;
+    let dialect = Dialect::try_of(&pool)?;
+    if format == ResultFormat::Sql && target.is_none() {
+        return Err(AppError::InvalidInput(
+            "a SQL export needs the table to insert into; a result over several tables has none"
+                .into(),
+        ));
+    }
+
+    // `suggestedName` in `lib/query/exportResult.ts`.
+    let file_name = match &target {
+        Some(t) => format!("{}_results", t.table),
+        None => "query_results".to_string(),
+    };
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .set_title("Export query results")
+        .set_file_name(format!("{file_name}.{}", format.extension()))
+        .add_filter(format.label(), &[format.extension()])
+        .blocking_save_file()
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
+    let dest = path.to_string();
+
+    let file = std::io::BufWriter::new(std::fs::File::create(&dest)?);
+    let written = match RowWriter::new(file, format, dialect, target) {
+        Ok(writer) => {
+            crate::commands::query::export_rows_inner(state.inner(), &connection_id, &sql, writer)
+                .await
+        }
+        Err(e) => Err(e),
+    };
+    match written {
+        Ok(_) => Ok(dest),
+        Err(e) => {
+            let _ = std::fs::remove_file(&dest);
+            Err(e)
+        }
+    }
+}
+
 /// Export a single table (schema + data) to a user-chosen `.sql` file — the
 /// same DDL+data format [`export_databases`] produces, scoped to one table.
 /// Always plain `INSERT` ([`DataMode::Insert`]) — this is the DataGrid

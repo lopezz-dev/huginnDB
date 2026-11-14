@@ -523,6 +523,7 @@ pub fn run() {
             commands::dump::export_table,
             commands::dump::export_table_rows,
             commands::dump::export_query_result,
+            commands::dump::export_query_rows,
             commands::mongo::export_collection,
             commands::mongo::import_collection,
             commands::aggregation::format_mongo_pipeline,

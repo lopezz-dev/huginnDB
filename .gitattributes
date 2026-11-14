@@ -13,3 +13,8 @@
 # a Windows working copy, as they are today.
 * text=auto
 *.md text eol=lf
+
+# The result-export golden files (ADR #137) are compared byte for byte by a
+# Rust and a Vitest test, and a CSV ends its lines with CRLF on purpose while
+# a value inside may hold a bare LF. Any conversion breaks both tests.
+testdata/result-export/** -text

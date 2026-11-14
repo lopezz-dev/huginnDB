@@ -1,0 +1,13 @@
+{
+  "columns": ["id", "name", "note", "price", "ratio", "active", "meta", "tags", "missing", "path", "total"],
+  "rows": [
+    [1, "Ñandú Pérez", "plain", 10.5, 1.0, true, {"a": [1, 2.5, null], "b": 1, "10": "ten", "2": {"z": false}}, ["x", "y"], null, "C:\\temp\\file", 3],
+    [2, "Zoë \"quoted\"", "comma, here", -0.25, 1e21, false, {}, [], null, "it's", 0],
+    [3, "semi;colon", "line\nbreak", 0.0000001, 123456789012.75, true, {"nested": {"deep": [{"k": "v"}]}}, [1, [2, 3]], null, "tab\there", -42],
+    [4, "", "crlf\r\nend", 100, 0.1, false, {"quote": "say \"hi\""}, ["a,b", "c;d"], null, "\\\\server\\share", 9007199254740991]
+  ],
+  "target": {
+    "table": "order lines",
+    "columns": ["id", "name", "note", "price", "ratio", "active", "meta", "tags", null, "path", null]
+  }
+}

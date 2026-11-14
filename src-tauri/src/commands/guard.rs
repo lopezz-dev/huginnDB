@@ -338,6 +338,9 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("dump::export_table", "export"),
     ("dump::export_table_rows", "export"),
     ("dump::export_query_result", "export"),
+    // Runs the statement again, without the row cap: free SQL as well as a
+    // free export (ADR #137).
+    ("dump::export_query_rows", "export"),
     ("mongo::export_collection", "export"),
     ("pulse::pulse_health", "monitor"),
     ("pulse::pulse_top_queries", "monitor"),
@@ -657,6 +660,15 @@ pub(crate) mod tests {
         assert!(free_sql(&state, "any", "DELETE FROM t WHERE id = 1").is_ok());
         assert!(raw_filter(&state, "any", &filter(Some("id IN (SELECT 1)"))).is_ok());
         assert!(monitor(&state, "any").is_ok());
+    }
+
+    /// Both of `dump::export_query_rows`'s checks refuse a person whose role
+    /// grants no export, or limits the relations a free query could read.
+    #[test]
+    fn a_role_without_export_cannot_export_a_query() {
+        let Some(state) = managed_state() else { return };
+        assert!(free_export(&state, "erp").is_err());
+        assert!(free_sql(&state, "erp", "SELECT * FROM invoices").is_err());
     }
 
     #[test]

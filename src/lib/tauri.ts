@@ -38,6 +38,8 @@ import type {
   CollectionScan,
   ColumnFilter,
   QueryPreview,
+  ResultExportFormat,
+  ServerSqlTarget,
   ColumnInfo,
   IncomingForeignKey,
   ConflictResolution,
@@ -1669,6 +1671,30 @@ export const api = {
       fileName,
       extension,
       contents,
+    }),
+
+  /**
+   * "Everything, from the server…" for a result cut at the row cap (ADR
+   * #137): run `sql` again — a read only, inside the read-only barrier — and
+   * stream every row of it to a file the person picks, with no row cap. The
+   * bytes are the ones `exportResult` writes for the same rows. `target` is
+   * required for `sql` and ignored otherwise. The backend checks the policy
+   * (free export and free SQL) and refuses a write and MongoDB before the
+   * save dialog opens. Resolves to the written path; rejects when the person
+   * cancels (`isExportCancelled`) or the export fails, and a failed export
+   * leaves no file behind.
+   */
+  exportQueryRows: (
+    connectionId: string,
+    sql: string,
+    format: ResultExportFormat,
+    target?: ServerSqlTarget,
+  ) =>
+    invoke<string>("export_query_rows", {
+      connectionId,
+      sql,
+      format,
+      target: target ?? null,
     }),
 
   /**

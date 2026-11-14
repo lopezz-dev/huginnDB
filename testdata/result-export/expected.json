@@ -1,0 +1,87 @@
+[
+  {
+    "id": 1,
+    "name": "Ñandú Pérez",
+    "note": "plain",
+    "price": 10.5,
+    "ratio": 1,
+    "active": true,
+    "meta": {
+      "2": {
+        "z": false
+      },
+      "10": "ten",
+      "a": [
+        1,
+        2.5,
+        null
+      ],
+      "b": 1
+    },
+    "tags": [
+      "x",
+      "y"
+    ],
+    "missing": null,
+    "path": "C:\\temp\\file",
+    "total": 3
+  },
+  {
+    "id": 2,
+    "name": "Zoë \"quoted\"",
+    "note": "comma, here",
+    "price": -0.25,
+    "ratio": 1e+21,
+    "active": false,
+    "meta": {},
+    "tags": [],
+    "missing": null,
+    "path": "it's",
+    "total": 0
+  },
+  {
+    "id": 3,
+    "name": "semi;colon",
+    "note": "line\nbreak",
+    "price": 1e-7,
+    "ratio": 123456789012.75,
+    "active": true,
+    "meta": {
+      "nested": {
+        "deep": [
+          {
+            "k": "v"
+          }
+        ]
+      }
+    },
+    "tags": [
+      1,
+      [
+        2,
+        3
+      ]
+    ],
+    "missing": null,
+    "path": "tab\there",
+    "total": -42
+  },
+  {
+    "id": 4,
+    "name": "",
+    "note": "crlf\r\nend",
+    "price": 100,
+    "ratio": 0.1,
+    "active": false,
+    "meta": {
+      "quote": "say \"hi\""
+    },
+    "tags": [
+      "a,b",
+      "c;d"
+    ],
+    "missing": null,
+    "path": "\\\\server\\share",
+    "total": 9007199254740991
+  }
+]
