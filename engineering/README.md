@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-136 entries: 109 ADRs, 18 gotchas, 9 conventions.
+137 entries: 110 ADRs, 18 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -176,4 +176,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 134 | ADR | [An AI's read is stopped on the server when it runs out of time or its caller goes away](adr/adr-134-an-ai-read-is-stopped-on-the-server-when-it-runs-out-or-its-caller-leaves.md) | accepted | 2026-11-05 |
 | 135 | ADR | [a grid is driven by a source that states what it can write, and one controller acts on it](adr/adr-135-a-grid-is-driven-by-a-source-that-states-what-it-can-write.md) | accepted | 2026-11-12 |
 | 136 | ADR | [a gesture the relation can never perform is not offered; one this person cannot perform now is shown disabled with why](adr/adr-136-a-gesture-the-relation-can-never-perform-is-not-offered.md) | accepted | 2026-11-13 |
+| 137 | ADR | [a query tab shows one tab per statement, runs what the cursor names, and can be stopped on the server](adr/adr-137-a-query-tab-shows-one-tab-per-statement-and-runs-what-the-cursor-names.md) | accepted | 2026-11-14 |
 <!-- index:end -->
