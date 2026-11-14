@@ -10,6 +10,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Exportar los resultados de una consulta como CSV para Excel.** El menú
+  *Exportar datos* de los resultados ofrece ahora dos CSV: *CSV (coma)* y
+  *CSV (punto y coma, para Excel)*. Un Excel cuya configuración regional usa
+  la coma como separador decimal (español y buena parte de Europa) espera
+  punto y coma, y abre un fichero separado por comas en una sola columna.
+  Los dos se guardan como `.csv`, en UTF-8 con marca de orden de bytes.
+
 - **Las cabeceras de columna de una consulta describen la columna de la
   tabla.** Al pasar el ratón por la cabecera de una columna en los
   resultados de un `SELECT` de una sola tabla se ve ahora lo mismo que en

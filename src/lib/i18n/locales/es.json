@@ -2616,6 +2616,10 @@
     "resultTabTitle": "Resultado de la sentencia {{index}}",
     "resultTabTruncatedTitle": "Primeras {{rows}} filas — se alcanzó el presupuesto de filas del lote",
     "notWritable": "Columna calculada — no es una columna de {{table}}, así que no se puede editar",
+    "export": {
+      "csvComma": "CSV (coma)",
+      "csvSemicolon": "CSV (punto y coma, para Excel)"
+    },
     "refreshFailed": "Guardado, pero no se pudieron refrescar los resultados",
     "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n"
   },

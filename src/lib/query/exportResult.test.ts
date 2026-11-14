@@ -28,8 +28,8 @@ beforeEach(() => exportQueryResult.mockReset().mockResolvedValue("/tmp/x"));
 
 describe("exportFormats", () => {
   it("offers SQL only when the result names one table", () => {
-    expect(exportFormats(target)).toEqual(["csv", "json", "sql"]);
-    expect(exportFormats(undefined)).toEqual(["csv", "json"]);
+    expect(exportFormats(target)).toEqual(["csv", "csvSemicolon", "json", "sql"]);
+    expect(exportFormats(undefined)).toEqual(["csv", "csvSemicolon", "json"]);
   });
 });
 
@@ -39,6 +39,17 @@ describe("serializeResult", () => {
   it("CSV keeps the names the query gave, aliases and expressions included", () => {
     expect(serializeResult("csv", input)).toBe(
       "﻿id,p,doubled\r\n7,9.50,19.00\r\n8,,\r\n",
+    );
+  });
+
+  it("CSV for Excel separates with semicolons, quoting a value that holds one", () => {
+    const withSemi = { ...input, rows: [[7, "a;b", null]] };
+    expect(serializeResult("csvSemicolon", withSemi)).toBe(
+      '\uFEFFid;p;doubled\r\n7;"a;b";\r\n',
+    );
+    // A comma no longer needs quoting there — it is just text.
+    expect(serializeResult("csvSemicolon", { ...input, rows: [[7, "9,50", null]] })).toBe(
+      "\uFEFFid;p;doubled\r\n7;9,50;\r\n",
     );
   });
 
@@ -70,6 +81,12 @@ describe("exportResult", () => {
       "csv",
       "﻿id,p,doubled\r\n7,9.50,19.00\r\n8,,\r\n",
     );
+  });
+
+  it("saves the semicolon CSV as a .csv file too", async () => {
+    await exportResult("c1", "csvSemicolon", { rows, columns, driver: "postgres", target });
+    expect(exportQueryResult.mock.calls[0][2]).toBe("csv");
+    expect(exportQueryResult.mock.calls[0][3]).toContain("id;p;doubled");
   });
 
   it("names the file generically over several tables", async () => {
