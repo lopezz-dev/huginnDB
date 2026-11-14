@@ -112,10 +112,27 @@ export function normalizeBitValue(value: string | null | undefined): "0" | "1" |
  * shows an "auto" placeholder instead of a control, and a pasted block leaves
  * it alone.
  *
- * Deliberately conservative: only an integer-ish primary key. A `uuid` or
- * `varchar` PK may well have no default, and hiding its input would make the
- * row impossible to insert.
+ * Deliberately conservative: only an integer-ish primary key that is the
+ * table's *whole* key. A `uuid` or `varchar` PK may well have no default,
+ * and hiding its input would make the row impossible to insert; so would
+ * hiding the members of a composite key such as a junction table's
+ * `(playlist_id, track_id)`, which the database does not generate (SQLite
+ * aliases only a single-column `INTEGER PRIMARY KEY` to the rowid). Showing
+ * an input is the safe side: a cell left untouched stays out of the INSERT,
+ * so a column the database does fill still gets its default.
+ *
+ * `catalog` is the table's described columns — the key's other members are
+ * what tells a lone key from a composite one.
  */
-export function isAutoPkColumn(info?: ColumnInfo): boolean {
-  return !!info?.is_primary_key && /int|serial|rowid/i.test(info.data_type);
+export function isAutoPkColumn(
+  info: ColumnInfo | undefined,
+  catalog: ReadonlyMap<string, ColumnInfo>,
+): boolean {
+  if (!info?.is_primary_key || !/int|serial|rowid/i.test(info.data_type)) {
+    return false;
+  }
+  for (const other of catalog.values()) {
+    if (other.is_primary_key && other.name !== info.name) return false;
+  }
+  return true;
 }

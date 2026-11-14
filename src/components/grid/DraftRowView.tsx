@@ -13,6 +13,7 @@ import {
   DraftCellControl,
   firstEditableColumn,
 } from "@/components/grid/DraftCellControl";
+import { isAutoPkColumn } from "@/lib/grid/columnKinds";
 import type { ColumnInfo, ColumnMeta, DraftCell, DraftRow } from "@/types";
 
 interface DraftRowViewProps {
@@ -114,6 +115,7 @@ export function DraftRowView({
                 tableSchema={tableSchema}
                 bitDisplay={bitDisplay}
                 locked={columnLock?.(col.name)}
+                generated={isAutoPkColumn(infoByName.get(col.name), infoByName)}
                 onChange={(next) => onChange?.(col.name, next)}
               />
             </td>

@@ -947,7 +947,7 @@ export function DataGrid({
         const fillable =
           canInsert &&
           !draftColumnLock?.(c.name) &&
-          !isAutoPkColumn(columnInfoByName.get(c.name));
+          !isAutoPkColumn(columnInfoByName.get(c.name), columnInfoByName);
         if (fillable) insertOnly.add(c.name);
         else locked.set(c.name, reason);
       }

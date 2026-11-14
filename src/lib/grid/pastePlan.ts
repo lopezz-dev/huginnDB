@@ -227,7 +227,7 @@ export function planPaste(input: PastePlanInput): PastePlan {
         } else if (target === null) {
           skip(col.name, "computed");
           state = "skip";
-        } else if (isAutoPkColumn(columnInfo.get(target))) {
+        } else if (isAutoPkColumn(columnInfo.get(target), columnInfo)) {
           skip(col.name, "generated");
           state = "skip";
         } else if (insertLock?.(target)) {
@@ -255,7 +255,12 @@ export function planPaste(input: PastePlanInput): PastePlan {
     inserts.length === 0
       ? []
       : [...columnInfo.values()]
-          .filter((info) => !info.nullable && !isAutoPkColumn(info) && !given.has(info.name))
+          .filter(
+            (info) =>
+              !info.nullable &&
+              !isAutoPkColumn(info, columnInfo) &&
+              !given.has(info.name),
+          )
           .map((info) => info.name);
 
   return {
