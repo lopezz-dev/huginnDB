@@ -923,28 +923,33 @@ export function DataGrid({
       ? columnLock(editorTarget.field?.path[0] ?? editorTarget.column.name)
       : null;
 
-  // The columns the policy will not let this person change, split by whether
-  // a new row may still fill them: a lock in the header for a column they can
-  // neither change nor fill, and an "only when adding a row" mark for one the
-  // draft row still offers — a plain lock there read as a contradiction next
-  // to the Insert button. Derived once per result rather than asked of
+  // The columns this person cannot change, split by whether a new row may
+  // still fill them: a lock in the header for a column they can neither
+  // change nor fill, and an "only when adding a row" mark for one the draft
+  // row still offers — a plain lock there read as a contradiction next to the
+  // Insert button. The lock keeps `columnLock`'s own reason, because it is not
+  // always the policy: a query's expression column is locked for being no
+  // column of the table, and the header must say so rather than blame a
+  // policy that may not exist. Derived once per result rather than asked of
   // `columnLock` in the renderer, since the column definitions must not
   // depend on a function.
   // A boolean, not the callback: `onInsertRow` is a fresh function on every
-  // render of the tab, and these sets feed the column definitions, whose
+  // render of the tab, and these maps feed the column definitions, whose
   // rebuild remounts the table body (see `useGridColumns`).
   const canInsert = !!onInsertRow;
-  const [lockedNameSet, insertOnlyNameSet] = useMemo(() => {
-    const locked = new Set<string>();
+  const [lockedReasons, insertOnlyNameSet] = useMemo(() => {
+    const locked = new Map<string, string>();
     const insertOnly = new Set<string>();
     if (editable && columnLock) {
       for (const c of result.columns) {
-        if (!columnLock(c.name)) continue;
+        const reason = columnLock(c.name);
+        if (!reason) continue;
         const fillable =
           canInsert &&
           !draftColumnLock?.(c.name) &&
-          !isAutoPkColumn(columnInfoByName.get(c.name));
-        (fillable ? insertOnly : locked).add(c.name);
+          !isAutoPkColumn(columnInfoByName.get(c.name), columnInfoByName);
+        if (fillable) insertOnly.add(c.name);
+        else locked.set(c.name, reason);
       }
     }
     return [locked, insertOnly] as const;
@@ -1011,7 +1016,7 @@ export function DataGrid({
         20 +
         (pkNameSet.has(name) ? 16 : 0) +
         (fkNameSet.has(name) ? 16 : 0) +
-        (lockedNameSet.has(name) || insertOnlyNameSet.has(name) ? 16 : 0) +
+        (lockedReasons.has(name) || insertOnlyNameSet.has(name) ? 16 : 0) +
         ((sort?.length ?? 0) > 1 && sort!.some((s) => s.column === name)
           ? 12
           : 0),
@@ -1247,7 +1252,7 @@ export function DataGrid({
       columnIndexByName,
       pkNameSet,
       fkNameSet,
-      lockedNameSet,
+      lockedReasons,
       insertOnlyNameSet,
       boundSchemaNames,
     },

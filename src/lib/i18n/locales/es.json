@@ -771,7 +771,6 @@
       "showingFirst": "Mostrando las primeras {{count}} filas · escribe para buscar en todas",
       "unavailable": "Búsqueda de clave foránea no disponible: {{message}}"
     },
-    "headerPolicyLocked": "Bloqueada por la política de tu organización",
     "draftLocked": "Tomará su valor por defecto, o NULL.",
     "paste": {
       "title": "Pegar celdas",

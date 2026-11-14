@@ -106,6 +106,36 @@ describe("planPaste", () => {
     expect(plan.missingOnInsert).toEqual([]);
   });
 
+  // A junction table's integer key is not generated: rows pasted below the
+  // last one carry the key columns they were given, instead of having them
+  // dropped as values the database would invent.
+  it("writes a composite integer key on new rows instead of skipping it as generated", () => {
+    const jtColumns = [col("PlaylistId", "INTEGER"), col("TrackId", "INTEGER")];
+    const plan = planPaste(
+      input({
+        columns: jtColumns,
+        columnIndexByName: new Map(jtColumns.map((c, i) => [c.name, i])),
+        rows: [[1, 10]],
+        keyOf: (row) => [row[0], row[1]],
+        pkColumns: ["PlaylistId", "TrackId"],
+        columnInfo: new Map([
+          ["PlaylistId", info("PlaylistId", { data_type: "INTEGER", nullable: false, is_primary_key: true })],
+          ["TrackId", info("TrackId", { data_type: "INTEGER", nullable: false, is_primary_key: true })],
+        ]),
+        block: [["1", "10"], ["2", "20"], ["3", ""]],
+      }),
+    );
+    expect(plan.inserts).toEqual([
+      [
+        { column: "PlaylistId", value: "2", columnType: "INTEGER" },
+        { column: "TrackId", value: "20", columnType: "INTEGER" },
+      ],
+      [{ column: "PlaylistId", value: "3", columnType: "INTEGER" }],
+    ]);
+    expect(plan.skipped.filter((s) => s.reason === "generated")).toEqual([]);
+    expect(plan.missingOnInsert).toEqual([]);
+  });
+
   it("names a required column the new rows leave empty", () => {
     const plan = planPaste(
       input({ columns: columns.slice(2), block: [["a"], ["b"], ["c"]] }),

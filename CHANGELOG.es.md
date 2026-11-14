@@ -21,8 +21,12 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   tabla.** Al pasar el ratón por la cabecera de una columna en los
   resultados de un `SELECT` de una sola tabla se ve ahora lo mismo que en
   una pestaña de tabla: si la columna admite NULL y, en una clave ajena, a
-  qué tabla y columna apunta, también con alias. Las columnas calculadas, y
-  todas las de un resultado de varias tablas, siguen mostrando solo su tipo.
+  qué tabla y columna apunta, también con alias. La cabecera de una columna
+  calculada dice que no se puede editar porque no es una columna de la
+  tabla, en vez de culpar a la política de tu organización, y todas las de
+  un resultado de varias tablas siguen mostrando solo su tipo. Cuando la
+  política sí bloquea una columna, su cabecera da ahora el motivo de la
+  propia política, también en una pestaña de tabla.
 
 - **Elegir el valor de una clave ajena al editar los resultados de una
   consulta.** Editar una celda de clave ajena en los resultados de un
@@ -91,6 +95,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   `SET`. Si no hay otra columna, el `SET` lista ahora la clave con sus
   valores actuales: la sentencia se ejecuta tal cual se copia, y cambiar en
   ella un valor de la clave es la única actualización que admite esa fila.
+
+- **Se pueden añadir filas a una tabla cuya clave son varias columnas
+  enteras.** En una tabla de unión como `playlist_track (playlist_id,
+  track_id)`, la fila nueva de Insertar o de *Duplicar fila…* mostraba cada
+  columna de la clave como «auto» sin forma de rellenarla, así que no se
+  podía añadir ninguna fila desde el grid; las filas sobrantes de un bloque
+  pegado perdían esas columnas igual. Ahora solo se trata como generada por
+  la base de datos una clave entera que es ella sola toda la clave de la
+  tabla; cada columna de una clave compuesta tiene su control (una lista con
+  búsqueda si es clave ajena) y las filas pegadas conservan los valores que
+  se le dan.
 
 - **Una vista ya no ofrece añadir filas.** Al navegar una vista aparecía el
   botón Insertar deshabilitado con una explicación, pero el menú de fila

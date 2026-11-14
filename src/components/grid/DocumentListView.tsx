@@ -671,12 +671,13 @@ function DraftDocumentCard({
                     tableSchema={draft.tableSchema}
                     bitDisplay={draft.bitDisplay}
                     locked={draft.columnLock?.(col.name)}
+                    generated={isAutoPkColumn(info, infoByName)}
                     onChange={(next) => draft.onChange(col.name, next)}
                   />
                 </span>
               </span>
               {showTypes &&
-                (draft.documentMode && !isAutoPkColumn(info) ? (
+                (draft.documentMode && !isAutoPkColumn(info, infoByName) ? (
                   // The picker's own Enter / Escape must not reach the card's
                   // keyboard handler below, which reads them as "insert now" /
                   // "discard the draft". Radix renders the popover in a portal,
