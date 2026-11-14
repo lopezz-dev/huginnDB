@@ -1,6 +1,6 @@
 /**
  * Tab body for ad-hoc queries: the toolbar and a Monaco editor on top, the
- * results below, separated by a vertical resize handle (defaults to a 75/25
+ * results below, separated by a vertical resize handle (defaults to a 60/40
  * split, remembered via `autoSaveId` once dragged).
  *
  * ADR #137 splits what used to be one ~1 235-line component. This file keeps
@@ -11,7 +11,8 @@
  *    text takes, the result panels, the history record, the timer;
  *  - `useDatabaseSelector` (`lib/query/`) owns which database the tab targets;
  *  - `QueryEditorToolbar` and `QueryHistorySidebar` are its chrome;
- *  - `results/QueryResultsArea` shows one panel per result set (see
+ *  - `results/QueryResultsArea` shows one tab per statement the run executed
+ *    — rows, write or error — with a Summary first in a batch (see
  *    `results/ResultTabs` for why only one grid is ever mounted).
  *
  * Editor features:
@@ -58,6 +59,7 @@ import { runAiTask } from "@/lib/ai/runTask";
 import { splitSql, type SqlDialect } from "@/lib/sql/sqlSplit";
 import { notify } from "@/lib/notify";
 import { runTarget, type EditorSnapshot, type RunScope } from "@/lib/query/runTarget";
+import type { LineRange } from "@/lib/query/statementTabs";
 import i18n from "@/lib/i18n";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { QueryEditorToolbar } from "@/components/query/QueryEditorToolbar";
@@ -130,12 +132,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
    */
   const queryTimerRef = useRef<QueryTimerHandle>(null);
 
-  // `useDatabaseSelector` reports a failed switch into the results area, and
-  // that area belongs to the run; the ref breaks the hook-order cycle.
-  const reportErrorRef = useRef<(message: string) => void>(() => {});
+  // A failed switch is not the query's error, so it is a notification and
+  // never lands among the run's tabs (ADR #137).
   const onSelectorError = useCallback(
-    (message: string) => reportErrorRef.current(message),
-    [],
+    (message: string) =>
+      notify.error(t("query.switchDatabaseFailed"), { description: message }),
+    [t],
   );
   const { parentId, effectiveId, selectedDb, databases, switchDatabase } =
     useDatabaseSelector(connectionId, driver, onSelectorError);
@@ -146,7 +148,6 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     dialect,
     timer: queryTimerRef,
   });
-  reportErrorRef.current = run.reportError;
 
   // The tab's own autocomplete needs the catalogue, and this is the one
   // surface that never asked for it: suggestions used to appear only once the
@@ -182,9 +183,18 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       getValueLength: () => number;
       getValue: () => string;
       getValueInRange: (range: unknown) => string;
+      getLineMaxColumn: (line: number) => number;
       uri: { toString: () => string };
     } | null;
-    getSelection: () => { isEmpty: () => boolean } | null;
+    getSelection: () => { isEmpty: () => boolean; startLineNumber: number } | null;
+    setSelection: (range: {
+      startLineNumber: number;
+      startColumn: number;
+      endLineNumber: number;
+      endColumn: number;
+    }) => void;
+    revealLinesInCenter: (start: number, end: number) => void;
+    focus: () => void;
     getPosition: () => { lineNumber: number } | null;
     onDidChangeModelContent: (fn: () => void) => { dispose: () => void };
     onDidChangeCursorSelection?: (fn: () => void) => { dispose: () => void };
@@ -200,7 +210,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       contextMenuOrder?: number;
       run: (editor: {
         getModel: () => { getValue: () => string; getValueInRange: (range: unknown) => string } | null;
-        getSelection: () => { isEmpty: () => boolean } | null;
+        getSelection: () => { isEmpty: () => boolean; startLineNumber: number } | null;
         getPosition: () => { lineNumber: number } | null;
       }) => void;
     }) => { dispose: () => void };
@@ -321,8 +331,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       const snap: EditorSnapshot = editor
         ? snapshotOf(editor, dialect)
         : { source: sql, selection: null, line: 1, dialect };
-      const text = runTarget(snap, scope);
-      if (text === null) {
+      const target = runTarget(snap, scope);
+      if (target === null) {
         // A caret between two statements names nothing; running the whole
         // buffer instead would be exactly the surprise this rule removes.
         if (scope === "cursor" || scope === "statement") {
@@ -332,7 +342,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         }
         return;
       }
-      void run.run(text);
+      void run.run(target.text, target.firstLine);
     },
     [dialect, sql, run.run, t],
   );
@@ -450,7 +460,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         run: (ed) => {
           // The selection when there is one, else the statement the caret is
           // in — the same rule `runQuery` follows (`lib/query/runTarget`).
-          const statement = runTarget(snapshotOf(ed, dialectRef.current), "cursor");
+          const statement = runTarget(snapshotOf(ed, dialectRef.current), "cursor")?.text;
           if (!statement) return;
           void runAiTask({
             task: entry.task,
@@ -476,7 +486,13 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       sqlEditorDisposeRef.current = registerSqlEditor(uri, {
         getCompletions: () => completionsRef.current,
         getLenses: () => lensesRef.current,
-        runStatement: (text) => void runQueryRef.current(text),
+        // The lens hands over its text only; its statement is in the lens
+        // cache, which is where *Go to statement* finds its line.
+        runStatement: (text) =>
+          void runQueryRef.current(
+            text,
+            lensesRef.current.find((st) => st.text === text)?.startLine ?? null,
+          ),
       });
       // The Mongo provider only ever sees models whose language is
       // `mongodb-query`, so registering this for a SQL tab costs a map entry
@@ -489,6 +505,24 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       });
     }
   }
+
+  /** *Go to statement*: select its lines in the editor and bring it into
+   *  view. The range is the one recorded at run time; edits since then can
+   *  shift it, which is the editor's own behaviour for any stale range. */
+  const goTo = useCallback((lines: LineRange) => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model) return;
+    const end = Math.min(lines.end, model.getLineCount());
+    editor.setSelection({
+      startLineNumber: lines.start,
+      startColumn: 1,
+      endLineNumber: end,
+      endColumn: model.getLineMaxColumn(end),
+    });
+    editor.revealLinesInCenter(lines.start, end);
+    editor.focus();
+  }, []);
 
   const handleEditorChange = useCallback(
     (v: string | undefined) => updateQuery(tabId, v ?? ""),
@@ -506,13 +540,15 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     <PanelGroup
       direction="vertical"
       className="h-full"
-      autoSaveId="query-editor-split"
+      autoSaveId="query-editor-split-v2"
     >
-      {/* Editor panel. Defaults to a 75/25 editor:results split — writing SQL
-          is the bulk of the work here, results are a glance — but the handle
-          below is fully draggable and `autoSaveId` remembers wherever the
-          user leaves it, across every query tab. */}
-      <Panel defaultSize={75} minSize={20}>
+      {/* Editor panel. Defaults to a 60/40 editor:results split (ADR #137):
+          the results now hold a tab per statement and the cards that explain
+          a write or a failure, which a quarter of the height could not show.
+          The handle is draggable and `autoSaveId` remembers wherever the user
+          leaves it, across every query tab — under a new key, so the old 75/25
+          a person never dragged does not pin the new default. */}
+      <Panel defaultSize={60} minSize={20}>
         <div className="flex h-full flex-col">
           <QueryEditorToolbar
             ref={queryTimerRef}
@@ -560,7 +596,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               <QueryHistorySidebar
                 connectionId={parentId}
                 onLoad={(text) => updateQuery(tabId, text)}
-                onRun={(text) => void run.runSingle(text)}
+                onRun={(text) => void run.runSingle(text, null)}
               />
             )}
           </div>
@@ -598,17 +634,16 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
 
       <PanelResizeHandle className="h-1 bg-border hover:bg-primary/30" />
 
-      <Panel defaultSize={25} minSize={10}>
+      <Panel defaultSize={40} minSize={10}>
         <QueryResultsArea
-          panels={run.panels}
+          tabs={run.tabs}
           active={run.active}
           resultsOn={run.resultsOn}
-          batchSummary={run.batchSummary}
-          error={run.error}
-          selectPanel={run.selectPanel}
+          selectTab={run.selectTab}
           refreshActive={run.refreshActive}
           tabId={tabId}
           driver={driver}
+          onGoTo={goTo}
         />
       </Panel>
 
@@ -630,7 +665,7 @@ function snapshotOf(
       getValue: () => string;
       getValueInRange: (range: unknown) => string;
     } | null;
-    getSelection: () => { isEmpty: () => boolean } | null;
+    getSelection: () => { isEmpty: () => boolean; startLineNumber: number } | null;
     getPosition: () => { lineNumber: number } | null;
   },
   dialect: SqlDialect,
@@ -641,7 +676,10 @@ function snapshotOf(
     source: model?.getValue() ?? "",
     selection:
       model && selection && !selection.isEmpty()
-        ? model.getValueInRange(selection)
+        ? {
+            text: model.getValueInRange(selection),
+            startLine: selection.startLineNumber,
+          }
         : null,
     line: editor.getPosition()?.lineNumber ?? 1,
     dialect,

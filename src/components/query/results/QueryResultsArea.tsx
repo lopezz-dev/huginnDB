@@ -1,8 +1,7 @@
 /**
- * The query tab's results area: the batch summary, the strip of result tabs
- * and the body of the one on screen (the grid, the DML line, the error box or
- * the empty state). Extracted from `QueryEditorTab` (ADR #137, step 2) with no
- * change of behaviour.
+ * The query tab's results area (ADR #137): the strip of the run's tabs and
+ * the body of the one on screen — the shared result grid, a write card, an
+ * error card or the batch Summary.
  *
  * It **shows** what `useQueryRun` decided; the only state it owns is the
  * grid's client-side filter, which it clears on a tab switch — a filter typed
@@ -12,77 +11,68 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { QueryResultGrid } from "@/components/query/QueryResultGrid";
-import { BatchSummary } from "@/components/query/results/BatchSummary";
-import { DmlResult } from "@/components/query/results/DmlResult";
 import { ResultTabs } from "@/components/query/results/ResultTabs";
+import { ErrorCard, WriteCard } from "@/components/query/results/StatementCards";
+import { SummaryView } from "@/components/query/results/SummaryView";
+import type { LineRange } from "@/lib/query/statementTabs";
 import type { QueryRun } from "@/lib/query/useQueryRun";
 import type { Driver } from "@/types";
 
-type Props = Pick<
-  QueryRun,
-  | "panels"
-  | "active"
-  | "resultsOn"
-  | "batchSummary"
-  | "error"
-  | "selectPanel"
-  | "refreshActive"
-> & {
+type Props = Pick<QueryRun, "tabs" | "active" | "resultsOn" | "selectTab" | "refreshActive"> & {
   tabId: string;
   driver: Driver | undefined;
+  /** Select a statement's lines in the editor. */
+  onGoTo: (lines: LineRange) => void;
 };
 
 export function QueryResultsArea({
-  panels,
+  tabs,
   active,
   resultsOn,
-  batchSummary,
-  error,
-  selectPanel,
+  selectTab,
   refreshActive,
   tabId,
   driver,
+  onGoTo,
 }: Props) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState("");
 
   const select = useCallback(
     (key: string) => {
-      selectPanel(key);
+      selectTab(key);
       setFilter("");
     },
-    [selectPanel],
+    [selectTab],
   );
 
   return (
     <div className="flex h-full flex-col">
-      {/* One line per statement — including the writes and the failure,
-          which have no panel of their own. */}
-      {batchSummary && <BatchSummary summary={batchSummary} />}
-      {panels.length > 1 && (
-        <ResultTabs
-          panels={panels}
-          activeKey={active?.key ?? null}
-          onSelect={select}
-        />
+      {tabs.length > 1 && (
+        <ResultTabs tabs={tabs} activeKey={active?.key ?? null} onSelect={select} />
       )}
-      {error ? (
-        <div className="min-h-0 flex-1 overflow-auto bg-destructive/10 p-3 font-mono text-xs text-destructive">
-          {error}
+      {active === null ? (
+        <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
+          {t("query.noResults")}
         </div>
-      ) : active && active.result.columns.length === 0 ? (
-        <DmlResult result={active.result} />
-      ) : active ? (
+      ) : active.kind === "summary" ? (
+        <SummaryView tab={active} onSelect={select} />
+      ) : active.kind === "error" ? (
+        <ErrorCard tab={active} onGoTo={onGoTo} />
+      ) : active.kind === "write" ? (
+        <WriteCard tab={active} onGoTo={onGoTo} />
+      ) : (
         // `QueryResultGrid`'s root is the `flex-1 overflow-hidden` box the
         // grid needs to get a definite height from this flex column.
         //
-        // Keyed, so switching panels remounts the grid rather than feeding a
-        // new result into one holding the previous one's sort, selection and
-        // column widths.
+        // Keyed, so switching tabs remounts the grid rather than feeding a new
+        // result into one holding the previous one's sort, selection and
+        // column widths. One of several sets gets no statement: it is not a
+        // single-table SELECT, so the grid stays read-only.
         <QueryResultGrid
           key={active.key}
           result={active.result}
-          sql={active.sql}
+          sql={active.refreshable ? active.sql : undefined}
           connectionId={resultsOn}
           driver={driver}
           tabId={tabId}
@@ -90,10 +80,6 @@ export function QueryResultsArea({
           onGlobalFilterChange={setFilter}
           onRefresh={refreshActive}
         />
-      ) : (
-        <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-          {batchSummary ? null : t("query.noResults")}
-        </div>
       )}
     </div>
   );
