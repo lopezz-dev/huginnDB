@@ -854,6 +854,51 @@ describe("result tabs", () => {
     );
   });
 
+  it("a cut result carries the amber mark on its tab and a strip over the grid", async () => {
+    const full = Array.from({ length: 50_000 }, (_, i) => [i]);
+    seed("SELECT * FROM big;\nSELECT 1");
+    h.api.executeBatch.mockResolvedValue({
+      statements: [
+        stmt(0, "SELECT * FROM big", {
+          is_select: true,
+          results: [rows(["a"], full, { truncated: true })],
+        }),
+        stmt(1, "SELECT 1", { is_select: true, results: [rows(["x"], [[1]])] }),
+      ],
+      total_affected: 0,
+    } satisfies BatchResult);
+    renderTab();
+    await runAll();
+    const [, cut, whole] = within(resultTabs()!).getAllByRole("radio");
+    expect(cut.querySelector("svg.text-warning")).not.toBeNull();
+    expect(whole.querySelector("svg.text-warning")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe(
+      `query.cutStrip${JSON.stringify({ rows: (50_000).toLocaleString() })}`,
+    );
+    pickTab("#2");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("a result shed by the batch budget says so in its strip", async () => {
+    seed("SELECT 1;\nSELECT * FROM more");
+    h.api.executeBatch.mockResolvedValue({
+      statements: [
+        stmt(0, "SELECT 1", { is_select: true, results: [rows(["x"], [[1]])] }),
+        stmt(1, "SELECT * FROM more", {
+          is_select: true,
+          results: [rows(["a"], [[1], [2]], { truncated: true })],
+        }),
+      ],
+      total_affected: 0,
+    } satisfies BatchResult);
+    renderTab();
+    await runAll();
+    pickTab("#2");
+    expect(screen.getByRole("status").textContent).toBe(
+      `query.cutStripBudget${JSON.stringify({ rows: "2" })}`,
+    );
+  });
+
   it("a failed refresh is a notification, not the results' error box", async () => {
     seed("SELECT 1");
     h.api.executeQuery.mockResolvedValueOnce(rows(["x"], [[1]]));

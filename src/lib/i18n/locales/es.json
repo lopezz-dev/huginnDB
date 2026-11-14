@@ -2634,6 +2634,8 @@
     "resultTabTitle": "Resultado de la sentencia {{index}}",
     "resultTabTruncatedTitle": "Primeras {{rows}} filas; la sentencia devuelve más",
     "resultTabBudgetTitle": "Primeras {{rows}} filas; se alcanzó el presupuesto de filas compartido del lote",
+    "cutStrip": "Primeras {{rows}} filas; la consulta devuelve más",
+    "cutStripBudget": "Primeras {{rows}} filas; se alcanzó el presupuesto de filas compartido del lote",
     "tabSummary": "Resumen",
     "tabSummaryTitle": "Cada sentencia del lote, su resultado y su tiempo",
     "writeTab": "{{label}} · {{rows}} afectadas",
@@ -2647,7 +2649,8 @@
     "notWritable": "Columna calculada — no es una columna de {{table}}, así que no se puede editar",
     "export": {
       "csvComma": "CSV (coma)",
-      "csvSemicolon": "CSV (punto y coma, para Excel)"
+      "csvSemicolon": "CSV (punto y coma, para Excel)",
+      "rowsShown": "Las filas mostradas ({{count}})"
     },
     "refreshFailed": "Guardado, pero no se pudieron refrescar los resultados",
     "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n"

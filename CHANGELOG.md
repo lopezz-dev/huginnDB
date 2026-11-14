@@ -34,8 +34,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - **Export a query's results.** The results grid of a SQL Query tab has an
   *Export data* menu: CSV, JSON and — when the results come from a single
-  table — SQL INSERT. It writes every row the query returned, not only those
-  the grid's search shows. CSV and JSON keep the columns as the query named
+  table — SQL INSERT. It writes every row the grid holds, not only those
+  the grid's search shows; a result cut at 50 000 rows exports those 50 000,
+  and its menu says so. CSV and JSON keep the columns as the query named
   them; SQL INSERT names the real table, writes aliased columns as the table
   columns they stand for and leaves computed columns out. CSV is UTF-8 with
   a byte-order mark, so Excel reads accented text correctly. Under a managed
@@ -147,6 +148,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   can also no longer leave the older one on disk.
   
 ### Changed
+
+- **A cut result says so where it is shown and where it is exported.** A
+  query that returns more than 50 000 rows shows only the first 50 000. Its
+  result tab now carries an amber mark, a strip over the grid says "First
+  50 000 rows; the query returns more" (or that a batch's shared row budget
+  was reached), and the *Export data* menu lists its formats under "The rows
+  shown (50 000)" — which is what they write — instead of exporting them
+  without a word.
 
 - **The query history is a panel beside Saved queries.** It used to be a
   sidebar inside each query tab. It is now a panel of its own in the right

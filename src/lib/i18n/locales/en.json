@@ -2634,6 +2634,8 @@
     "resultTabTitle": "Result of statement {{index}}",
     "resultTabTruncatedTitle": "First {{rows}} rows; the statement returns more",
     "resultTabBudgetTitle": "First {{rows}} rows; the batch's shared row budget was reached",
+    "cutStrip": "First {{rows}} rows; the query returns more",
+    "cutStripBudget": "First {{rows}} rows; the batch's shared row budget was reached",
     "tabSummary": "Summary",
     "tabSummaryTitle": "Every statement of the batch, its outcome and its time",
     "writeTab": "{{label}} · {{rows}} affected",
@@ -2647,7 +2649,8 @@
     "notWritable": "Computed column — it is not a column of {{table}}, so it cannot be edited",
     "export": {
       "csvComma": "CSV (comma)",
-      "csvSemicolon": "CSV (semicolon, for Excel)"
+      "csvSemicolon": "CSV (semicolon, for Excel)",
+      "rowsShown": "The rows shown ({{count}})"
     },
     "refreshFailed": "Saved, but the results could not be refreshed",
     "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n"

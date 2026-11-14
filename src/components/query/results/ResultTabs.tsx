@@ -17,7 +17,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { ListChecks, X } from "lucide-react";
+import { AlertTriangle, ListChecks, X } from "lucide-react";
 import { Segmented } from "@/components/ui/segmented";
 import type { StatementTab } from "@/lib/query/statementTabs";
 import { cutBy } from "@/lib/query/resultCap";
@@ -85,6 +85,10 @@ export function ResultTabs({
         <X className="h-3 w-3 text-destructive" />
       ) : tab.kind === "summary" ? (
         <ListChecks className="h-3 w-3" />
+      ) : tab.kind === "rows" && cutBy(tab.result) !== null ? (
+        // The amber mark of a cut result (ADR #137): the tab itself says the
+        // rows on it are not all the rows, before it is even opened.
+        <AlertTriangle className="h-3 w-3 text-warning" aria-hidden />
       ) : undefined,
     // The OS tooltip is `Segmented`'s own affordance for a narrow segment.
     title: titleOf(tab, t),

@@ -40,7 +40,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **Exportar los resultados de una consulta.** El grid de resultados de una
   pestaña SQL Query tiene un menú *Exportar datos*: CSV, JSON y, cuando los
   resultados vienen de una sola tabla, SQL INSERT. Escribe todas las filas
-  que devolvió la consulta, no solo las que deja ver la búsqueda del grid.
+  que tiene el grid, no solo las que deja ver la búsqueda; un resultado
+  cortado en 50 000 filas exporta esas 50 000, y su menú lo dice.
   CSV y JSON mantienen las columnas como las nombró la consulta; SQL INSERT
   nombra la tabla real, escribe las columnas con alias como las columnas de
   la tabla a las que corresponden y deja fuera las calculadas. El CSV va en
@@ -164,6 +165,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   simultáneos ya no pueden dejar en disco el más antiguo.
   
 ### Cambiado
+
+- **Un resultado cortado lo dice donde se muestra y donde se exporta.** Una
+  consulta que devuelve más de 50 000 filas muestra solo las 50 000
+  primeras. Su pestaña de resultado lleva ahora una marca ámbar, una franja
+  sobre el grid dice «Primeras 50 000 filas; la consulta devuelve más» (o
+  que se alcanzó el presupuesto de filas compartido de un lote), y el menú
+  *Exportar datos* agrupa sus formatos bajo «Las filas mostradas (50 000)»,
+  que es lo que escriben, en lugar de exportarlas sin avisar.
 
 - **El historial de consultas es un panel junto a Consultas guardadas.**
   Era una barra lateral dentro de cada pestaña de consulta. Ahora es un
