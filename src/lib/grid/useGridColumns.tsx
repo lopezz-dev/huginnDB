@@ -74,9 +74,12 @@ export interface ColumnMetaMaps {
   columnIndexByName: ReadonlyMap<string, number>;
   pkNameSet: ReadonlySet<string>;
   fkNameSet: ReadonlySet<string>;
-  /** Columns the managed policy will not let this person change (ADR #113). */
-  lockedNameSet?: ReadonlySet<string>;
-  /** Columns they may not change but may fill when adding a row. */
+  /** Columns this person cannot change, each with why — a managed policy's
+   *  column limit (ADR #113) or, in a query's result, an expression that is
+   *  no column of the table. The header shows the reason as given. */
+  lockedReasons?: ReadonlyMap<string, string>;
+  /** Columns the policy will not let them change but lets them fill when
+   *  adding a row. */
   insertOnlyNameSet?: ReadonlySet<string>;
   /** Name of the JSON Schema bound to a column, when there is one. */
   boundSchemaNames: ReadonlyMap<string, string>;
@@ -159,7 +162,7 @@ export function useGridColumns(
     columnIndexByName,
     pkNameSet,
     fkNameSet,
-    lockedNameSet,
+    lockedReasons,
     insertOnlyNameSet,
     boundSchemaNames,
   } = meta;
@@ -188,9 +191,9 @@ export function useGridColumns(
           // window that can also run DDL. Sorting stays discoverable through
           // the arrow glyph and the sort state reported on the last line.
           const facts: string[] = [col.data_type];
-          const locked = lockedNameSet?.has(col.name) ?? false;
+          const locked = lockedReasons?.get(col.name);
           const insertOnly = insertOnlyNameSet?.has(col.name) ?? false;
-          if (locked) facts.push(t("dataGrid.headerPolicyLocked"));
+          if (locked) facts.push(locked);
           if (insertOnly) facts.push(t("dataGrid.headerInsertOnly"));
           if (pkNameSet.has(col.name)) facts.push(t("dataGrid.headerPk"));
           if (fkNameSet.has(col.name)) {
@@ -237,7 +240,7 @@ export function useGridColumns(
               {locked && (
                 <Lock
                   className="h-3 w-3 shrink-0 text-muted-foreground"
-                  aria-label={t("dataGrid.headerPolicyLocked")}
+                  aria-label={locked}
                 />
               )}
               {insertOnly && (
@@ -497,7 +500,7 @@ export function useGridColumns(
       sort,
       pkNameSet,
       fkNameSet,
-      lockedNameSet,
+      lockedReasons,
       insertOnlyNameSet,
       onSortChange,
       expandCellCombo,

@@ -11,7 +11,7 @@
  * hook's own half of the contract: stable input in, stable `columns` out.
  */
 import "@/lib/i18n";
-import { render, renderHook, screen } from "@testing-library/react";
+import { render, renderHook, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useGridColumns, type GridColumnsOptions } from "./useGridColumns";
 import type { ColumnMeta } from "@/types";
@@ -127,7 +127,9 @@ describe("useGridColumns policy marks", () => {
         ...options,
         meta: {
           ...options.meta,
-          lockedNameSet: new Set(["id"]),
+          lockedReasons: new Map([
+            ["id", "Your organization's policy doesn't let you change id here"],
+          ]),
           insertOnlyNameSet: new Set(["name"]),
         },
       }),
@@ -137,12 +139,35 @@ describe("useGridColumns policy marks", () => {
       return render(h());
     };
     header(0);
-    expect(screen.getByLabelText("Locked by your organization's policy")).toBeTruthy();
+    expect(
+      screen.getByLabelText(
+        "Your organization's policy doesn't let you change id here",
+      ),
+    ).toBeTruthy();
     header(1);
     expect(
       screen.getByLabelText(
         "Locked by your organization's policy — only filled when adding a row",
       ),
     ).toBeTruthy();
+  });
+
+  // A query's expression column is locked for being no column of the table:
+  // the header says that, not that a policy (which may not exist) locked it.
+  it("shows a lock's own reason, not a policy, for a computed column", () => {
+    const options = baseOptions();
+    const reason =
+      "Computed column — it is not a column of Track, so it cannot be edited";
+    const { result } = renderHook(() =>
+      useGridColumns({
+        ...options,
+        meta: { ...options.meta, lockedReasons: new Map([["name", reason]]) },
+      }),
+    );
+    const h = result.current[1].header as () => JSX.Element;
+    const view = within(render(h()).container);
+    expect(view.getByLabelText(reason)).toBeTruthy();
+    expect(view.getByRole("button").title).toBe(`name\nTEXT · ${reason}`);
+    expect(view.queryByLabelText(/organization's policy/)).toBeNull();
   });
 });
