@@ -9,11 +9,16 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Check, Copy, CornerDownRight, X } from "lucide-react";
+import { Check, CircleStop, Copy, CornerDownRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { copyToClipboard } from "@/lib/clipboard";
 import { notify } from "@/lib/notify";
-import type { ErrorTab, LineRange, WriteTab } from "@/lib/query/statementTabs";
+import type {
+  ErrorTab,
+  LineRange,
+  StoppedTab,
+  WriteTab,
+} from "@/lib/query/statementTabs";
 
 interface CardProps<T> {
   tab: T;
@@ -87,6 +92,44 @@ export function ErrorCard({ tab, onGoTo }: CardProps<ErrorTab>) {
       <div className="mt-2 whitespace-pre-wrap rounded-sm bg-destructive/10 px-2 py-1.5 font-mono text-xs text-destructive">
         {tab.message}
       </div>
+      <div className="mt-2">
+        <Statement sql={tab.sql} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A statement the person stopped (ADR #137). It says, before anything else,
+ * what matters after a stop: whether the statement applied — "it did not",
+ * or "it may have" (a stop that raced its commit, SQLite, which cannot
+ * interrupt a statement and lets it finish on a detached connection). Then
+ * the backend's account of what happened on the server, which for a batch
+ * also says that its session was closed and any open transaction rolled back.
+ */
+export function StoppedCard({ tab, onGoTo }: CardProps<StoppedTab>) {
+  const { t } = useTranslation();
+  const mayHaveApplied = tab.outcome === "may_have_applied";
+  return (
+    <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div
+        className={
+          mayHaveApplied
+            ? "flex items-center gap-2 text-xs text-warning"
+            : "flex items-center gap-2 text-xs text-muted-foreground"
+        }
+      >
+        <CircleStop className="h-3.5 w-3.5 shrink-0" />
+        <span className="font-medium">
+          {mayHaveApplied
+            ? t("query.stoppedMayHaveApplied", { index: tab.statement })
+            : t("query.stoppedNotApplied", { index: tab.statement })}
+        </span>
+        <span className="ml-auto">
+          <GoTo lines={tab.lines} onGoTo={onGoTo} />
+        </span>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">{tab.detail}</p>
       <div className="mt-2">
         <Statement sql={tab.sql} />
       </div>

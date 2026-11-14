@@ -20,7 +20,8 @@
  */
 
 import { splitSql, type SqlDialect } from "@/lib/sql/sqlSplit";
-import type { BatchResult, QueryResult } from "@/types";
+import { stoppedOutcome } from "@/lib/db/driver";
+import type { BatchResult, QueryResult, StopOutcome } from "@/types";
 
 /** 1-based, inclusive line range in the editor. */
 export interface LineRange {
@@ -63,10 +64,24 @@ export interface ErrorTab extends Omit<StatementBase, "statement"> {
   message: string;
 }
 
+/**
+ * A statement the person stopped (`cancelQuery`). Not an error: the app knows
+ * whether it applied (`not_applied`) or cannot know (`may_have_applied` — a
+ * stop that raced its commit, SQLite, which cannot interrupt a statement), and
+ * the card says which. `detail` is the backend's account of what happened on
+ * the server; in a batch it also says that its session was closed, rolling
+ * back any transaction it had open.
+ */
+export interface StoppedTab extends StatementBase {
+  kind: "stopped";
+  outcome: StopOutcome;
+  detail: string;
+}
+
 export interface SummaryStatement {
   statement: number;
   preview: string;
-  status: "ok" | "failed";
+  status: "ok" | "failed" | "stopped";
   /** Rows returned by a read, rows changed by a write. */
   rows: number;
   isRead: boolean;
@@ -82,11 +97,13 @@ export interface SummaryTab {
   statements: SummaryStatement[];
   totalAffected: number;
   totalElapsedMs: number;
-  /** 1-based number of the statement that stopped the batch, if one did. */
+  /** 1-based number of the statement that failed and ended the batch. */
   failedAt: number | null;
+  /** 1-based number of the statement the person stopped the batch at. */
+  stoppedAt: number | null;
 }
 
-export type StatementTab = RowsTab | WriteTab | ErrorTab | SummaryTab;
+export type StatementTab = RowsTab | WriteTab | ErrorTab | StoppedTab | SummaryTab;
 
 export const SUMMARY_KEY = "summary";
 
@@ -134,6 +151,29 @@ export function tabsFromSingle(origin: RunOrigin, result: QueryResult): Statemen
   return [{ ...base, kind: "rows", key: "0:0", set: null, result, refreshable: true }];
 }
 
+/** The backend's words after `query stopped (…): `, or the whole text. */
+function stopDetail(error: string): string {
+  const at = error.indexOf("): ");
+  return at >= 0 ? error.slice(at + 3) : error;
+}
+
+/** A single statement the person stopped; `null` when `error` is not a stop. */
+export function tabsFromStopped(origin: RunOrigin, error: string): StatementTab[] | null {
+  const outcome = stoppedOutcome(error);
+  if (outcome === null) return null;
+  return [
+    {
+      kind: "stopped",
+      key: "0:s",
+      statement: 1,
+      sql: origin.text.trim(),
+      lines: wholeRange(origin),
+      outcome,
+      detail: stopDetail(error),
+    },
+  ];
+}
+
 /** A run that threw: a single statement's error, or a batch failing whole. */
 export function tabsFromFailure(
   origin: RunOrigin,
@@ -165,13 +205,26 @@ export function tabsFromBatch(
   const tabs: StatementTab[] = [];
   const summary: SummaryStatement[] = [];
   let failedAt: number | null = null;
+  const stoppedAt = batch.stopped ? batch.stopped.index + 1 : null;
 
   for (const s of batch.statements) {
     const statement = s.index + 1;
     const sql = (texts[s.index] ?? s.preview).trim();
     const lines = ranges[s.index] ?? null;
     let tabKey: string;
-    if (s.error !== null) {
+    const stopped = batch.stopped?.index === s.index ? batch.stopped : null;
+    if (stopped && s.error !== null) {
+      tabKey = `${s.index}:s`;
+      tabs.push({
+        kind: "stopped",
+        key: tabKey,
+        statement,
+        sql,
+        lines,
+        outcome: stopped.outcome,
+        detail: stopDetail(s.error),
+      });
+    } else if (s.error !== null) {
       failedAt ??= statement;
       tabKey = `${s.index}:e`;
       tabs.push({ kind: "error", key: tabKey, statement, sql, lines, message: s.error });
@@ -206,7 +259,7 @@ export function tabsFromBatch(
     summary.push({
       statement,
       preview: s.preview,
-      status: s.error === null ? "ok" : "failed",
+      status: s.error === null ? "ok" : stopped ? "stopped" : "failed",
       rows: s.rows_affected,
       isRead: s.is_select,
       elapsedMs: s.elapsed_ms,
@@ -223,18 +276,20 @@ export function tabsFromBatch(
       totalAffected: batch.total_affected,
       totalElapsedMs: summary.reduce((n, s) => n + s.elapsedMs, 0),
       failedAt,
+      stoppedAt,
     },
     ...tabs,
   ];
 }
 
 /**
- * The tab a run lands on (ADR #137): the statement that failed; else the first
- * set of rows; else the Summary; else whatever came first.
+ * The tab a run lands on (ADR #137): the statement that failed (or was
+ * stopped); else the first set of rows; else the Summary; else whatever came
+ * first.
  */
 export function initialTabKey(tabs: readonly StatementTab[]): string | null {
   return (
-    tabs.find((t) => t.kind === "error")?.key ??
+    tabs.find((t) => t.kind === "error" || t.kind === "stopped")?.key ??
     tabs.find((t) => t.kind === "rows")?.key ??
     tabs.find((t) => t.kind === "summary")?.key ??
     tabs[0]?.key ??

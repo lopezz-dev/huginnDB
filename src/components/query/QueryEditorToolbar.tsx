@@ -25,6 +25,7 @@ import {
   MoreHorizontal,
   Play,
   Sparkles,
+  Square,
   WandSparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -80,6 +81,10 @@ interface Props {
   runShortcut: string | undefined;
   /** Run what `scope` names. The button is `cursor`; the ▾ offers the rest. */
   onRun: (scope: RunScope) => void;
+  /** Stop the run in flight; Run turns into Stop while one runs. */
+  onStop: () => void;
+  /** The Stop shortcut, formatted for display; `undefined` when unbound. */
+  stopShortcut: string | undefined;
   /** Format the selection or the buffer; `undefined` where the tab cannot
    *  (MongoDB). */
   onFormat: (() => void) | undefined;
@@ -115,6 +120,8 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
       running,
       runShortcut,
       onRun,
+      onStop,
+      stopShortcut,
       onFormat,
       onSave,
       historyOpen,
@@ -182,57 +189,84 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
             under the cursor. The ▾ names each scope explicitly, the whole
             buffer included — which used to be what Run did. */}
         <div className="flex shrink-0 items-center">
-          <Button
-            size="sm"
-            onClick={() => onRun("cursor")}
-            disabled={empty || running}
-            title={
-              runShortcut
-                ? t("query.runTitle", { shortcut: runShortcut })
-                : t("query.runTitleUnbound")
-            }
-            className="gap-1.5 rounded-r-none"
-          >
-            {running ? <Spinner size="sm" /> : <Play className="h-3.5 w-3.5" />}
-            {running ? t("query.running") : t("query.run")}
-            {!running && runShortcut && (
-              <kbd className="ml-0.5 rounded-sm border border-brand-foreground/30 bg-brand-foreground/10 px-1 py-px text-3xs font-medium leading-none">
-                {runShortcut}
-              </kbd>
-            )}
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="sm"
-                disabled={empty || running}
-                aria-label={t("query.runMenu")}
-                className="rounded-l-none border-l border-brand-foreground/20 px-1"
-              >
-                <ChevronDown className="h-3.5 w-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem className="text-xs" onSelect={() => onRun("statement")}>
-                {t("query.runStatementItem")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-xs"
-                disabled={!hasSelection}
-                onSelect={() => onRun("selection")}
-              >
-                {t("query.runSelectionItem")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-xs"
-                title={t("query.runAllTitle")}
-                onSelect={() => onRun("all")}
-              >
-                {t("query.runAllItem", { count: statementCount })}
-                <ShortcutHint action="runAll" />
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {running ? (
+            // Run turns into Stop while a run is in flight (ADR #137). Stop
+            // stops the statement on the server, not just the wait.
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={onStop}
+              aria-label={
+                stopShortcut
+                  ? t("query.stopTitle", { shortcut: stopShortcut })
+                  : t("query.stopTitleUnbound")
+              }
+              className="gap-1.5"
+            >
+              <Spinner size="sm" />
+              <Square className="h-3 w-3 fill-current" />
+              {t("query.stop")}
+              {stopShortcut && (
+                <kbd className="ml-0.5 rounded-sm border border-destructive-foreground/30 bg-destructive-foreground/10 px-1 py-px text-3xs font-medium leading-none">
+                  {stopShortcut}
+                </kbd>
+              )}
+            </Button>
+          ) : (
+            <>
+            <Button
+              size="sm"
+              onClick={() => onRun("cursor")}
+              disabled={empty || running}
+              title={
+                runShortcut
+                  ? t("query.runTitle", { shortcut: runShortcut })
+                  : t("query.runTitleUnbound")
+              }
+              className="gap-1.5 rounded-r-none"
+            >
+              {running ? <Spinner size="sm" /> : <Play className="h-3.5 w-3.5" />}
+              {running ? t("query.running") : t("query.run")}
+              {!running && runShortcut && (
+                <kbd className="ml-0.5 rounded-sm border border-brand-foreground/30 bg-brand-foreground/10 px-1 py-px text-3xs font-medium leading-none">
+                  {runShortcut}
+                </kbd>
+              )}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  disabled={empty || running}
+                  aria-label={t("query.runMenu")}
+                  className="rounded-l-none border-l border-brand-foreground/20 px-1"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem className="text-xs" onSelect={() => onRun("statement")}>
+                  {t("query.runStatementItem")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs"
+                  disabled={!hasSelection}
+                  onSelect={() => onRun("selection")}
+                >
+                  {t("query.runSelectionItem")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  className="text-xs"
+                  title={t("query.runAllTitle")}
+                  onSelect={() => onRun("all")}
+                >
+                  {t("query.runAllItem", { count: statementCount })}
+                  <ShortcutHint action="runAll" />
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            </>
+          )}
         </div>
         <QueryTimer ref={timerRef} running={running} />
 

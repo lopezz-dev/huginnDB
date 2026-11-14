@@ -50,10 +50,12 @@ function resolvedNow(): ResolvedBindings {
 }
 
 /** Registers one `onKeyDown` listener that redispatches to whichever of
- *  `actions` matches the user's current binding. Returns a disposer. */
+ *  `actions` matches the user's current binding. Returns a disposer. A
+ *  handler that returns `false` declines, and the key goes on to Monaco —
+ *  the same contract as the window dispatcher's `ActionHandlers`. */
 export function registerEditorActionRedispatch(
   editor: EditorLike,
-  actions: { id: ActionId; run: () => void }[],
+  actions: { id: ActionId; run: () => void | boolean }[],
 ): () => void {
   const handlers: ActionHandlers = {};
   for (const { id, run } of actions) handlers[id] = run;

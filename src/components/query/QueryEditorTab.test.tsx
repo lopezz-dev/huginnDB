@@ -49,6 +49,7 @@ const h = vi.hoisted(() => ({
     executeBatch: vi.fn(),
     listDatabases: vi.fn(),
     openDatabaseView: vi.fn(),
+    cancelQuery: vi.fn(),
     updatePreferences: vi.fn(),
   },
   notify: { error: vi.fn(), success: vi.fn(), file: vi.fn(), info: vi.fn() },
@@ -418,7 +419,7 @@ describe("single statement", () => {
     expect(runButton().textContent).toContain("query.run");
     await clickRun();
 
-    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "SELECT 1");
+    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "SELECT 1", expect.any(String));
     expect(h.api.executeBatch).not.toHaveBeenCalled();
     const g = lastGrid();
     expect(g.sql).toBe("SELECT 1");
@@ -451,10 +452,10 @@ describe("single statement", () => {
     renderTab();
     h.editor.line = 2;
     await press("runQuery");
-    expect(h.api.executeQuery).toHaveBeenLastCalledWith(CONN, "UPDATE t SET a = 1;");
+    expect(h.api.executeQuery).toHaveBeenLastCalledWith(CONN, "UPDATE t SET a = 1;", expect.any(String));
     h.editor.line = 3;
     await clickRun();
-    expect(h.api.executeQuery).toHaveBeenLastCalledWith(CONN, "SELECT b FROM u");
+    expect(h.api.executeQuery).toHaveBeenLastCalledWith(CONN, "SELECT b FROM u", expect.any(String));
     expect(h.api.executeBatch).not.toHaveBeenCalled();
   });
 
@@ -467,7 +468,7 @@ describe("single statement", () => {
     expect(h.api.executeBatch).toHaveBeenCalledWith(CONN, [
       "UPDATE t SET a = 1;",
       "SELECT b FROM u",
-    ]);
+    ], expect.any(String));
   });
 
   it("a caret between two statements runs nothing and says why", async () => {
@@ -527,7 +528,101 @@ describe("the Run ▾ menu", () => {
     await openMenu();
     await act(async () => fireEvent.click(screen.getAllByRole("menuitem")[0]));
     await flush();
-    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "SELECT a FROM t;");
+    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "SELECT a FROM t;", expect.any(String));
+  });
+});
+
+describe("Stop", () => {
+  /** A run that stays in flight until `settle` is called. */
+  function hold<T>() {
+    let settle!: (v: T) => void;
+    let fail!: (e: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      settle = res;
+      fail = rej;
+    });
+    return { promise, settle, fail };
+  }
+
+  it("Run turns into Stop while a run is in flight, and Stop cancels that run by its id", async () => {
+    seed("SELECT pg_sleep(60)");
+    const run = hold<QueryResult>();
+    h.api.executeQuery.mockReturnValue(run.promise);
+    h.api.cancelQuery.mockResolvedValue(true);
+    renderTab();
+    await act(async () => {
+      fireEvent.click(runButton());
+    });
+    const stop = screen.getByText("query.stop").closest("button")!;
+    const runId = h.api.executeQuery.mock.calls[0][2] as string;
+    expect(runId).toEqual(expect.any(String));
+    act(() => fireEvent.click(stop));
+    expect(h.api.cancelQuery).toHaveBeenCalledWith(runId);
+
+    await act(async () => {
+      run.fail("query stopped (not applied): PostgreSQL cancelled it.");
+    });
+    await flush();
+    expect(screen.queryByText("query.stop")).toBeNull();
+    expect(
+      screen.getByText(`query.stoppedNotApplied${JSON.stringify({ index: 1 })}`),
+    ).toBeTruthy();
+    expect(screen.getByText("PostgreSQL cancelled it.")).toBeTruthy();
+  });
+
+  it("a stop that may have applied says so (SQLite)", async () => {
+    seed("DELETE FROM t");
+    h.api.executeQuery.mockRejectedValue(
+      "query stopped (may have applied): SQLite cannot interrupt a statement.",
+    );
+    renderTab();
+    await clickRun();
+    expect(
+      screen.getByText(`query.stoppedMayHaveApplied${JSON.stringify({ index: 1 })}`),
+    ).toBeTruthy();
+  });
+
+  it("Mod+. stops a run in flight and declines when nothing runs", async () => {
+    seed("SELECT 1");
+    const run = hold<QueryResult>();
+    h.api.executeQuery.mockReturnValue(run.promise);
+    h.api.cancelQuery.mockResolvedValue(true);
+    renderTab();
+    const stopKey = () => h.shortcuts.find((a) => a.id === "stopQuery")!.run();
+    expect(stopKey()).toBe(false);
+    await act(async () => {
+      fireEvent.click(runButton());
+    });
+    act(() => {
+      expect(stopKey()).not.toBe(false);
+    });
+    expect(h.api.cancelQuery).toHaveBeenCalledTimes(1);
+    await act(async () => run.settle(rows(["x"], [[1]])));
+  });
+
+  it("a stopped batch lands on the stopped statement; the Summary says where it stopped", async () => {
+    seed("UPDATE a SET x = 1;\nUPDATE b SET y = 2;\nSELECT 1");
+    h.api.executeBatch.mockResolvedValue({
+      statements: [
+        stmt(0, "UPDATE a SET x = 1", { rows_affected: 3 }),
+        stmt(1, "UPDATE b SET y = 2", {
+          error:
+            "query stopped (not applied): Stopped on the server. The batch's session was closed, so any transaction it had opened was rolled back by the server.",
+        }),
+      ],
+      total_affected: 3,
+      stopped: { index: 1, outcome: "not_applied" },
+    } satisfies BatchResult);
+    renderTab();
+    await runAll();
+    expect(
+      screen.getByText(`query.stoppedNotApplied${JSON.stringify({ index: 2 })}`),
+    ).toBeTruthy();
+    expect(screen.getByText(/rolled back by the server/)).toBeTruthy();
+    pickTab("query.tabSummary");
+    expect(
+      screen.getByText(`query.batchStopped${JSON.stringify({ index: 2, total: 2 })}`),
+    ).toBeTruthy();
   });
 });
 
@@ -622,7 +717,7 @@ describe("batch", () => {
       "SELECT a FROM t;",
       "UPDATE t SET a = 1;",
       "SELECT b FROM u",
-    ]);
+    ], expect.any(String));
   });
 
   it("one tab per statement — reads, writes and the failure — with a Summary first", async () => {
@@ -809,7 +904,7 @@ describe("CodeLens", () => {
     expect(h.sqlEntry).not.toBeNull();
     await act(async () => h.sqlEntry!.runStatement("UPDATE t SET a = 1;"));
     await flush();
-    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "UPDATE t SET a = 1;");
+    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "UPDATE t SET a = 1;", expect.any(String));
     expect(h.api.executeBatch).not.toHaveBeenCalled();
     expect(useQueryHistory.getState().entries[0].sql).toBe("UPDATE t SET a = 1;");
     // Its lines come from the lens cache, so Go to statement can find it.
@@ -951,7 +1046,7 @@ describe("database selector", () => {
     expect(screen.getByTestId("db-select").dataset.value).toBe("sales");
 
     await clickRun();
-    expect(h.api.executeQuery).toHaveBeenCalledWith(`${CONN}::db::sales`, "SELECT 1");
+    expect(h.api.executeQuery).toHaveBeenCalledWith(`${CONN}::db::sales`, "SELECT 1", expect.any(String));
     expect(lastGrid().connectionId).toBe(`${CONN}::db::sales`);
     // History is filed under the parent connection.
     expect(useQueryHistory.getState().entries[0].connectionId).toBe(CONN);
@@ -1013,7 +1108,7 @@ describe("history", () => {
     expect(h.api.executeBatch).toHaveBeenCalledWith(CONN, [
       "SELECT a FROM t;",
       "UPDATE t SET a = 1",
-    ]);
+    ], expect.any(String));
     // Once: the mark is consumed.
     expect(usePendingRuns.getState().ids.has(tabId)).toBe(false);
   });
@@ -1039,7 +1134,7 @@ describe("history", () => {
     expect(h.api.executeBatch).toHaveBeenCalledWith("m1", [
       "db.a.countDocuments()",
       "db.b.countDocuments()",
-    ]);
+    ], expect.any(String));
   });
 });
 
@@ -1157,7 +1252,7 @@ describe("MongoDB", () => {
     h.api.executeQuery.mockResolvedValue(rows(["_id"], [["a"]]));
     renderTab("m1");
     await clickRun();
-    expect(h.api.executeQuery).toHaveBeenCalledWith("m1", "db.users.find({})");
+    expect(h.api.executeQuery).toHaveBeenCalledWith("m1", "db.users.find({})", expect.any(String));
     expect(lastGrid().driver).toBe("mongodb");
     expect(screen.getByText("mongodb")).toBeTruthy();
   });
@@ -1171,7 +1266,7 @@ describe("MongoDB", () => {
     expect(h.api.executeBatch).toHaveBeenCalledWith("m1", [
       "db.a.countDocuments()",
       "db.b.countDocuments()",
-    ]);
+    ], expect.any(String));
   });
 });
 

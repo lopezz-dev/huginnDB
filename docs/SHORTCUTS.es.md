@@ -67,6 +67,7 @@ cualquier otra acción.
 | --- | --- | --- |
 | Ejecutar la selección, o la sentencia bajo el cursor | `Mod+Enter` | Lo seleccionado; sin selección, la sentencia en la que está el cursor. Un cursor en la línea en blanco tras la última sentencia sigue contando como dentro de ella. Una selección que abarca varias sentencias las ejecuta como lote. |
 | Ejecutar todas las sentencias del editor | `Mod+Shift+Enter` | Todo el contenido, sentencia a sentencia, en una sola conexión. |
+| Detener la consulta en curso | `Mod+.` | Detiene la ejecución en el servidor, no solo la espera. Si no hay nada ejecutándose, la tecla llega al editor. No se usa `Escape`: el editor la reserva para las sugerencias y la búsqueda. |
 | Formatear el SQL del editor | `Shift+Alt+F` | Formatea la selección, o todo el editor, en un solo paso que se puede deshacer. Solo SQL: una pestaña de MongoDB no lo ofrece, y la tecla llega al editor. |
 
 El botón Ejecutar hace lo mismo que `Mod+Enter`. Su ▾ ofrece los tres

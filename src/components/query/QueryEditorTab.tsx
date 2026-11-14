@@ -175,6 +175,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   // same combo), for the Run button's chip and the info bar; `undefined`
   // when the action is unbound.
   const runShortcut = useShortcutLabel("runQuery");
+  const stopShortcut = useShortcutLabel("stopQuery");
   // The history is a dock panel beside Saved (ADR #137); the toolbar's
   // History button shows and hides it.
   const historyOpen = useSessionPanelLayout((s) => s.rightPanel === "history");
@@ -377,6 +378,11 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   useEffect(() => {
     runRef.current = run.run;
   }, [run.run]);
+  /** `stopQuery`'s handler reads these at key time, like the others. */
+  const stopRef = useRef({ running: run.running, stop: run.stop });
+  useEffect(() => {
+    stopRef.current = { running: run.running, stop: run.stop };
+  }, [run.running, run.stop]);
   useEffect(() => {
     if (driver === undefined) return;
     if (!usePendingRuns.getState().take(tabId)) return;
@@ -496,6 +502,14 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         [
           { id: "runQuery", run: () => runAtRef.current("cursor") },
           { id: "runAll", run: () => runAtRef.current("all") },
+          // Declines with nothing running, so the key falls through to Monaco.
+          {
+            id: "stopQuery",
+            run: () => {
+              if (!stopRef.current.running) return false;
+              stopRef.current.stop();
+            },
+          },
           // Declines on MongoDB, so the key falls through to Monaco.
           {
             id: "formatQuery",
@@ -644,6 +658,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             running={run.running}
             runShortcut={runShortcut}
             onRun={runAt}
+            onStop={run.stop}
+            stopShortcut={stopShortcut}
             onFormat={format}
             onExplain={explain}
             onSave={() => setSaveDialogOpen(true)}

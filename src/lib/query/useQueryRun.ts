@@ -19,6 +19,13 @@
  * timer through an imperative handle, so the 50 ms tick never re-renders the
  * tab (see `QueryTimer`).
  *
+ * **Stop** (ADR #137): every run carries a `runId`, and `stop()` asks the
+ * backend to stop that run where it runs (`cancelQuery`) — the statement on the
+ * server, not just the wait. The run then answers its own caller: a single
+ * statement rejects with a stop the backend words (`stoppedOutcome`), a batch
+ * resolves with `stopped` set; either becomes a stopped tab that says whether
+ * the statement may have applied.
+ *
  * What it does **not** own: the grid's client-side filter (the results area
  * keeps it), the database the tab targets (`useDatabaseSelector`), and the
  * editor (the tab reads it and passes text and its first line in).
@@ -33,6 +40,7 @@ import {
   tabsFromBatch,
   tabsFromFailure,
   tabsFromSingle,
+  tabsFromStopped,
   type RunOrigin,
   type StatementTab,
 } from "@/lib/query/statementTabs";
@@ -64,6 +72,8 @@ export interface QueryRun {
    *  database selector can move after the run. A grid write goes here. */
   resultsOn: string;
   running: boolean;
+  /** Stop the run in flight on the server; a no-op when nothing runs. */
+  stop: () => void;
   /**
    * @param firstLine The editor line `text` starts on, for *Go to
    *   statement*; `null` when the text is not in the editor.
@@ -91,18 +101,31 @@ export function useQueryRun({
   // The guard reads a ref, not `running`: two calls in the same render (a
   // double click) would both see `running === false` in their closure.
   const runningRef = useRef(false);
+  /** The run in flight's id, for `stop`; `null` between runs. */
+  const runIdRef = useRef<string | null>(null);
 
-  const begin = useCallback(() => {
-    if (runningRef.current) return false;
+  /** Start a run: its id, or `null` when one is already in flight. */
+  const begin = useCallback((): string | null => {
+    if (runningRef.current) return null;
     runningRef.current = true;
+    const id = newRunId();
+    runIdRef.current = id;
     setRunning(true);
     timer.current?.start();
-    return true;
+    return id;
   }, [timer]);
 
   const end = useCallback(() => {
     runningRef.current = false;
+    runIdRef.current = null;
     setRunning(false);
+  }, []);
+
+  const stop = useCallback(() => {
+    const id = runIdRef.current;
+    // `false` (the run had already ended) is not an error: Stop was pressed
+    // as the result arrived, and the run answers its caller either way.
+    if (id) void api.cancelQuery(id).catch(() => {});
   }, []);
 
   /** Replace every tab with the run's, and land on the right one. */
@@ -118,10 +141,12 @@ export function useQueryRun({
   const runSingle = useCallback(
     async (text: string, firstLine: number | null = null) => {
       const toRun = text.trim();
-      if (!toRun || !begin()) return;
+      if (!toRun) return;
+      const runId = begin();
+      if (!runId) return;
       const origin: RunOrigin = { text, firstLine, dialect };
       try {
-        const r = await api.executeQuery(connectionId, toRun);
+        const r = await api.executeQuery(connectionId, toRun, runId);
         show(tabsFromSingle(origin, r));
         addHistory({
           sql: toRun,
@@ -131,7 +156,7 @@ export function useQueryRun({
         });
         timer.current?.stop(true);
       } catch (e) {
-        show(tabsFromFailure(origin, String(e), false));
+        show(tabsFromStopped(origin, String(e)) ?? tabsFromFailure(origin, String(e), false));
         addHistory({
           sql: toRun,
           connectionId: historyConnectionId,
@@ -151,9 +176,11 @@ export function useQueryRun({
    *  a `;`-joined buffer). */
   const runBatch = useCallback(
     async (origin: RunOrigin, texts: string[]) => {
-      if (texts.length === 0 || !begin()) return;
+      if (texts.length === 0) return;
+      const runId = begin();
+      if (!runId) return;
       try {
-        const r = await api.executeBatch(connectionId, texts);
+        const r = await api.executeBatch(connectionId, texts, runId);
         const next = tabsFromBatch(origin, r, texts);
         show(next);
         const failed = r.statements.find((s) => s.error);
@@ -166,7 +193,7 @@ export function useQueryRun({
           rowsAffected: r.total_affected,
           error: failed?.error ?? undefined,
         });
-        timer.current?.stop(!failed);
+        timer.current?.stop(!failed && !r.stopped);
       } catch (e) {
         show(tabsFromFailure(origin, String(e), true));
         timer.current?.stop(false);
@@ -222,9 +249,19 @@ export function useQueryRun({
     active,
     resultsOn,
     running,
+    stop,
     run,
     runSingle,
     selectTab: setActiveKey,
     refreshActive,
   };
+}
+
+/** A run's id. `crypto.randomUUID` is present in the webview; the fallback is
+ *  for a jsdom test and an older WebView2 that predates it. */
+function newRunId(): string {
+  return (
+    globalThis.crypto?.randomUUID?.() ??
+    `run-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  );
 }

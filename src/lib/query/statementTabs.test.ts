@@ -4,6 +4,7 @@ import {
   tabsFromBatch,
   tabsFromFailure,
   tabsFromSingle,
+  tabsFromStopped,
   type RunOrigin,
   type StatementTab,
 } from "./statementTabs";
@@ -175,6 +176,49 @@ describe("tabsFromBatch", () => {
     ]);
     expect(kinds(tabs)).toEqual(["summary:summary", "rows:0:0", "write:1:w"]);
     expect(tabs[2]).toMatchObject({ rowsAffected: 4, lines: { start: 2, end: 2 } });
+  });
+});
+
+describe("stopped runs", () => {
+  it("a single statement's stop is a stopped tab with the outcome and the backend's words", () => {
+    const tabs = tabsFromStopped(
+      sql("DELETE FROM t", 3),
+      "query stopped (may have applied): SQLite cannot interrupt a statement.",
+    );
+    expect(tabs).toEqual([
+      {
+        kind: "stopped",
+        key: "0:s",
+        statement: 1,
+        sql: "DELETE FROM t",
+        lines: { start: 3, end: 3 },
+        outcome: "may_have_applied",
+        detail: "SQLite cannot interrupt a statement.",
+      },
+    ]);
+  });
+
+  it("an error that is not a stop is not a stopped tab", () => {
+    expect(tabsFromStopped(sql("SELEC"), "syntax error")).toBeNull();
+  });
+
+  it("a stopped batch: the stopped statement's tab, the focus on it, the Summary's stoppedAt", () => {
+    const tabs = tabsFromBatch(
+      sql("a;\nb;\nc"),
+      {
+        statements: [
+          stmt(0, { results: [rows(1)] }),
+          stmt(1, { error: "query stopped (not applied): stopped. Session closed." }),
+        ],
+        total_affected: 0,
+        stopped: { index: 1, outcome: "not_applied" },
+      },
+      ["a;", "b;", "c"],
+    );
+    expect(kinds(tabs)).toEqual(["summary:summary", "rows:0:0", "stopped:1:s"]);
+    expect(tabs[0]).toMatchObject({ failedAt: null, stoppedAt: 2 });
+    expect(tabs[0].kind === "summary" && tabs[0].statements[1].status).toBe("stopped");
+    expect(initialTabKey(tabs)).toBe("1:s");
   });
 });
 
