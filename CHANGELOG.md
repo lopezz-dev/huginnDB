@@ -18,8 +18,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **A query's column headers describe the table column.** Hovering a column
   header in the results of a single-table `SELECT` now says what a table tab
   says: whether the column takes NULL, and for a foreign key which table and
-  column it points to — under an alias too. Computed columns, and every
-  column of a result over several tables, still show only their type.
+  column it points to — under an alias too. A computed column's header says
+  it cannot be edited because it is not a column of the table, rather than
+  blaming your organization's policy, and every column of a result over
+  several tables still shows only its type. Where the policy does lock a
+  column, its header now gives the policy's own reason, in a table tab too.
 
 - **Pick a foreign key's value when editing a query's results.** Editing a
   foreign-key cell in the results of a single-table `SELECT` now opens the

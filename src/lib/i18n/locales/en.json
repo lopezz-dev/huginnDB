@@ -771,7 +771,6 @@
       "showingFirst": "Showing first {{count}} rows · type to search all",
       "unavailable": "FK lookup unavailable: {{message}}"
     },
-    "headerPolicyLocked": "Locked by your organization's policy",
     "draftLocked": "It will take its default value, or NULL.",
     "paste": {
       "title": "Paste cells",
