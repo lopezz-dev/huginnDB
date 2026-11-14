@@ -10,6 +10,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Las cabeceras de columna de una consulta describen la columna de la
+  tabla.** Al pasar el ratón por la cabecera de una columna en los
+  resultados de un `SELECT` de una sola tabla se ve ahora lo mismo que en
+  una pestaña de tabla: si la columna admite NULL y, en una clave ajena, a
+  qué tabla y columna apunta, también con alias. Las columnas calculadas, y
+  todas las de un resultado de varias tablas, siguen mostrando solo su tipo.
+
 - **Elegir el valor de una clave ajena al editar los resultados de una
   consulta.** Editar una celda de clave ajena en los resultados de un
   `SELECT` de una sola tabla abre ahora la misma lista con búsqueda de los

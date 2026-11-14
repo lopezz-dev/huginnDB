@@ -93,6 +93,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { notify } from "@/lib/notify";
 import { toBulk, type SqlTarget } from "@/lib/grid/copyFormats";
 import type { FkRef } from "@/lib/grid/gridSource";
+import { resolveColumnCatalog } from "@/lib/grid/columnCatalog";
 import { cellDisplayText, formatValue } from "@/lib/grid/formatValue";
 import {
   GRID_GUTTER_WIDTH,
@@ -163,6 +164,9 @@ interface Props {
    * keeps the result's names and a `<table>` placeholder.
    */
   sqlTarget?: SqlTarget;
+  /** Catalog facts by the column name shown, from the grid's source
+   *  (`GridSource.columnCatalog`). */
+  columnCatalog?: ReadonlyMap<string, ColumnInfo>;
   /**
    * Where an FK cell's value must exist — from the source's `update`
    * capability, so it is there exactly while a cell can be changed. Editing
@@ -471,6 +475,7 @@ export function DataGrid({
   tableSchema,
   tableName,
   sqlTarget,
+  columnCatalog,
   fkRefOf,
   tabId,
   driver,
@@ -558,12 +563,17 @@ export function DataGrid({
     };
   }, [draftActive]);
 
-  /** Fast lookup of column metadata by name for FK detection in the cell renderer. */
-  const columnInfoByName = useMemo(() => {
-    const m = new Map<string, ColumnInfo>();
-    for (const c of draftColumns ?? []) m.set(c.name, c);
-    return m;
-  }, [draftColumns]);
+  /**
+   * Catalog facts by the column name shown — the header's tooltip (type,
+   * nullability, FK target) and the draft row's hints. From the source when
+   * the grid has one (`columnCatalog`, which maps a query's aliases onto their
+   * table columns); otherwise from the draft row's columns, which on a table
+   * are the same names.
+   */
+  const columnInfoByName = useMemo(
+    () => resolveColumnCatalog(columnCatalog, draftColumns),
+    [columnCatalog, draftColumns],
+  );
 
   /** Compact preview panel state. Cleared when the user clicks away or presses Esc. */
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);

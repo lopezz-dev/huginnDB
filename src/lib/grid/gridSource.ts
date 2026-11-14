@@ -26,7 +26,7 @@
  * one, through {@link GridSource.refreshPage} or {@link GridSource.refreshAll}.
  */
 
-import type { CellValue, DraftRow, RowValue } from "@/types";
+import type { CellValue, ColumnInfo, DraftRow, RowValue } from "@/types";
 import type { PastePlan } from "@/lib/grid/pastePlan";
 import type { GridPaste } from "@/lib/grid/useGridKeyboardNav";
 import type { SqlTarget } from "@/lib/grid/copyFormats";
@@ -186,6 +186,13 @@ export interface GridSource {
    * the snippet keeps a `<table>` placeholder.
    */
   sqlTarget: SqlTarget | undefined;
+  /**
+   * The catalog facts of each result column that is a table column — type,
+   * nullability, key, foreign-key target — keyed by the name the grid shows,
+   * so an alias reads its column's facts. A column with no entry (an
+   * expression, any column of a result over several tables) has none to show.
+   */
+  columnCatalog: ReadonlyMap<string, ColumnInfo>;
 
   /** The row's full key tuple, in the relation's key order. Throws when
    *  the row cannot be addressed. */

@@ -8,6 +8,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **A query's column headers describe the table column.** Hovering a column
+  header in the results of a single-table `SELECT` now says what a table tab
+  says: whether the column takes NULL, and for a foreign key which table and
+  column it points to — under an alias too. Computed columns, and every
+  column of a result over several tables, still show only their type.
+
 - **Pick a foreign key's value when editing a query's results.** Editing a
   foreign-key cell in the results of a single-table `SELECT` now opens the
   same searchable list of the referenced table's values as in a table tab,

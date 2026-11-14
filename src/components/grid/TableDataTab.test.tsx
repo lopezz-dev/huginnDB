@@ -787,6 +787,10 @@ describe("TableDataTab — foreign keys", () => {
       pkColumns: ["order_id", "line"],
     });
     expect(grid().sqlTarget.columnOf("qty")).toBe("qty");
+    // The header reads the table's own catalog, by column name.
+    expect(grid().columnCatalog.get("product_id")).toMatchObject({
+      referenced_table: "products",
+    });
     // Editing the FK picks from the referenced table's values.
     expect(grid().fkRefOf("product_id")).toEqual({
       connectionId: "c1",

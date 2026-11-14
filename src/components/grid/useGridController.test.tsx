@@ -89,6 +89,7 @@ function fakeSource(s: Spies, over: Partial<GridSource> = {}): GridSource {
     pkResultNames: ["id"],
     documentMode: false,
     sqlTarget: undefined,
+    columnCatalog: new Map(),
     keyOf: (row) => [row[0]],
     getRowKey: (row) => JSON.stringify([row[0]]),
     hydrate: (row) => Promise.resolve(row),

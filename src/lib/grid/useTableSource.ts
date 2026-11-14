@@ -404,6 +404,13 @@ export function useTableSource({
     [fkColumns, connectionId],
   );
 
+  /** Catalog facts by column name — a table's result names are its column
+   *  names. Memoised: the grid's header memo keys on it. */
+  const columnCatalog = useMemo(
+    () => new Map((cols ?? []).map((c) => [c.name, c])),
+    [cols],
+  );
+
   /** "Copy as SQL": a table's result names are its column names. Memoised:
    *  every visible row's memo keys on it. */
   const sqlTarget = useMemo(
@@ -453,6 +460,7 @@ export function useTableSource({
       pkResultNames: pkColumnNames,
       documentMode: isMongo,
       sqlTarget,
+      columnCatalog,
       keyOf,
       getRowKey,
       hydrate: trimmedRows.hydrate,
@@ -535,5 +543,6 @@ export function useTableSource({
     fkColumnNames,
     sqlTarget,
     fkRefOf,
+    columnCatalog,
   ]);
 }

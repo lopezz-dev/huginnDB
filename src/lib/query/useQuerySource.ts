@@ -134,6 +134,7 @@ const unaddressable = (): CellValue[] => {
   throw new Error("This result cannot be written back");
 };
 const asIs = (row: CellValue[]) => Promise.resolve(row);
+const NO_CATALOG: ReadonlyMap<string, ColumnInfo> = new Map();
 const asFk = (c: ColumnInfo) => (isFkColumn(c) ? c : null);
 
 export function useQuerySource({
@@ -332,6 +333,8 @@ export function useQuerySource({
       pkResultNames: relation?.pkResultNames,
       documentMode: false,
       sqlTarget,
+      // The alignment, as it is: result names onto their table columns.
+      columnCatalog: columns?.byName ?? NO_CATALOG,
       keyOf,
       hydrate: asIs,
       refreshPage: onRefresh,
@@ -405,5 +408,6 @@ export function useQuerySource({
     applyPaste,
     sqlTarget,
     fkRefOf,
+    columns,
   ]);
 }

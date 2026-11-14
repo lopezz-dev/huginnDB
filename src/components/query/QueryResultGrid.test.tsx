@@ -390,6 +390,29 @@ describe("QueryResultGrid — foreign keys", () => {
     expect(grid().onNavigateFk).toBeTypeOf("function");
   });
 
+  it("tells the header an alias's catalog facts, FK target included", async () => {
+    h.api.listColumns.mockResolvedValue(ORDERS);
+    await mount(
+      "SELECT customer_id AS c, total * 2 AS t2 FROM shop.orders",
+      result(["c", "t2"], [[5, "20.00"]]),
+    );
+    const catalog = grid().columnCatalog as ReadonlyMap<string, ColumnInfo>;
+    expect(catalog.get("c")).toMatchObject({
+      name: "customer_id",
+      referenced_table: "customers",
+      referenced_column: "id",
+      nullable: true,
+    });
+    // An expression is no column of the table: no facts to show.
+    expect(catalog.has("t2")).toBe(false);
+  });
+
+  it("tells the header nothing over several tables", async () => {
+    h.api.listColumns.mockResolvedValue(ORDERS);
+    await mount("SELECT o.customer_id FROM shop.orders o JOIN shop.customers c ON c.id = o.customer_id");
+    expect((grid().columnCatalog as ReadonlyMap<string, ColumnInfo>).size).toBe(0);
+  });
+
   it("offers no FK navigation where no column is a foreign key", async () => {
     await mount();
     expect(grid().onNavigateFk).toBeUndefined();
