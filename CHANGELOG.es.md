@@ -88,6 +88,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **La barra de información del editor de consultas muestra tu atajo de
+  Ejecutar.** Antes decía `Ctrl + Enter` fuera cual fuera el atajo de
+  *Ejecutar consulta*; ahora muestra el tuyo, y nada si la acción no tiene
+  atajo. El tooltip del botón Ejecutar también lo sigue. Los contadores de
+  líneas y caracteres y las "filas" / "afectadas" del resumen del lote
+  están ahora traducidos.
+
+- **El tooltip de un resultado cortado dice qué límite lo cortó.** En un
+  lote, una pestaña de resultado cortada en su propio límite de 50 000
+  filas culpaba al presupuesto de filas compartido del lote. Ahora dice que
+  la sentencia devuelve más, y deja el presupuesto para los resultados que
+  de verdad recortó.
+
 - ***Copiar fila como ▸ SQL UPDATE* funciona en una tabla cuyas columnas son
   todas clave.** En una tabla de unión como `playlist_track (playlist_id,
   track_id)` el fragmento salía como `UPDATE … SET  WHERE …`, que ninguna

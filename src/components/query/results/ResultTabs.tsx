@@ -1,6 +1,24 @@
 import { useTranslation } from "react-i18next";
 import { Segmented } from "@/components/ui/segmented";
 import type { ResultPanel } from "@/lib/query/resultPanels";
+import { cutBy } from "@/lib/query/resultCap";
+
+/** The tab's tooltip: what it holds, and why it was cut when it was — its
+ *  own row cap or the batch's shared budget, which used to be blamed for
+ *  both. */
+function tabTitle(
+  p: ResultPanel,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  switch (cutBy(p.result)) {
+    case "statement":
+      return t("query.resultTabTruncatedTitle", { rows: p.result.rows.length });
+    case "budget":
+      return t("query.resultTabBudgetTitle", { rows: p.result.rows.length });
+    case null:
+      return t("query.resultTabTitle", { index: p.statement });
+  }
+}
 
 /**
  * The strip that picks which result set the grid below shows.
@@ -35,9 +53,7 @@ export function ResultTabs({
     }),
     // The OS tooltip is `Segmented`'s own affordance for a narrow segment;
     // it says what the panel holds when the label has room only for a count.
-    title: p.result.truncated
-      ? t("query.resultTabTruncatedTitle", { rows: p.result.rows.length })
-      : t("query.resultTabTitle", { index: p.statement }),
+    title: tabTitle(p, t),
   }));
   return (
     <Segmented
