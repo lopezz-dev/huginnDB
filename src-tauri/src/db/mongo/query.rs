@@ -362,12 +362,22 @@ pub async fn execute_within(
 
 /// Run a batch of `mongosh` statements sequentially (one [`StmtOutcome`] each,
 /// stopping at the first failure — mirrors the SQL batch contract).
+///
+/// With a `stop` (a person's run, ADR #137), each statement is raced against
+/// it: when it fires the operation in flight and its cursor are dropped —
+/// MongoDB is not told to stop it (`killOp` is left for the MongoDB card) —
+/// the statements after it do not run, and [`BatchResult::stopped`] says
+/// where it stopped.
 pub async fn execute_batch(
     conn: &MongoConn,
     statements: &[String],
     sink: &dyn LogSink,
     connection_id: &str,
+    stop: Option<&crate::runs::StopSignal>,
 ) -> AppResult<BatchResult> {
+    use crate::commands::query::{race, stop_at, stopped, Raced, StoppedBy};
+    let mut stopped_at = None;
+    let log = crate::log_bus::SqlLog::new(sink, connection_id, "mongodb");
     let mut outcomes = Vec::new();
     let mut total_affected = 0u64;
     // Shared across the whole batch, not per statement — see
@@ -381,7 +391,42 @@ pub async fn execute_batch(
         }
         let is_read = shell::parse(stmt).map(|c| c.op.is_read()).unwrap_or(false);
         let start = Instant::now();
-        match execute(conn, stmt).await {
+        // Asked for between two statements: this one never runs.
+        let before = stop.is_some_and(|s| s.is_requested());
+        let ran = match stop {
+            _ if before => None,
+            Some(stop) => match race(execute(conn, stmt), stop, None).await {
+                Raced::Ended(ran) => Some(ran),
+                Raced::Stopped { .. } => None,
+            },
+            None => Some(execute(conn, stmt).await),
+        };
+        let Some(ran) = ran else {
+            let writes =
+                crate::db::classify::classify_statement(stmt) != crate::db::sql::StmtClass::Read;
+            let after = "The statements after it did not run; those before it stay applied.";
+            let stop = if before {
+                crate::commands::query::Stopped {
+                    outcome: crate::error::StopOutcome::NotApplied,
+                    detail: format!("It was stopped before it ran. {after}"),
+                }
+            } else {
+                let mut stop = stopped(StoppedBy::Mongo, writes, None);
+                stop.detail = format!("{} {after}", stop.detail);
+                stop
+            };
+            stopped_at = Some(stop_at(
+                index,
+                stop,
+                &mut outcomes,
+                stmt,
+                is_read,
+                &log,
+                start,
+            ));
+            break;
+        };
+        match ran {
             Ok(mut result) => {
                 let affected = result.rows_affected;
                 total_affected += affected;
@@ -443,6 +488,7 @@ pub async fn execute_batch(
     Ok(BatchResult {
         statements: outcomes,
         total_affected,
+        stopped: stopped_at,
     })
 }
 

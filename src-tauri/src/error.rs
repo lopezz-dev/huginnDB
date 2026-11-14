@@ -194,7 +194,51 @@ pub enum AppError {
     #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
     #[error("{0}")]
     Bridged(String),
+
+    /// A person stopped the run this statement belonged to (`cancel_query`,
+    /// ADR #137), and the statement was stopped where it ran.
+    ///
+    /// Its own variant because the query tab has to tell three things apart
+    /// that would otherwise read alike: a statement that failed, one that was
+    /// stopped and certainly did not apply, and one that was stopped but may
+    /// have applied all the same (a cancel that raced the commit, SQLite,
+    /// which cannot interrupt a statement). The frontend matches
+    /// [`STOPPED_TAG`] and the [`StopOutcome`] marker after it; `detail` says
+    /// in words what happened on the server.
+    #[error("{STOPPED_TAG} ({}): {detail}", .outcome.marker())]
+    Stopped {
+        outcome: StopOutcome,
+        detail: String,
+    },
 }
+
+/// What a stopped statement left behind, as far as the app can know it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopOutcome {
+    /// It did not apply: it was a read, or the server stopped it and rolled
+    /// it back and said so.
+    NotApplied,
+    /// It may have applied: the stop raced its commit, the server was not
+    /// told to stop it, or it could not be (SQLite).
+    MayHaveApplied,
+}
+
+impl StopOutcome {
+    /// The marker an [`AppError::Stopped`] message carries after
+    /// [`STOPPED_TAG`], matched by `stoppedOutcome` in
+    /// `src/lib/db/driver.ts`; keep the two in sync.
+    pub fn marker(self) -> &'static str {
+        match self {
+            StopOutcome::NotApplied => "not applied",
+            StopOutcome::MayHaveApplied => "may have applied",
+        }
+    }
+}
+
+/// Stable marker every [`AppError::Stopped`] message starts with. Matched by
+/// `stoppedOutcome` in `src/lib/db/driver.ts`; keep the two in sync.
+pub const STOPPED_TAG: &str = "query stopped";
 
 /// Stable marker prefixed to every [`AppError::TooManyConnections`] message.
 ///

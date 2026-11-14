@@ -352,6 +352,9 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("ai::ai_task", "ai"),
     ("aggregation::format_mongo_pipeline", "none"),
     ("ai::ai_cancel", "none"),
+    // Signals a person's run to stop (ADR #137); the run stops its own
+    // statement, which the policy already allowed when it started.
+    ("query::cancel_query", "none"),
     ("ai::ai_clear_key", "none"),
     ("ai::ai_has_key", "none"),
     ("ai::ai_models", "none"),
