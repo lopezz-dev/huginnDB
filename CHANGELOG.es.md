@@ -154,6 +154,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Cambiado
 
+- **`Ctrl+Enter` ejecuta la selección, o la sentencia bajo el cursor.** En
+  una pestaña de consulta ejecutaba todo el editor, así que un borrador con
+  veinte consultas ejecutaba las veinte. Ahora ejecuta lo seleccionado y,
+  sin selección, la sentencia en la que está el cursor: la regla que ya
+  seguían las acciones *Explicar* de la IA. Una selección que abarca varias
+  sentencias las ejecuta como lote. Con el cursor entre dos sentencias no se
+  ejecuta nada, y una notificación explica por qué. Ejecutarlo todo tiene su
+  propio atajo, `Ctrl+Shift+Enter` (*Ejecutar todas las sentencias del
+  editor*, reasignable en Ajustes → Atajos). El botón Ejecutar sigue la
+  misma regla, y su nuevo ▾ ofrece *Ejecutar la sentencia bajo el cursor*,
+  *Ejecutar la selección* y *Ejecutar todo (N)*.
+
 - **Un binario de release más pequeño y ajustado.** Las builds de release
   enlazan ahora con LTO *thin* y una sola unidad de generación de código, y
   descartan la información de depuración, de modo que el compilador puede

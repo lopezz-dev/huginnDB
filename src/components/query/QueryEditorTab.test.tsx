@@ -51,13 +51,15 @@ const h = vi.hoisted(() => ({
     openDatabaseView: vi.fn(),
     updatePreferences: vi.fn(),
   },
-  notify: { error: vi.fn(), success: vi.fn(), file: vi.fn() },
+  notify: { error: vi.fn(), success: vi.fn(), file: vi.fn(), info: vi.fn() },
   grid: [] as Record<string, unknown>[],
   save: [] as Record<string, unknown>[],
   /** What the tab registered with the shared SQL provider (CodeLens runner). */
   sqlEntry: null as null | { runStatement: (text: string) => void },
   /** Shortcut handlers the tab registered with the Monaco redispatch. */
   shortcuts: [] as { id: string; run: () => void }[],
+  /** What the fake editor reports: its buffer, selection and caret line. */
+  editor: { value: "", selection: null as string | null, line: 1 },
   aiTask: vi.fn(),
 }));
 
@@ -82,17 +84,20 @@ vi.mock("@monaco-editor/react", () => ({
     onChange: (v: string) => void;
     onMount: (editor: unknown, monaco: unknown) => void;
   }) {
+    h.editor.value = value;
     useEffect(() => {
       const model = {
         getLineCount: () => 1,
         getValueLength: () => 0,
-        getValue: () => "",
-        getValueInRange: () => "",
+        getValue: () => h.editor.value,
+        getValueInRange: () => h.editor.selection ?? "",
         uri: { toString: () => "inmemory://model/1" },
       };
       onMount(
         {
           getModel: () => model,
+          getSelection: () => ({ isEmpty: () => h.editor.selection === null }),
+          getPosition: () => ({ lineNumber: h.editor.line }),
           onDidChangeModelContent: () => ({ dispose: () => {} }),
           onKeyDown: () => ({ dispose: () => {} }),
           addCommand: () => null,
@@ -296,7 +301,7 @@ const lastGrid = () => h.grid[h.grid.length - 1] as Loose;
 const lastSave = () => h.save[h.save.length - 1] as Loose;
 /** The Run button's title names the binding (or just "Run" when unbound). */
 const runButton = () =>
-  screen.getByTitle(/^query\.run(All)?Title|^query\.run$/) as HTMLButtonElement;
+  screen.getByTitle(/^query\.runTitle/) as HTMLButtonElement;
 
 async function clickRun() {
   await act(async () => {
@@ -304,6 +309,16 @@ async function clickRun() {
   });
   await flush();
 }
+
+/** Press a shortcut the tab registered (Monaco's redispatch is mocked). */
+async function press(id: string) {
+  const action = h.shortcuts.find((s) => s.id === id);
+  if (!action) throw new Error(`${id} is not registered`);
+  await act(async () => action.run());
+  await flush();
+}
+/** `runAll` (Mod+Shift+Enter): the whole buffer, batched when it is several. */
+const runAll = () => press("runAll");
 
 const resultTabs = () =>
   screen.queryByRole("radiogroup", { name: "query.resultTabs" });
@@ -315,6 +330,7 @@ beforeEach(() => {
   h.save = [];
   h.sqlEntry = null;
   h.shortcuts = [];
+  h.editor = { value: "", selection: null, line: 1 };
   for (const fn of Object.values(h.api)) fn.mockReset();
   for (const fn of Object.values(h.notify)) fn.mockReset();
   h.aiTask.mockReset();
@@ -371,24 +387,89 @@ describe("single statement", () => {
     expect(entry.error).toBeUndefined();
   });
 
-  it("the Run shortcut (Mod+Enter) runs the whole buffer, not the statement under the cursor", async () => {
-    seed("SELECT 1");
-    h.api.executeQuery.mockResolvedValue(rows(["x"], [[1]]));
+  it("Run (button and Mod+Enter) runs the statement under the cursor, not the whole buffer", async () => {
+    seed(BATCH_SQL);
+    h.api.executeQuery.mockResolvedValue(write(5));
     renderTab();
-    const run = h.shortcuts.find((s) => s.id === "runQuery");
-    expect(run).toBeDefined();
-    await act(async () => run!.run());
-    await flush();
-    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "SELECT 1");
+    h.editor.line = 2;
+    await press("runQuery");
+    expect(h.api.executeQuery).toHaveBeenLastCalledWith(CONN, "UPDATE t SET a = 1;");
+    h.editor.line = 3;
+    await clickRun();
+    expect(h.api.executeQuery).toHaveBeenLastCalledWith(CONN, "SELECT b FROM u");
+    expect(h.api.executeBatch).not.toHaveBeenCalled();
+  });
+
+  it("Run runs the selection when there is one, as a batch if it spans several statements", async () => {
+    seed(BATCH_SQL);
+    h.api.executeBatch.mockResolvedValue(BATCH_OK);
+    renderTab();
+    h.editor.selection = "UPDATE t SET a = 1;\nSELECT b FROM u";
+    await press("runQuery");
+    expect(h.api.executeBatch).toHaveBeenCalledWith(CONN, [
+      "UPDATE t SET a = 1;",
+      "SELECT b FROM u",
+    ]);
+  });
+
+  it("a caret between two statements runs nothing and says why", async () => {
+    seed("SELECT 1;\n\nSELECT 2");
+    renderTab();
+    h.editor.line = 2;
+    await press("runQuery");
+    expect(h.api.executeQuery).not.toHaveBeenCalled();
+    expect(h.api.executeBatch).not.toHaveBeenCalled();
+    expect(h.notify.info).toHaveBeenCalledWith("query.nothingAtCursor", {
+      description: "query.nothingAtCursorHint",
+    });
   });
 
   it("does nothing on an empty buffer", async () => {
     seed("   ");
     renderTab();
     expect(runButton().disabled).toBe(true);
-    const run = h.shortcuts.find((s) => s.id === "runQuery")!;
-    await act(async () => run.run());
+    await press("runQuery");
+    await runAll();
     expect(h.api.executeQuery).not.toHaveBeenCalled();
+    expect(h.api.executeBatch).not.toHaveBeenCalled();
+  });
+});
+
+describe("the Run ▾ menu", () => {
+  async function openMenu() {
+    const trigger = screen.getByLabelText("query.runMenu");
+    await act(async () => {
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+  }
+
+  it("offers the statement, the selection (only with one) and all, with its count", async () => {
+    seed(BATCH_SQL);
+    h.api.executeBatch.mockResolvedValue(BATCH_OK);
+    renderTab();
+    await openMenu();
+    const items = screen.getAllByRole("menuitem");
+    expect(items.map((i) => i.textContent)).toEqual([
+      "query.runStatementItem",
+      "query.runSelectionItem",
+      expect.stringContaining(`query.runAllItem${JSON.stringify({ count: 3 })}`),
+    ]);
+    expect(items[1].getAttribute("aria-disabled")).toBe("true");
+    await act(async () => fireEvent.click(items[2]));
+    await flush();
+    expect(h.api.executeBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("Run the statement ignores a selection", async () => {
+    seed(BATCH_SQL);
+    h.api.executeQuery.mockResolvedValue(rows(["a"], [[1]]));
+    renderTab();
+    h.editor.selection = "SELECT b FROM u";
+    await openMenu();
+    await act(async () => fireEvent.click(screen.getAllByRole("menuitem")[0]));
+    await flush();
+    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "SELECT a FROM t;");
   });
 });
 
@@ -442,16 +523,14 @@ describe("error", () => {
 });
 
 describe("batch", () => {
-  it("a buffer of several statements runs through execute_batch, one text per statement", async () => {
+  it("runAll on a buffer of several statements runs execute_batch, one text per statement", async () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
 
-    expect(runButton().title).toBe("query.runAllTitle");
-    expect(runButton().textContent).toContain(
-      `query.runAll${JSON.stringify({ count: 3 })}`,
-    );
-    await clickRun();
+    // The button is labelled Run whatever the buffer holds.
+    expect(runButton().textContent).toContain("query.run");
+    await runAll();
 
     expect(h.api.executeQuery).not.toHaveBeenCalled();
     // `splitSql` keeps each statement's own `;`.
@@ -466,7 +545,7 @@ describe("batch", () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
-    await clickRun();
+    await runAll();
 
     expect(
       screen.getByText(`query.batchOk${JSON.stringify({ count: 3, rows: 5 })}`),
@@ -484,7 +563,7 @@ describe("batch", () => {
     seed("SELECT a FROM t;\nUPDATE t SET a = 1");
     h.api.executeBatch.mockResolvedValue(BATCH_FAILED);
     renderTab();
-    await clickRun();
+    await runAll();
 
     expect(
       screen.getByText(`query.batchFailed${JSON.stringify({ index: 2, total: 2 })}`),
@@ -499,7 +578,7 @@ describe("batch", () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
-    await clickRun();
+    await runAll();
 
     const strip = resultTabs()!;
     const tabs = within(strip).getAllByRole("radio");
@@ -527,7 +606,7 @@ describe("batch", () => {
       total_affected: 0,
     } satisfies BatchResult);
     renderTab();
-    await clickRun();
+    await runAll();
 
     const tabs = within(resultTabs()!).getAllByRole("radio");
     expect(tabs.map((b) => b.textContent)).toEqual([
@@ -556,7 +635,7 @@ describe("batch", () => {
       total_affected: 0,
     } satisfies BatchResult);
     renderTab();
-    await clickRun();
+    await runAll();
     const [own, shed] = within(resultTabs()!).getAllByRole("radio");
     expect(own.title).toBe(
       `query.resultTabTruncatedTitle${JSON.stringify({ rows: 50_000 })}`,
@@ -570,7 +649,7 @@ describe("batch", () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockRejectedValue("connection lost");
     renderTab();
-    await clickRun();
+    await runAll();
     expect(screen.getByText("connection lost")).toBeTruthy();
     // Not recorded in the history.
     expect(useQueryHistory.getState().entries).toHaveLength(0);
@@ -580,7 +659,7 @@ describe("batch", () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
-    await clickRun();
+    await runAll();
     expect(useQueryHistory.getState().entries[0]).toMatchObject({
       // Joined with ";\n" over texts that already end in ";" — the doubled
       // terminator is current behaviour too.
@@ -614,7 +693,7 @@ describe("result tabs", () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
-    await clickRun();
+    await runAll();
 
     act(() => (lastGrid().onGlobalFilterChange as (v: string) => void)("abc"));
     expect(lastGrid().globalFilter).toBe("abc");
@@ -629,7 +708,7 @@ describe("result tabs", () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
-    await clickRun();
+    await runAll();
     const [, second] = within(resultTabs()!).getAllByRole("radio");
     act(() => fireEvent.click(second));
 
@@ -859,7 +938,7 @@ describe("info bar", () => {
     seed("SELECT 1");
     const { container } = renderTab();
     expect(container.querySelectorAll("kbd")).toHaveLength(0);
-    expect(runButton().title).toBe("query.run");
+    expect(runButton().title).toBe("query.runTitleUnbound");
     usePreferences.setState((s) => ({ prefs: { ...s.prefs, keybindings: {} } }));
   });
 
@@ -883,7 +962,7 @@ describe("info bar", () => {
 });
 
 describe("MongoDB", () => {
-  it("runs a shell statement down the same single path and labels the bar mongodb", async () => {
+  it("Run takes the shell statement under the cursor down the single path; the bar says mongodb", async () => {
     useConnections.setState({ profiles: [profile("m1", "mongodb")] });
     seed("db.users.find({})", "m1");
     h.api.executeQuery.mockResolvedValue(rows(["_id"], [["a"]]));
@@ -894,12 +973,12 @@ describe("MongoDB", () => {
     expect(screen.getByText("mongodb · utf-8")).toBeTruthy();
   });
 
-  it("splits two lines into a batch with its own dialect (no `;` needed)", async () => {
+  it("runAll splits two lines into a batch with its own dialect (no `;` needed)", async () => {
     useConnections.setState({ profiles: [profile("m1", "mongodb")] });
     seed("db.a.countDocuments()\ndb.b.countDocuments()", "m1");
     h.api.executeBatch.mockResolvedValue({ statements: [], total_affected: 0 });
     renderTab("m1");
-    await clickRun();
+    await runAll();
     expect(h.api.executeBatch).toHaveBeenCalledWith("m1", [
       "db.a.countDocuments()",
       "db.b.countDocuments()",
