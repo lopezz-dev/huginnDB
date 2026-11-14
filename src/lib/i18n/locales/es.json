@@ -2659,7 +2659,9 @@
     "export": {
       "csvComma": "CSV (coma)",
       "csvSemicolon": "CSV (punto y coma, para Excel)",
-      "rowsShown": "Las filas mostradas ({{count}})"
+      "rowsShown": "Las filas mostradas ({{count}})",
+      "fromServer": "Todo, desde el servidor",
+      "fromServerHint": "Ejecutar la consulta otra vez en el servidor y escribir todas las filas que devuelva, sin límite de filas"
     },
     "refreshFailed": "Guardado, pero no se pudieron refrescar los resultados",
     "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n"

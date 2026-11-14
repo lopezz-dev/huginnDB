@@ -73,7 +73,7 @@ export function QueryResultGrid({
     onError: ignore,
   });
 
-  const exportItem = useResultExportItem(source, connectionId, driver, result);
+  const exportItem = useResultExportItem(source, connectionId, driver, result, sql);
 
   // `DataGrid` sizes itself with `h-full`, so it needs a box with a definite
   // height: a flex share of the results column, `overflow-hidden` so it may

@@ -31,6 +31,7 @@ const h = vi.hoisted(() => ({
     deleteRows: vi.fn(),
     applyPaste: vi.fn(),
     updatePreferences: vi.fn(),
+    exportQueryRows: vi.fn(),
   },
   notify: { error: vi.fn(), success: vi.fn() },
   props: {} as Record<string, Record<string, unknown> | undefined>,
@@ -528,6 +529,42 @@ describe("QueryResultGrid — export", () => {
     await mount(SQL, { ...RESULT, truncated: true });
     const view = await openExportMenu();
     expect(view.getByText("query.export.rowsShown")).toBeTruthy();
+  });
+
+  it("a cut result also offers “Everything, from the server…”, which re-runs its statement", async () => {
+    h.api.exportQueryRows.mockResolvedValue("/tmp/out.csv");
+    await mount(SQL, { ...RESULT, truncated: true });
+    const view = await openExportMenu();
+    expect(view.getByText("query.export.fromServer")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(view.getByText("query.export.csvComma…"));
+    });
+    expect(h.api.exportQueryRows).toHaveBeenCalledWith("c1", SQL, "csv", undefined);
+  });
+
+  it("the server SQL INSERT carries the target with each result column's table column", async () => {
+    h.api.exportQueryRows.mockResolvedValue("/tmp/out.sql");
+    await mount(SQL, { ...RESULT, truncated: true });
+    const view = await openExportMenu();
+    await act(async () => {
+      fireEvent.click(view.getByText("SQL INSERT…"));
+    });
+    // `SELECT id, price AS p, price * 2 AS doubled, shop_id FROM shop.items`
+    expect(h.api.exportQueryRows).toHaveBeenCalledWith("c1", SQL, "sql", {
+      table: expect.any(String),
+      columns: ["id", "price", null, "shop_id"],
+    });
+  });
+
+  it("no server group for a whole result, or without a statement to re-run", async () => {
+    await mount();
+    let view = await openExportMenu();
+    expect(view.queryByText("query.export.fromServer")).toBeNull();
+    view.unmount();
+    cleanup();
+    await mount(null, { ...RESULT, truncated: true });
+    view = await openExportMenu();
+    expect(view.queryByText("query.export.fromServer")).toBeNull();
   });
 
   it("still shows it under an export lock — disabled, with the reason", async () => {
