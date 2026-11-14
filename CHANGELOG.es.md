@@ -88,6 +88,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- ***Copiar fila como ▸ SQL UPDATE* funciona en una tabla cuyas columnas son
+  todas clave.** En una tabla de unión como `playlist_track (playlist_id,
+  track_id)` el fragmento salía como `UPDATE … SET  WHERE …`, que ninguna
+  base de datos ejecuta, porque las columnas de la clave se dejan fuera del
+  `SET`. Si no hay otra columna, el `SET` lista ahora la clave con sus
+  valores actuales: la sentencia se ejecuta tal cual se copia, y cambiar en
+  ella un valor de la clave es la única actualización que admite esa fila.
+
 - **Se pueden añadir filas a una tabla cuya clave son varias columnas
   enteras.** En una tabla de unión como `playlist_track (playlist_id,
   track_id)`, la fila nueva de Insertar o de *Duplicar fila…* mostraba cada

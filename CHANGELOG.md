@@ -79,6 +79,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- ***Copy row as ▸ SQL UPDATE* works on a table whose every column is key.**
+  On a junction table such as `playlist_track (playlist_id, track_id)` the
+  snippet came out as `UPDATE … SET  WHERE …`, which no database runs,
+  because key columns are left out of `SET`. With no other column the `SET`
+  now lists the key at its current values: the statement runs as copied,
+  and changing a key value in it is the one update such a row can take.
+
 - **Rows can be added to a table whose key is several integer columns.** In
   a junction table such as `playlist_track (playlist_id, track_id)`, the new
   row from Insert or *Duplicate row…* showed every key column as "auto" and
