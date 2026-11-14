@@ -36,11 +36,22 @@ import {
 } from "@/lib/query/exportResult";
 import type { Driver, QueryResult } from "@/types";
 
-const LABELS: Record<ResultExportFormat, string> = {
-  csv: "CSV",
-  json: "JSON",
-  sql: "SQL INSERT",
-};
+/** Each format's menu label: the two CSVs say which delimiter they use. */
+function formatLabel(
+  format: ResultExportFormat,
+  t: (key: string) => string,
+): string {
+  switch (format) {
+    case "csv":
+      return t("query.export.csvComma");
+    case "csvSemicolon":
+      return t("query.export.csvSemicolon");
+    case "json":
+      return "JSON";
+    case "sql":
+      return "SQL INSERT";
+  }
+}
 
 export function useResultExportItem(
   source: GridSource,
@@ -75,7 +86,7 @@ export function useResultExportItem(
     const items = (className?: string) =>
       formats.map((f) => (
         <DropdownMenuItem key={f} className={className} onSelect={() => run(f)}>
-          {LABELS[f]}
+          {formatLabel(f, t)}
         </DropdownMenuItem>
       ));
     return [

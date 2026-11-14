@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Export a query's results as CSV for Excel.** The query results' *Export
+  data* menu now offers two CSVs: *CSV (comma)* and *CSV (semicolon, for
+  Excel)*. An Excel whose regional settings use the comma as the decimal
+  separator — Spanish, and much of Europe — expects semicolons and opens a
+  comma-separated file in a single column. Both are saved as `.csv`, in
+  UTF-8 with a byte-order mark.
+
 - **A query's column headers describe the table column.** Hovering a column
   header in the results of a single-table `SELECT` now says what a table tab
   says: whether the column takes NULL, and for a foreign key which table and

@@ -264,21 +264,30 @@ export function selectSnippet(
 
 /**
  * Rows as CSV (RFC 4180): a header of the column names as shown, then one line
- * per row, CRLF-separated. A field is quoted when it holds a comma, a quote or
- * a line break, with inner quotes doubled; NULL is an empty field and a JSON
+ * per row, CRLF-separated. The delimiter is a comma by default; a semicolon is
+ * what Excel expects where the comma is the decimal separator (Spanish and
+ * much of Europe), which otherwise opens the file in one column. A field is
+ * quoted when it holds the delimiter, a quote or a line break, with inner
+ * quotes doubled; NULL is an empty field and a JSON
  * value its compact JSON. Prefixed with a UTF-8 byte-order mark, which is what
  * makes Excel read accented text as UTF-8 rather than the system code page.
  */
-export function toCsv(rows: CellValue[][], columns: ColumnMeta[]): string {
+export function toCsv(
+  rows: CellValue[][],
+  columns: ColumnMeta[],
+  delimiter: "," | ";" = ",",
+): string {
+  const needsQuotes = (text: string) =>
+    text.includes(delimiter) || /["\r\n]/.test(text);
   const field = (v: CellValue): string => {
     if (v === null || v === undefined) return "";
     const text =
       typeof v === "object" ? JSON.stringify(jsonSafe(v)) : String(jsonSafe(v));
-    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    return needsQuotes(text) ? `"${text.replace(/"/g, '""')}"` : text;
   };
   const lines = [
-    columns.map((c) => field(c.name)).join(","),
-    ...rows.map((r) => columns.map((_, i) => field(r[i])).join(",")),
+    columns.map((c) => field(c.name)).join(delimiter),
+    ...rows.map((r) => columns.map((_, i) => field(r[i])).join(delimiter)),
   ];
   return `\uFEFF${lines.join("\r\n")}\r\n`;
 }

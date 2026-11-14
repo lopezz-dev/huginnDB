@@ -8,7 +8,11 @@
  * the same:
  *
  * - **CSV** and **JSON** carry the columns as the result names them — aliases
- *   and expressions included, since that is what the query asked for.
+ *   and expressions included, since that is what the query asked for. CSV
+ *   comes in two flavours the person picks when exporting: comma-separated,
+ *   and semicolon-separated for an Excel whose locale uses the comma as its
+ *   decimal separator. Who exports knows where the file is going; nothing
+ *   here guesses it from the interface language.
  * - **SQL INSERT** addresses the table the result reads, through its
  *   `SqlTarget` (aliases become table columns, expressions are left out), and
  *   is offered only when there is one: a result over several tables has no
@@ -19,7 +23,12 @@ import { api } from "@/lib/tauri";
 import { toBulk, toCsv, type SqlTarget } from "@/lib/grid/copyFormats";
 import type { CellValue, ColumnMeta, Driver } from "@/types";
 
-export type ResultExportFormat = "csv" | "json" | "sql";
+export type ResultExportFormat = "csv" | "csvSemicolon" | "json" | "sql";
+
+/** The file extension each format is saved with. */
+export function fileExtension(format: ResultExportFormat): "csv" | "json" | "sql" {
+  return format === "csvSemicolon" ? "csv" : format;
+}
 
 export interface ResultExportInput {
   rows: CellValue[][];
@@ -30,7 +39,8 @@ export interface ResultExportInput {
 
 /** The formats a result can be exported as: SQL only with a table to name. */
 export function exportFormats(target: SqlTarget | undefined): ResultExportFormat[] {
-  return target ? ["csv", "json", "sql"] : ["csv", "json"];
+  const always: ResultExportFormat[] = ["csv", "csvSemicolon", "json"];
+  return target ? [...always, "sql"] : always;
 }
 
 export function serializeResult(
@@ -39,7 +49,9 @@ export function serializeResult(
 ): string {
   switch (format) {
     case "csv":
-      return toCsv(rows, columns);
+      return toCsv(rows, columns, ",");
+    case "csvSemicolon":
+      return toCsv(rows, columns, ";");
     case "json":
       return toBulk(rows, "json", { columns, driver });
     case "sql":
@@ -66,7 +78,7 @@ export function exportResult(
   return api.exportQueryResult(
     connectionId,
     suggestedName(input.target),
-    format,
+    fileExtension(format),
     serializeResult(format, input),
   );
 }
