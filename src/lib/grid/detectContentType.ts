@@ -7,7 +7,7 @@
  * editor.
  */
 
-import { formatSql, sqlDialectFor } from "@/lib/grid/formatSql";
+import { formatSql, sqlDialectFor } from "@/lib/sql/formatSql";
 import type { Driver } from "@/types";
 
 export type ContentLanguage = "json" | "xml" | "sql" | "plaintext";

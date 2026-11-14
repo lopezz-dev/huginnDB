@@ -1,11 +1,13 @@
 /**
- * SQL pretty-printing for cell values, and the driver → dialect map behind it.
+ * SQL pretty-printing — for cell values and for the query editor's Format
+ * (`formatQuery`, ADR #137) — and the driver → dialect map behind it. Moved
+ * from `lib/grid/` when the editor became its second consumer.
  *
  * **This is the only file in the repo that imports `sql-formatter`.** That is
  * deliberate: the package is the one heavy dependency this feature adds, and
  * keeping its import surface to a single module means that if the bundle cost
  * ever stops being acceptable, moving it behind a dynamic `import()` is a
- * one-file change rather than a refactor of the three components that format.
+ * one-file change rather than a refactor of the components that format.
  *
  * Two things about how it is imported are load-bearing:
  *

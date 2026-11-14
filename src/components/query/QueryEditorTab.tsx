@@ -32,7 +32,8 @@
  * history, the results — is shared, because none of it is dialectal.
  *
  * An info bar at the bottom of the editor panel mirrors VS Code's status bar:
- * the run shortcut, the database, line/character counts and the language.
+ * the run shortcut, the database, the caret's Ln/Col, the statement count and
+ * the driver.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -58,6 +59,8 @@ import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { runAiTask } from "@/lib/ai/runTask";
 import { splitSql, type SqlDialect } from "@/lib/sql/sqlSplit";
 import { notify } from "@/lib/notify";
+import { formatSql, sqlDialectFor } from "@/lib/sql/formatSql";
+import { useAiReachable } from "@/lib/ai/useAiReachable";
 import { runTarget, type EditorSnapshot, type RunScope } from "@/lib/query/runTarget";
 import type { LineRange } from "@/lib/query/statementTabs";
 import i18n from "@/lib/i18n";
@@ -172,8 +175,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   const runShortcut = useShortcutLabel("runQuery");
   const [showHistory, setShowHistory] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
-  /** Line and character counts updated live by Monaco. */
-  const [editorStats, setEditorStats] = useState({ lines: 1, chars: 0 });
+  /** The caret's position, updated live by Monaco, for the info bar. */
+  const [cursor, setCursor] = useState({ line: 1, column: 1 });
 
   // Typed loosely to avoid importing the heavy monaco-editor types at compile
   // time. The subset we need is stable across Monaco versions.
@@ -184,6 +187,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       getValue: () => string;
       getValueInRange: (range: unknown) => string;
       getLineMaxColumn: (line: number) => number;
+      getFullModelRange: () => unknown;
       uri: { toString: () => string };
     } | null;
     getSelection: () => { isEmpty: () => boolean; startLineNumber: number } | null;
@@ -198,6 +202,14 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     getPosition: () => { lineNumber: number } | null;
     onDidChangeModelContent: (fn: () => void) => { dispose: () => void };
     onDidChangeCursorSelection?: (fn: () => void) => { dispose: () => void };
+    onDidChangeCursorPosition?: (
+      fn: (e: { position: { lineNumber: number; column: number } }) => void,
+    ) => { dispose: () => void };
+    executeEdits: (
+      source: string,
+      edits: { range: unknown; text: string }[],
+    ) => boolean;
+    pushUndoStop: () => boolean;
     addCommand: (keybinding: number, handler: () => void) => string | null;
     onKeyDown: (fn: (e: { browserEvent: KeyboardEvent }) => void) => {
       dispose: () => void;
@@ -352,6 +364,61 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   }, [runAt]);
   const [hasSelection, setHasSelection] = useState(false);
 
+  /** Format the selection, else the whole buffer, as one undoable edit.
+   *  SQL only (ADR #136): `undefined` on MongoDB, so neither the toolbar nor
+   *  the shortcut offers it there. */
+  const format = useMemo(
+    () =>
+      isMongo
+        ? undefined
+        : () => {
+            const editor = editorRef.current;
+            const model = editor?.getModel();
+            if (!editor || !model) return;
+            const selection = editor.getSelection();
+            const range =
+              selection && !selection.isEmpty() ? selection : model.getFullModelRange();
+            const text = model.getValueInRange(range);
+            const formatted = formatSql(text, sqlDialectFor(driver));
+            if (formatted === text) return;
+            editor.pushUndoStop();
+            editor.executeEdits("huginndb.formatQuery", [{ range, text: formatted }]);
+            editor.pushUndoStop();
+          },
+    [isMongo, driver],
+  );
+  const formatRef = useRef(format);
+  useEffect(() => {
+    formatRef.current = format;
+  }, [format]);
+
+  /** Explain (AI) on the toolbar: the selection, else the statement under
+   *  the caret — the editor's context-menu action, offered only where the AI
+   *  is on for this connection (ADR #136). */
+  const aiReachable = useAiReachable(connectionId);
+  const explain = useMemo(
+    () =>
+      aiReachable
+        ? () => {
+            const editor = editorRef.current;
+            if (!editor) return;
+            const target = runTarget(snapshotOf(editor, dialect), "cursor");
+            if (!target) {
+              notify.info(t("query.nothingAtCursor"), {
+                description: t("query.nothingAtCursorHint"),
+              });
+              return;
+            }
+            void runAiTask({
+              task: "explainQuery",
+              connection: connectionId,
+              statement: target.text,
+            });
+          }
+        : undefined,
+    [aiReachable, dialect, connectionId, t],
+  );
+
   /**
    * Ref to the live completion list for the same reason as `runQueryRef`:
    * `registerCompletionItemProvider` keeps the handler closure for the
@@ -383,21 +450,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     const editor = _editor as typeof editorRef.current;
     editorRef.current = editor;
 
-    // Seed initial stats.
     const model = editor?.getModel();
-    if (model) {
-      setEditorStats({
-        lines: model.getLineCount(),
-        chars: model.getValueLength(),
-      });
-    }
 
-    // Keep stats in sync as the user types.
-    editor?.onDidChangeModelContent(() => {
-      const m = editor.getModel();
-      if (m)
-        setEditorStats({ lines: m.getLineCount(), chars: m.getValueLength() });
-    });
+    // Ln, Col in the info bar, kept in sync with the caret.
+    editor?.onDidChangeCursorPosition?.((e) =>
+      setCursor({ line: e.position.lineNumber, column: e.position.column }),
+    );
 
     // The ▾ menu's "Run the selection" is offered only with one.
     editor?.onDidChangeCursorSelection?.(() => {
@@ -418,6 +476,14 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         [
           { id: "runQuery", run: () => runAtRef.current("cursor") },
           { id: "runAll", run: () => runAtRef.current("all") },
+          // Declines on MongoDB, so the key falls through to Monaco.
+          {
+            id: "formatQuery",
+            run: () => {
+              if (!formatRef.current) return false;
+              formatRef.current();
+            },
+          },
           {
             id: "toggleCommandPalette",
             run: () => useCommandPalette.getState().toggle(),
@@ -558,6 +624,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             running={run.running}
             runShortcut={runShortcut}
             onRun={runAt}
+            onFormat={format}
+            onExplain={explain}
             onSave={() => setSaveDialogOpen(true)}
             historyOpen={showHistory}
             onToggleHistory={() => setShowHistory((v) => !v)}
@@ -601,10 +669,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             )}
           </div>
 
-          {/* Editor info bar: run shortcut · db name · line/char count · language.
-              The shortcut is the user's binding for `runQuery`, read from the
-              catalogue — it used to say Ctrl + Enter whatever it was bound
-              to — and the hint is left out when the action is unbound. */}
+          {/* Editor info bar (ADR #137): run shortcut · database · Ln, Col ·
+              statements · driver. The shortcut is the user's binding for
+              `runQuery`, read from the catalogue, and left out when the
+              action is unbound. */}
           <div className="flex items-center gap-0 border-t border-border bg-card px-3 py-1 text-2xs text-muted-foreground">
             {runShortcut && (
               <>
@@ -621,13 +689,13 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             )}
             <span className="truncate">{dbName}</span>
             <span className="mx-3 text-muted-foreground/30">|</span>
-            <span>
-              {t("query.lines", { count: editorStats.lines })}
-              {" · "}
-              {t("query.chars", { count: editorStats.chars })}
+            <span className="tabular-nums">
+              {t("query.cursorPosition", { line: cursor.line, column: cursor.column })}
             </span>
             <span className="mx-3 text-muted-foreground/30">|</span>
-            <span>{driver === "mongodb" ? "mongodb" : "sql"} · utf-8</span>
+            <span>{t("query.statementCount", { count: statements.length })}</span>
+            <span className="mx-3 text-muted-foreground/30">|</span>
+            <span>{driver ?? ""}</span>
           </div>
         </div>
       </Panel>
