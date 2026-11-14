@@ -73,6 +73,7 @@
   "panels": {
     "schema": "Schema",
     "saved": "Saved",
+    "history": "History",
     "pulse": "Pulse",
     "rightDock": "Right dock",
     "console": "Console",
@@ -1719,6 +1720,7 @@
       "fixedHint": "Reserved by the app — cannot be rebound.",
       "togglePanelSchema": "Toggle the Schema panel",
       "togglePanelSaved": "Toggle the Saved queries panel",
+      "togglePanelHistory": "Toggle the Query history panel",
       "togglePanelPulse": "Show the Pulse panel",
       "togglePanelAi": "Assistant panel",
       "togglePanelConsole": "Toggle the Console panel",
@@ -2660,6 +2662,19 @@
     "edit": "Edit",
     "delete": "Delete",
     "deleteConfirm": "Delete \"{{name}}\"?"
+  },
+  "history": {
+    "title": "Query history",
+    "allConnections": "Every connection",
+    "clear": "Clear what is shown",
+    "open": "Open in a new query tab",
+    "noConnection": "Open a query tab to see its connection's history.",
+    "clearConnectionConfirm_one": "Delete {{count}} history entry of {{name}}?",
+    "clearConnectionConfirm_other": "Delete the {{count}} history entries of {{name}}?",
+    "clearAllConfirm_one": "Delete {{count}} history entry?",
+    "clearAllConfirm_other": "Delete all {{count}} history entries, of every connection?",
+    "clearMatchesConfirm_one": "Delete the {{count}} entry that matches the filter?",
+    "clearMatchesConfirm_other": "Delete the {{count}} entries that match the filter?"
   },
   "saveQuery": {
     "titleUpdate": "Update saved query",

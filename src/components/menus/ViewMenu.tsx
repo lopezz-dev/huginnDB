@@ -84,6 +84,16 @@ export function ViewMenu() {
           {t("panels.saved")}
           <ShortcutHint action="togglePanelSaved" />
         </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
+          checked={rightPanel === "history"}
+          onSelect={(e) => {
+            e.preventDefault();
+            selectRightPanel("history");
+          }}
+        >
+          {t("panels.history")}
+          <ShortcutHint action="togglePanelHistory" />
+        </DropdownMenuCheckboxItem>
         {pulseOn && (
           <DropdownMenuCheckboxItem
             checked={rightPanel === "pulse"}

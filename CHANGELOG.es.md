@@ -88,6 +88,17 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **Volver a ejecutar un lote desde el historial funciona.** Una entrada
+  del historial con varias sentencias se enviaba como un solo texto por la
+  vía de una sentencia, que PostgreSQL y MySQL rechazan. Ahora se abre en
+  una pestaña de consulta que la ejecuta como lote.
+
+- **Borrar el historial borra solo lo que muestra.** *Borrar historial*
+  vaciaba el historial de todas las conexiones detrás de una lista que
+  mostraba una. Ahora borra las entradas que se ven (las de la conexión, las
+  de todas cuando se muestran todas, o solo las que coinciden con el filtro),
+  después de preguntar.
+
 - **La barra de información del editor de consultas muestra tu atajo de
   Ejecutar.** Antes decía `Ctrl + Enter` fuera cual fuera el atajo de
   *Ejecutar consulta*; ahora muestra el tuyo, y nada si la acción no tiene
@@ -153,6 +164,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   simultáneos ya no pueden dejar en disco el más antiguo.
   
 ### Cambiado
+
+- **El historial de consultas es un panel junto a Consultas guardadas.**
+  Era una barra lateral dentro de cada pestaña de consulta. Ahora es un
+  panel propio en el dock derecho (su botón de la barra de actividad,
+  *Ver → Historial* o el botón Historial de la barra del editor), que
+  muestra el historial de la conexión de la pestaña en la que estás, con un
+  interruptor para ver el de todas. Pulsar una entrada la abre en una
+  pestaña de consulta nueva; su ▶ la abre y la ejecuta.
 
 - **La barra de herramientas del editor de consultas muestra cada acción
   como un icono.** Junto a Ejecutar y el cronómetro: *Formatear SQL*,

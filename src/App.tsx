@@ -517,6 +517,8 @@ export default function App() {
       togglePanelSchema: () => useSessionPanelLayout.getState().toggleSchema(),
       togglePanelSaved: () =>
         useSessionPanelLayout.getState().selectRightPanel("saved"),
+      togglePanelHistory: () =>
+        useSessionPanelLayout.getState().selectRightPanel("history"),
       // A switched-off module's shortcut does nothing — and says so to the
       // dispatcher, so the keystroke falls through rather than being eaten.
       togglePanelPulse: () => {

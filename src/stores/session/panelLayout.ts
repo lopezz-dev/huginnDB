@@ -52,7 +52,13 @@ const CONSOLE_HEIGHT_DEFAULT = 190;
 const SIDE_EDITOR_WIDTH_DEFAULT = 420;
 
 /** The panels that can occupy the right dock. One at a time. */
-export type RightPanelId = "saved" | "pulse" | "ai" | "extensions" | "dates";
+export type RightPanelId =
+  | "saved"
+  | "history"
+  | "pulse"
+  | "ai"
+  | "extensions"
+  | "dates";
 
 /** The tabs of the bottom dock. One shows at a time; the dock's height is
  *  shared, since both want "as many lines as you can spare". */
@@ -92,6 +98,10 @@ export function rightPanelSizeKey(
   // which is the one place the mapping is spelled.
   const KEYS: Record<RightPanelId, RightPanelSizeKey> = {
     saved: "savedWidth",
+    // The query history (ADR #137) lives beside Saved queries and is the
+    // same kind of list, so it shares Saved's width rather than adding a
+    // persisted field of its own.
+    history: "savedWidth",
     pulse: "pulseWidth",
     ai: "aiWidth",
     extensions: "extensionsWidth",

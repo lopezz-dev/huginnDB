@@ -10,7 +10,8 @@
  *  - `useQueryRun` (`lib/query/`) owns the run lifecycle: which backend path a
  *    text takes, the result panels, the history record, the timer;
  *  - `useDatabaseSelector` (`lib/query/`) owns which database the tab targets;
- *  - `QueryEditorToolbar` and `QueryHistorySidebar` are its chrome;
+ *  - `QueryEditorToolbar` is its chrome; the history is a dock panel
+ *    (`QueryHistoryPanel`) that runs an entry by opening it in a tab;
  *  - `results/QueryResultsArea` shows one tab per statement the run executed
  *    — rows, write or error — with a Summary first in a batch (see
  *    `results/ResultTabs` for why only one grid is ever mounted).
@@ -47,6 +48,8 @@ import {
   useSchema,
 } from "@/stores/session/schema";
 import { useTabs } from "@/stores/session/tabs";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
+import { usePendingRuns } from "@/stores/query/pendingRuns";
 import {
   usePreferences,
   selectEditorPrefs,
@@ -66,7 +69,6 @@ import type { LineRange } from "@/lib/query/statementTabs";
 import i18n from "@/lib/i18n";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { QueryEditorToolbar } from "@/components/query/QueryEditorToolbar";
-import { QueryHistorySidebar } from "@/components/query/QueryHistorySidebar";
 import { QueryResultsArea } from "@/components/query/results/QueryResultsArea";
 import { parentConnectionId, sqliteFileLabel } from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
@@ -173,7 +175,9 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   // same combo), for the Run button's chip and the info bar; `undefined`
   // when the action is unbound.
   const runShortcut = useShortcutLabel("runQuery");
-  const [showHistory, setShowHistory] = useState(false);
+  // The history is a dock panel beside Saved (ADR #137); the toolbar's
+  // History button shows and hides it.
+  const historyOpen = useSessionPanelLayout((s) => s.rightPanel === "history");
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   /** The caret's position, updated live by Monaco, for the info bar. */
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
@@ -363,6 +367,22 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     runAtRef.current = runAt;
   }, [runAt]);
   const [hasSelection, setHasSelection] = useState(false);
+
+  // A tab opened with `openQueryTab(…, { run: true })` (the history panel's
+  // Run) runs its whole buffer once, through this tab's own runner — so a
+  // batch goes down the batch path. It waits for the driver: the splitter's
+  // dialect depends on it, and a MongoDB batch split as SQL would be one
+  // statement.
+  const runRef = useRef(run.run);
+  useEffect(() => {
+    runRef.current = run.run;
+  }, [run.run]);
+  useEffect(() => {
+    if (driver === undefined) return;
+    if (!usePendingRuns.getState().take(tabId)) return;
+    const text = useTabs.getState().tabs.find((x) => x.id === tabId)?.query ?? "";
+    if (text.trim()) void runRef.current(text, 1);
+  }, [driver, tabId]);
 
   /** Format the selection, else the whole buffer, as one undoable edit.
    *  SQL only (ADR #136): `undefined` on MongoDB, so neither the toolbar nor
@@ -627,8 +647,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             onFormat={format}
             onExplain={explain}
             onSave={() => setSaveDialogOpen(true)}
-            historyOpen={showHistory}
-            onToggleHistory={() => setShowHistory((v) => !v)}
+            historyOpen={historyOpen}
+            onToggleHistory={() =>
+              useSessionPanelLayout.getState().selectRightPanel("history")
+            }
             databases={
               supportsMultipleDatabases(driver)
                 ? { databases, selectedDb, switchDatabase }
@@ -636,7 +658,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             }
           />
 
-          {/* Monaco + optional history sidebar */}
+          {/* Monaco */}
           <div className="flex flex-1 overflow-hidden">
             {/* Monaco redispatches `editor`-scoped bindings itself (gotcha #9);
                 the attribute is what tells the window listener that focus in
@@ -660,13 +682,6 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 options={editorOptions}
               />
             </div>
-            {showHistory && (
-              <QueryHistorySidebar
-                connectionId={parentId}
-                onLoad={(text) => updateQuery(tabId, text)}
-                onRun={(text) => void run.runSingle(text, null)}
-              />
-            )}
           </div>
 
           {/* Editor info bar (ADR #137): run shortcut · database · Ln, Col ·
