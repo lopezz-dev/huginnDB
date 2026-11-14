@@ -70,6 +70,7 @@ macro_rules! try_sql_sink {
 mod adhoc;
 mod bounded;
 mod browse;
+mod export;
 mod filter;
 mod fk;
 mod statement;
@@ -84,6 +85,7 @@ mod filter_tests;
 pub(crate) use adhoc::*;
 pub(crate) use bounded::*;
 pub(crate) use browse::*;
+pub(crate) use export::*;
 pub(crate) use filter::*;
 pub(crate) use fk::*;
 pub(crate) use statement::*;

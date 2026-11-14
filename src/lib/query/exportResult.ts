@@ -21,9 +21,9 @@
 
 import { api } from "@/lib/tauri";
 import { toBulk, toCsv, type SqlTarget } from "@/lib/grid/copyFormats";
-import type { CellValue, ColumnMeta, Driver } from "@/types";
+import type { CellValue, ColumnMeta, Driver, ResultExportFormat } from "@/types";
 
-export type ResultExportFormat = "csv" | "csvSemicolon" | "json" | "sql";
+export type { ResultExportFormat } from "@/types";
 
 /** The file extension each format is saved with. */
 export function fileExtension(format: ResultExportFormat): "csv" | "json" | "sql" {

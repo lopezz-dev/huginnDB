@@ -712,6 +712,26 @@ export interface StmtOutcome {
   results: QueryResult[];
 }
 
+/**
+ * The formats a query result can be exported as. Mirrors `ResultFormat` in
+ * `src-tauri/src/db/result_export.rs`; `lib/query/exportResult` re-exports it.
+ */
+export type ResultExportFormat = "csv" | "csvSemicolon" | "json" | "sql";
+
+/**
+ * The table a server-side SQL export (`exportQueryRows`) inserts into: a
+ * `SqlTarget` with its `columnOf` evaluated for each result column, **in
+ * result order** — `columns[i]` is the table column result column `i` is, or
+ * `null` for an expression, which the `INSERT` leaves out. A function cannot
+ * cross IPC. The backend refuses a list whose length is not the result's
+ * column count (the statement no longer returns what the grid showed).
+ * Mirrors `SqlExportTarget` in `src-tauri/src/db/result_export.rs`.
+ */
+export interface ServerSqlTarget {
+  table: string;
+  columns: (string | null)[];
+}
+
 /** Result of running a batch of statements via `execute_batch`. */
 export interface BatchResult {
   statements: StmtOutcome[];
