@@ -14,8 +14,11 @@
 //! - **SQL Server:** the session is closed, after an Attention that tiberius
 //!   0.13 cannot see acknowledged (gotcha #132). SQL Server aborts the request
 //!   of a client that disconnects.
-//! - **SQLite:** nothing can interrupt a statement. The connection is detached
-//!   from the pool and the statement finishes on it by itself.
+//! - **SQLite:** the statement is interrupted through the progress handler
+//!   installed on its connection before it runs
+//!   (`crate::db::session::sqlite_interrupt`), and the connection is detached
+//!   from the pool. Only a statement waiting on another connection's lock
+//!   escapes it: that one ends with its busy timeout.
 //! - **MongoDB:** the operation and its cursor are dropped. Its server-side
 //!   stop (`killOp`) is left for the MongoDB card.
 //!
@@ -41,7 +44,9 @@ use sqlx::{Executor as _, Row as _};
 use super::bounded::{InFlight, Kill, MSSQL_CANCEL_WAIT};
 use super::types::{with_meta, QueryResult};
 use super::MAX_ADHOC_QUERY_ROWS;
-use crate::db::session::{fetch_capped, Cancelled, MYSQL_SESSION_ID, POSTGRES_SESSION_ID};
+use crate::db::session::{
+    fetch_capped, sqlite_interrupt, Cancelled, MYSQL_SESSION_ID, POSTGRES_SESSION_ID,
+};
 use crate::db::sql::{is_read_only, StmtClass};
 use crate::error::{AppError, AppResult, StopOutcome};
 use crate::log_bus::{LogSink, SqlLog};
@@ -52,6 +57,12 @@ use crate::state::{AppState, DbPool};
 /// with the server's answer. Past it the session is closed regardless, and a
 /// write says it may have applied: without the answer the app cannot know.
 const STOP_GRACE: Duration = Duration::from_secs(10);
+
+/// [`STOP_GRACE`] for SQLite's interrupt. A statement that runs sees it within
+/// milliseconds; one that does not stop within this is waiting on another
+/// connection's lock, runs no instruction to see it, and would otherwise hold
+/// the tab until its busy timeout.
+const SQLITE_STOP_GRACE: Duration = Duration::from_secs(1);
 
 /// What a statement raced against a person's Stop came to.
 pub(crate) enum Raced<T> {
@@ -69,8 +80,7 @@ pub(crate) enum Raced<T> {
 /// How the server was told to stop a statement.
 pub(crate) enum Told {
     /// There is nothing to send: the driver is stopped by closing its session
-    /// (SQL Server), cannot be stopped (SQLite) or is not stopped by id here
-    /// (MongoDB).
+    /// (SQL Server) or is not stopped by id here (MongoDB).
     Nothing,
     /// The kill was sent; the statement it is.
     Sent(String),
@@ -100,13 +110,24 @@ pub(crate) async fn race<T>(
                 return Raced::Stopped { told: Told::Nothing, ended: None };
             };
             let told = match kill.run().await {
-                Ok(()) => Told::Sent(kill.sql.clone()),
-                Err(e) => Told::Failed(kill.sql.clone(), e),
+                Ok(()) => Told::Sent(kill.sent.clone()),
+                Err(e) => Told::Failed(kill.sent.clone(), e),
             };
-            let ended = tokio::time::timeout(STOP_GRACE, &mut work).await.ok();
+            let grace = if kill.interrupts() { SQLITE_STOP_GRACE } else { STOP_GRACE };
+            let ended = tokio::time::timeout(grace, &mut work).await.ok();
             Raced::Stopped { told, ended }
         }
     }
+}
+
+/// Which `sqlx` driver a stoppable statement runs on: what decides how its
+/// stop is told in words ([`StoppedBy`]), since `settle` and `fetch` are
+/// generic over the connection.
+#[derive(Clone, Copy)]
+enum Engine {
+    Postgres,
+    Mysql,
+    Sqlite,
 }
 
 /// Which way a stopped statement was stopped, for the words that say so.
@@ -116,8 +137,9 @@ pub(crate) enum StoppedBy<'a> {
     Kill { told: &'a Told, mysql: bool },
     /// SQL Server: its session closed, after an Attention.
     MsSql(Cancelled),
-    /// SQLite: not stopped at all; its connection detached.
-    Sqlite,
+    /// SQLite: interrupted through its progress handler, and its connection
+    /// detached. `told` is how raising the flag went.
+    Sqlite { told: &'a Told },
     /// MongoDB: the operation and its cursor dropped.
     Mongo,
 }
@@ -143,8 +165,8 @@ impl From<Stopped> for AppError {
 ///
 /// A read never applies anything, whatever the stop managed: the outcome is
 /// [`StopOutcome::NotApplied`]. A write certainly did not apply only when
-/// PostgreSQL answered the kill with the statement's failure: a statement in
-/// autocommit is atomic there. MySQL's answer is as clear, but a
+/// PostgreSQL answered the kill, or SQLite the interrupt, with the
+/// statement's failure: a statement is atomic on both. MySQL's answer is as clear, but a
 /// non-transactional table keeps what the statement had already changed, so
 /// it stays [`StopOutcome::MayHaveApplied`]; so does everything else.
 pub(crate) fn stopped(by: StoppedBy<'_>, writes: bool, ended: Option<&AppError>) -> Stopped {
@@ -172,9 +194,20 @@ pub(crate) fn stopped(by: StoppedBy<'_>, writes: bool, ended: Option<&AppError>)
         StoppedBy::MsSql(_) => "The session was closed, and SQL Server stops the request of a \
              client that disconnects."
             .to_string(),
-        StoppedBy::Sqlite => "SQLite cannot stop a statement once it is running: it goes on, \
-             on a connection taken out of the pool, until it ends by itself."
-            .to_string(),
+        StoppedBy::Sqlite { told } => match (told, ended) {
+            (Told::Sent(_), Some(e)) => format!(
+                "SQLite interrupted it ({}), and its connection was closed.",
+                crate::db::session::failure_text(e)
+            ),
+            // Interrupted only between two instructions: a statement waiting
+            // in the busy handler for another connection's lock runs none.
+            _ => format!(
+                "SQLite did not stop it within {} s (a statement waiting for another \
+                 connection's lock cannot be interrupted): it goes on, on a connection taken \
+                 out of the pool, until it ends by itself.",
+                SQLITE_STOP_GRACE.as_secs()
+            ),
+        },
         StoppedBy::Mongo => "The app stopped waiting and dropped the operation and its cursor; \
              MongoDB was not told to stop it."
             .to_string(),
@@ -191,6 +224,15 @@ pub(crate) fn stopped(by: StoppedBy<'_>, writes: bool, ended: Option<&AppError>)
         } if answered => (
             StopOutcome::NotApplied,
             "PostgreSQL rolled the statement back: nothing of it was applied.",
+        ),
+        // A statement that comes back with an error after the interrupt did
+        // not complete, and SQLite undoes an incomplete statement (and the
+        // explicit transaction it ran in, on SQLITE_INTERRUPT).
+        StoppedBy::Sqlite {
+            told: Told::Sent(_),
+        } if answered => (
+            StopOutcome::NotApplied,
+            "SQLite rolled the statement back: nothing of it was applied.",
         ),
         StoppedBy::Kill {
             told: Told::Sent(_),
@@ -209,7 +251,7 @@ pub(crate) fn stopped(by: StoppedBy<'_>, writes: bool, ended: Option<&AppError>)
             "If it was still running it was undone, but if it had already finished it stays \
              applied: check before running it again.",
         ),
-        StoppedBy::Kill { .. } | StoppedBy::Sqlite | StoppedBy::Mongo => (
+        StoppedBy::Kill { .. } | StoppedBy::Sqlite { .. } | StoppedBy::Mongo => (
             StopOutcome::MayHaveApplied,
             "It may still complete and stay applied: check before running it again.",
         ),
@@ -286,19 +328,23 @@ async fn read(
             let mut conn = p.acquire().await?;
             let pid: i64 = conn.fetch_one(POSTGRES_SESSION_ID).await?.try_get(0)?;
             let kill = Kill::postgres(pool, pid);
-            let (rows, truncated) = fetch(conn, Some(kill), sql, writes, stop, false).await?;
+            let (rows, truncated) =
+                fetch(conn, Some(kill), sql, writes, stop, Engine::Postgres).await?;
             Ok((with_meta(pg_result(&rows)), truncated))
         }
         DbPool::Mysql(p) => {
             let mut conn = p.acquire().await?;
             let id: i64 = conn.fetch_one(MYSQL_SESSION_ID).await?.try_get(0)?;
             let kill = Kill::mysql(pool, id);
-            let (rows, truncated) = fetch(conn, Some(kill), sql, writes, stop, true).await?;
+            let (rows, truncated) =
+                fetch(conn, Some(kill), sql, writes, stop, Engine::Mysql).await?;
             Ok((with_meta(mysql_result(&rows)), truncated))
         }
         DbPool::Sqlite(p) => {
-            let conn = p.acquire().await?;
-            let (rows, truncated) = fetch(conn, None, sql, writes, stop, false).await?;
+            let mut conn = p.acquire().await?;
+            let kill = Kill::sqlite(sqlite_interrupt(&mut conn).await?);
+            let (rows, truncated) =
+                fetch(conn, Some(kill), sql, writes, stop, Engine::Sqlite).await?;
             Ok((with_meta(sqlite_result(&rows)), truncated))
         }
         DbPool::MsSql(p) => {
@@ -345,7 +391,7 @@ async fn write(pool: &DbPool, sql: &str, writes: bool, stop: &StopSignal) -> App
                 flight.kill.as_ref(),
             )
             .await;
-            settle(flight, raced, writes, false)
+            settle(flight, raced, writes, Engine::Postgres)
         }
         DbPool::Mysql(p) => {
             let mut conn = p.acquire().await?;
@@ -358,18 +404,20 @@ async fn write(pool: &DbPool, sql: &str, writes: bool, stop: &StopSignal) -> App
                 flight.kill.as_ref(),
             )
             .await;
-            settle(flight, raced, writes, true)
+            settle(flight, raced, writes, Engine::Mysql)
         }
         DbPool::Sqlite(p) => {
-            let mut flight = InFlight::new(p.acquire().await?, None);
+            let mut conn = p.acquire().await?;
+            let kill = Kill::sqlite(sqlite_interrupt(&mut conn).await?);
+            let mut flight = InFlight::new(conn, Some(kill));
             let conn = flight.conn.as_mut().expect("in flight");
             let raced = race(
                 async { Ok(conn.execute(sql).await?.rows_affected()) },
                 stop,
-                None,
+                flight.kill.as_ref(),
             )
             .await;
-            settle(flight, raced, writes, false)
+            settle(flight, raced, writes, Engine::Sqlite)
         }
         DbPool::MsSql(p) => {
             let mut client = p.acquire().await?;
@@ -394,7 +442,7 @@ async fn fetch<DB>(
     sql: &str,
     writes: bool,
     stop: &StopSignal,
-    mysql: bool,
+    engine: Engine,
 ) -> AppResult<(Vec<DB::Row>, bool)>
 where
     DB: sqlx::Database,
@@ -418,7 +466,7 @@ where
         flight.kill = None;
         drop(flight.conn.take().map(PoolConnection::detach));
     }
-    settle(flight, raced, writes, mysql)
+    settle(flight, raced, writes, engine)
 }
 
 /// What a `sqlx` statement raced against a Stop comes to, and what becomes of
@@ -431,7 +479,7 @@ fn settle<DB: sqlx::Database, T>(
     mut flight: InFlight<DB>,
     raced: Raced<T>,
     writes: bool,
-    mysql: bool,
+    engine: Engine,
 ) -> AppResult<T> {
     match raced {
         Raced::Ended(result) => {
@@ -444,10 +492,16 @@ fn settle<DB: sqlx::Database, T>(
             // Sent already, or nothing to send: the drop must not send it again.
             flight.kill = None;
             drop(flight);
-            let by = if matches!(told, Told::Nothing) {
-                StoppedBy::Sqlite
-            } else {
-                StoppedBy::Kill { told: &told, mysql }
+            let by = match engine {
+                Engine::Sqlite => StoppedBy::Sqlite { told: &told },
+                Engine::Postgres => StoppedBy::Kill {
+                    told: &told,
+                    mysql: false,
+                },
+                Engine::Mysql => StoppedBy::Kill {
+                    told: &told,
+                    mysql: true,
+                },
             };
             match ended {
                 Some(Ok(value)) => Ok(value),
@@ -601,9 +655,10 @@ mod tests {
         assert_eq!(rows_in_t(&pool).await, 2);
     }
 
-    /// SQLite cannot interrupt a statement: a stopped write is freed in the
-    /// tab and says it may still apply — and here it does, once the lock it
-    /// was waiting on goes away. That is the case the message is for.
+    /// SQLite cannot interrupt a statement that waits on a lock: a stopped
+    /// write is freed in the tab and says it may still apply — and here it
+    /// does, once the lock it was waiting on goes away. That is the case the
+    /// message is for.
     #[tokio::test]
     async fn a_stopped_sqlite_write_says_it_may_still_apply() {
         let (state, pool) = state("write").await;
@@ -643,6 +698,80 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
         assert!(applied, "SQLite finished the stopped write on its own");
+    }
+
+    /// A statement that never ends by itself: it counts a recursion with no
+    /// stop of its own, so only the interrupt ends it. Before SQLite was
+    /// interrupted, a stopped one kept its detached connection busy, and a
+    /// write kept the file locked, until the app was restarted.
+    const ENDLESS: &str = "(WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) \
+                           SELECT count(*) FROM c)";
+
+    /// A running statement is interrupted: the write did not apply, says so,
+    /// and leaves the file free for the next writer at once.
+    #[tokio::test]
+    async fn a_running_sqlite_write_is_interrupted_and_not_applied() {
+        let (state, pool) = state("interrupt").await;
+        let run = state.runs.start("i".into()).unwrap();
+        let signal = run.signal();
+        let started = Instant::now();
+        let sql = format!("INSERT INTO t (id) SELECT {ENDLESS}");
+        let (result, ()) = tokio::join!(
+            execute_stoppable(&Quiet, &state, "c", &sql, &signal),
+            stop_after(&state.runs, "i", 300),
+        );
+        drop(run);
+        let err = result.expect_err("the statement never ends by itself");
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "interrupted when asked, not left running"
+        );
+        assert_eq!(outcome_of(&err), StopOutcome::NotApplied);
+        let message = err.to_string();
+        assert!(message.contains("SQLite interrupted it"), "{message}");
+        assert!(message.contains("nothing of it was applied"), "{message}");
+
+        // No connection is left holding the write lock: this would wait out
+        // the busy timeout and fail with "database is locked" otherwise.
+        sqlx::query("INSERT INTO t (id) VALUES (2)")
+            .execute(&pool)
+            .await
+            .expect("the file is free for the next writer");
+        assert_eq!(rows_in_t(&pool).await, 2);
+    }
+
+    /// The same in a batch, whose session is set up once for every statement.
+    #[tokio::test]
+    async fn a_batch_statement_that_never_ends_is_interrupted() {
+        let (state, pool) = state("batch_interrupt").await;
+        let run = state.runs.start("bi".into()).unwrap();
+        let signal = run.signal();
+        let statements = vec![
+            "SELECT id FROM t".to_string(),
+            format!("SELECT {ENDLESS}"),
+            "SELECT 3".to_string(),
+        ];
+        let started = Instant::now();
+        let (result, ()) = tokio::join!(
+            super::super::execute_batch_stoppable(
+                &Quiet,
+                &state,
+                "c".into(),
+                statements,
+                Some(&signal)
+            ),
+            stop_after(&state.runs, "bi", 300),
+        );
+        assert!(started.elapsed() < Duration::from_secs(3));
+        let batch = result.expect("a stopped batch is a result, not an error");
+        let stop = batch.stopped.expect("the batch says it was stopped");
+        assert_eq!((stop.index, stop.outcome), (1, StopOutcome::NotApplied));
+        let error = batch.statements[1].error.as_deref().unwrap();
+        assert!(error.contains("SQLite interrupted it"), "{error}");
+        sqlx::query("INSERT INTO t (id) VALUES (2)")
+            .execute(&pool)
+            .await
+            .expect("the interrupted session is gone and the pool serves");
     }
 
     #[tokio::test]
@@ -768,10 +897,22 @@ mod tests {
             outcome(stopped(StoppedBy::Mongo, true, None)),
             StopOutcome::MayHaveApplied
         );
+        let interrupt = Told::Sent("SQLite's interrupt".into());
+        let sqlite = StoppedBy::Sqlite { told: &interrupt };
+        assert_eq!(
+            outcome(stopped(sqlite, true, Some(&answer))),
+            StopOutcome::NotApplied,
+            "an interrupted SQLite statement is undone"
+        );
+        assert_eq!(
+            outcome(stopped(sqlite, true, None)),
+            StopOutcome::MayHaveApplied,
+            "one that waited on a lock may still go on"
+        );
         for by in [
             pg,
             mysql,
-            StoppedBy::Sqlite,
+            sqlite,
             StoppedBy::Mongo,
             StoppedBy::MsSql(Cancelled::Acknowledged),
         ] {

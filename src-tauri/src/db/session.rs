@@ -62,6 +62,42 @@ pub const POSTGRES_SESSION_ID: &str = "SELECT pg_backend_pid()::int8";
 /// because `CONNECTION_ID()` is unsigned and sqlx decodes an `i64`.
 pub const MYSQL_SESSION_ID: &str = "SELECT CAST(CONNECTION_ID() AS SIGNED)";
 
+/// How many SQLite virtual-machine instructions a statement runs between two
+/// looks at its stop flag ([`sqlite_interrupt`]): small enough that a stop
+/// lands within milliseconds, large enough that the look costs nothing.
+const SQLITE_STOP_CHECK_OPS: i32 = 1000;
+
+/// Make the statements `conn` runs from now on stoppable, and return the flag
+/// that stops them.
+///
+/// SQLite has no session another connection could stop by id, but it calls a
+/// progress handler every [`SQLITE_STOP_CHECK_OPS`] instructions, and a
+/// handler that answers "stop" interrupts the statement with
+/// `SQLITE_INTERRUPT`, which rolls back what it had changed (and an explicit
+/// transaction it ran in). Setting the flag is all a stop has to do, from any
+/// thread, while the statement runs on `sqlx`'s worker.
+///
+/// What it cannot reach: a statement waiting in the busy handler for another
+/// connection's lock runs no instructions, so it ends when its busy timeout
+/// does, not at the stop.
+///
+/// The handler stays installed when the connection goes back to the pool,
+/// answering "go on" for good once its run is over: one atomic load per
+/// [`SQLITE_STOP_CHECK_OPS`] instructions, and the next stoppable run on that
+/// connection replaces it.
+pub async fn sqlite_interrupt(
+    conn: &mut sqlx::SqliteConnection,
+) -> AppResult<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    let stop = Arc::new(AtomicBool::new(false));
+    let seen = Arc::clone(&stop);
+    conn.lock_handle()
+        .await?
+        .set_progress_handler(SQLITE_STOP_CHECK_OPS, move || !seen.load(Ordering::Relaxed));
+    Ok(stop)
+}
+
 /// A session borrowed from a SQL pool for a sequence of statements.
 pub struct Session {
     /// `None` only once [`Self::abandon`] has given the connection up.
@@ -134,6 +170,19 @@ impl Session {
             Conn::Mysql(c) => Some((&mut **c).fetch_one(MYSQL_SESSION_ID).await?.try_get(0)?),
             Conn::Sqlite(_) | Conn::MsSql(_) => None,
         })
+    }
+
+    /// On SQLite, make this session's statements stoppable and return the
+    /// flag that stops them ([`sqlite_interrupt`]); `None` on the drivers a
+    /// statement is stopped some other way ([`Self::backend_id`], closing a
+    /// SQL Server session).
+    pub async fn sqlite_interrupt(
+        &mut self,
+    ) -> AppResult<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> {
+        match self.conn() {
+            Conn::Sqlite(c) => Ok(Some(sqlite_interrupt(c).await?)),
+            _ => Ok(None),
+        }
     }
 
     /// Give the session up after a stop: never back to the pool, whatever
