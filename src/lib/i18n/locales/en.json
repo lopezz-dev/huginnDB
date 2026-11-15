@@ -2628,7 +2628,7 @@
       "csvSemicolon": "CSV (semicolon, for Excel)"
     },
     "refreshFailed": "Saved, but the results could not be refreshed",
-    "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n"
+    "newTabPlaceholder": "-- write a SQL query and run it\n"
   },
   "saved": {
     "connectFirst": "Connect to a database first.",
