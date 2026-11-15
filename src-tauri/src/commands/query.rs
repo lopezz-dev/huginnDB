@@ -73,6 +73,7 @@ mod browse;
 mod filter;
 mod fk;
 mod statement;
+mod stop;
 mod types;
 mod write;
 
@@ -87,6 +88,7 @@ pub(crate) use browse::*;
 pub(crate) use filter::*;
 pub(crate) use fk::*;
 pub(crate) use statement::*;
+pub(crate) use stop::*;
 pub(crate) use types::*;
 pub(crate) use write::*;
 
@@ -171,6 +173,11 @@ pub async fn describe_table_query(
 
 /// Execute an arbitrary SQL statement on the connection identified by
 /// `connection_id`.
+///
+/// With a `run_id` the run can be stopped by [`cancel_query`], and stopping
+/// it stops the statement on the server (ADR #137, [`execute_stoppable`]);
+/// the answer is then an `AppError::Stopped` that says whether it may have
+/// applied. Without one it runs as it always has.
 #[tauri::command]
 pub async fn execute_query(
     app: AppHandle,
@@ -178,10 +185,19 @@ pub async fn execute_query(
     state: State<'_, AppState>,
     connection_id: String,
     sql: String,
+    run_id: Option<String>,
 ) -> AppResult<QueryResult> {
+    // Registered before anything that can take time (opening the view's pool),
+    // so a Stop pressed during it already has a run to find.
+    let run = run_id.map(|id| state.runs.start(id)).transpose()?;
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     crate::commands::guard::free_sql(state.inner(), &connection_id, &sql)?;
-    execute_with_state(&sink, state.inner(), &connection_id, &sql).await
+    match &run {
+        Some(run) => {
+            execute_stoppable(&sink, state.inner(), &connection_id, &sql, &run.signal()).await
+        }
+        None => execute_with_state(&sink, state.inner(), &connection_id, &sql).await,
+    }
 }
 
 /// Run a batch of statements sequentially on a single pooled connection.
@@ -205,6 +221,11 @@ pub async fn execute_query(
 /// This is also the path that fixes multi-statement Ctrl+Enter: a single
 /// `sqlx::query` over a `;`-joined buffer goes through the *prepared* protocol,
 /// which rejects multiple commands; running them one at a time does not.
+///
+/// With a `run_id` the batch can be stopped by [`cancel_query`]: the
+/// statement in flight is stopped on the server, the rest do not run, and the
+/// session is closed — which rolls back a transaction the batch had open.
+/// `BatchResult::stopped` says where it stopped (ADR #137).
 #[tauri::command]
 pub async fn execute_batch(
     app: AppHandle,
@@ -212,10 +233,39 @@ pub async fn execute_batch(
     state: State<'_, AppState>,
     connection_id: String,
     statements: Vec<String>,
+    run_id: Option<String>,
 ) -> AppResult<BatchResult> {
+    let run = run_id.map(|id| state.runs.start(id)).transpose()?;
     let sink = crate::commands::entry_sink(&app, &window, state.inner(), &connection_id).await;
     crate::commands::guard::free_sql_batch(state.inner(), &connection_id, &statements)?;
-    execute_batch_inner(&sink, state.inner(), connection_id, statements).await
+    match &run {
+        Some(run) => {
+            let signal = run.signal();
+            execute_batch_stoppable(
+                &sink,
+                state.inner(),
+                connection_id,
+                statements,
+                Some(&signal),
+            )
+            .await
+        }
+        None => execute_batch_inner(&sink, state.inner(), connection_id, statements).await,
+    }
+}
+
+/// Stop the run `run_id` that [`execute_query`] or [`execute_batch`] is
+/// running (ADR #137). Returns whether there was one: `false` for an id that
+/// is unknown or whose run has already ended — the person pressed Stop as the
+/// result arrived — which is not an error.
+///
+/// It only signals: the run itself stops its statement on the server and
+/// answers its own caller with what happened. It touches no data, so the
+/// policy has nothing to ask of it (`guard::HUMAN_POLICY`: `none`, as
+/// `ai_cancel`); the app lock keeps it closed like every other command.
+#[tauri::command]
+pub fn cancel_query(state: State<'_, AppState>, run_id: String) -> AppResult<bool> {
+    Ok(state.runs.stop(&run_id))
 }
 
 /// Fetch one page of rows from `schema.table`.

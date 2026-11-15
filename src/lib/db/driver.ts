@@ -12,7 +12,7 @@
  */
 
 import { DEFAULT_PORTS } from "@/lib/constants";
-import type { Driver } from "@/types";
+import type { Driver, StopOutcome } from "@/types";
 
 /**
  * The port a profile really connects to, resolving a blank one to the
@@ -313,6 +313,30 @@ const MISSING_PASSWORD_TAG = "no stored password";
  */
 export function isMissingPassword(error: unknown): boolean {
   return String(error).toLowerCase().includes(MISSING_PASSWORD_TAG);
+}
+
+/**
+ * Marker every stopped run's error starts with, followed by its outcome in
+ * parentheses. Must stay in sync with `STOPPED_TAG` and `StopOutcome::marker`
+ * in `src-tauri/src/error.rs`.
+ */
+const STOPPED_TAG = "query stopped";
+const STOPPED_MARKERS: Record<string, StopOutcome> = {
+  "not applied": "not_applied",
+  "may have applied": "may_have_applied",
+};
+
+/**
+ * What a run the person stopped (`cancelQuery`, ADR #137) left behind, read
+ * from its error — or `null` when `error` is not a stop at all but a failure.
+ * The same text sits in a stopped batch statement's `error`, though a batch
+ * also says it structurally (`BatchResult.stopped`).
+ */
+export function stoppedOutcome(error: unknown): StopOutcome | null {
+  const text = String(error);
+  if (!text.startsWith(`${STOPPED_TAG} (`)) return null;
+  const marker = text.slice(STOPPED_TAG.length + 2, text.indexOf("): "));
+  return STOPPED_MARKERS[marker] ?? null;
 }
 
 /**
