@@ -40,6 +40,8 @@
 //! it by id (`pg_cancel_backend`, `KILL QUERY`). MongoDB gets a `maxTimeMS`,
 //! because dropping a driver future does not stop the operation either.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use sqlx::pool::PoolConnection;
@@ -272,12 +274,12 @@ where
                 Ok(()) => format!(
                     "The server was told to stop it ({}) and the session was closed; nothing \
                      was changed — it was a read.",
-                    kill.sql
+                    kill.sent
                 ),
                 Err(e) => format!(
                     "Telling the server to stop it ({}) failed: {e}. The session was closed; \
                      the server may run the statement until it next writes to the client.",
-                    kill.sql
+                    kill.sent
                 ),
             },
             None => "The session was closed.".to_string(),
@@ -343,15 +345,26 @@ impl<DB: sqlx::Database> Drop for InFlight<DB> {
     }
 }
 
-/// The statement that stops another session's statement, and the pool to send
-/// it from.
+/// What stops another session's statement while it runs.
 ///
-/// The one place that knows how PostgreSQL and MySQL stop a statement by its
-/// session's id, for an AI's read past its deadline and for a person's run
-/// they stopped (`super::stop`, ADR #137) alike.
+/// The one place that knows how a running statement is stopped: PostgreSQL and
+/// MySQL by its session's id, from another connection of the pool; SQLite by
+/// the flag its progress handler reads ([`crate::db::session::sqlite_interrupt`]).
+/// Used for an AI's read past its deadline and for a person's run they
+/// stopped (`super::stop`, ADR #137) alike.
 pub(crate) struct Kill {
-    pool: DbPool,
-    pub(super) sql: String,
+    by: KillBy,
+    /// What is sent, in the words the stop's message quotes: the statement,
+    /// or for SQLite its interrupt.
+    pub(super) sent: String,
+}
+
+/// How a [`Kill`] reaches the statement.
+enum KillBy {
+    /// A statement sent from whichever connection of this pool is free.
+    Remote(DbPool),
+    /// The flag a SQLite connection's progress handler reads.
+    Interrupt(Arc<AtomicBool>),
 }
 
 impl Kill {
@@ -359,8 +372,8 @@ impl Kill {
     /// and leaves the session alive (which the callers close anyway).
     pub(super) fn postgres(pool: &DbPool, pid: i64) -> Self {
         Self {
-            pool: pool.clone(),
-            sql: format!("SELECT pg_cancel_backend({pid})"),
+            by: KillBy::Remote(pool.clone()),
+            sent: format!("SELECT pg_cancel_backend({pid})"),
         }
     }
 
@@ -368,15 +381,32 @@ impl Kill {
     /// the connection.
     pub(super) fn mysql(pool: &DbPool, id: i64) -> Self {
         Self {
-            pool: pool.clone(),
-            sql: format!("KILL QUERY {id}"),
+            by: KillBy::Remote(pool.clone()),
+            sent: format!("KILL QUERY {id}"),
         }
+    }
+
+    /// SQLite's interrupt, through the flag a connection's progress handler
+    /// reads (installed by [`crate::db::session::sqlite_interrupt`] before the
+    /// statement runs).
+    pub(super) fn sqlite(stop: Arc<AtomicBool>) -> Self {
+        Self {
+            by: KillBy::Interrupt(stop),
+            sent: "SQLite's interrupt".to_string(),
+        }
+    }
+
+    /// Whether this is SQLite's interrupt, which lands within milliseconds or
+    /// not at all (a statement waiting on a lock), rather than a statement
+    /// whose answer comes from the server.
+    pub(super) fn interrupts(&self) -> bool {
+        matches!(self.by, KillBy::Interrupt(_))
     }
 
     /// The kill for a session whose server-side id is `id`, on whichever of
     /// the two drivers that can stop a statement by id `pool` is. `None` for
     /// the others: SQL Server is stopped by closing its session (gotcha #132),
-    /// SQLite cannot be stopped at all, and MongoDB is not stopped by id here.
+    /// SQLite by [`Self::sqlite`], and MongoDB is not stopped by id here.
     pub(super) fn for_backend(pool: &DbPool, id: Option<i64>) -> Option<Self> {
         match (pool, id) {
             (DbPool::Postgres(_), Some(id)) => Some(Self::postgres(pool, id)),
@@ -385,13 +415,20 @@ impl Kill {
         }
     }
 
-    /// Send it, from whichever connection of the pool is free.
+    /// Send it, from whichever connection of the pool is free — or, on SQLite,
+    /// raise the flag, which the running statement sees within milliseconds.
     pub(super) async fn run(&self) -> AppResult<()> {
         let send = async {
-            match &self.pool {
-                DbPool::Postgres(p) => p.execute(self.sql.as_str()).await.map(|_| ()),
-                DbPool::Mysql(p) => p.execute(self.sql.as_str()).await.map(|_| ()),
-                _ => Ok(()),
+            match &self.by {
+                KillBy::Remote(DbPool::Postgres(p)) => {
+                    p.execute(self.sent.as_str()).await.map(|_| ())
+                }
+                KillBy::Remote(DbPool::Mysql(p)) => p.execute(self.sent.as_str()).await.map(|_| ()),
+                KillBy::Remote(_) => Ok(()),
+                KillBy::Interrupt(stop) => {
+                    stop.store(true, Ordering::Relaxed);
+                    Ok(())
+                }
             }
         };
         match tokio::time::timeout(KILL_WAIT, send).await {
