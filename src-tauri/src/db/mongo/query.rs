@@ -459,6 +459,7 @@ pub async fn execute_batch(
                     rows_affected: affected,
                     is_select: is_read,
                     error: None,
+                    elapsed_ms: start.elapsed().as_millis() as u64,
                     results,
                 });
             }
@@ -478,6 +479,7 @@ pub async fn execute_batch(
                     rows_affected: 0,
                     is_select: is_read,
                     error: Some(e.to_string()),
+                    elapsed_ms: start.elapsed().as_millis() as u64,
                     results: Vec::new(),
                 });
                 break;

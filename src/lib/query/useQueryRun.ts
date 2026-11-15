@@ -1,35 +1,43 @@
 /**
- * The query tab's run lifecycle: what ran, what came back, and what is on
- * screen. Extracted from `QueryEditorTab` (ADR #137, step 2) with no change of
- * behaviour — `QueryEditorTab.test.tsx` pins it.
+ * The query tab's run lifecycle: what ran, what came back, and which of its
+ * tabs is on screen (ADR #137).
  *
  * It **decides** which backend path a text takes and **acts** on it:
  *
  * - `run(text)` splits the text in the tab's dialect and sends more than one
- *   statement to `execute_batch`, one statement to `execute_query`. This is
- *   what the Run button and the Run shortcut call.
+ *   statement to `execute_batch`, one statement to `execute_query`. The Run
+ *   button, `runQuery` and `runAll` call it with whatever `runTarget` named.
  * - `runSingle(text)` always takes `execute_query`. The CodeLens runs one
- *   statement by construction; the history's "Run again" calls it too, which
- *   is the replayed-batch defect the history dock (PR 7) removes.
+ *   statement by construction; the history sidebar's "Run again" calls it too,
+ *   which is the replayed-batch defect the history dock removes.
  *
- * Either way it records the run in the history (under the parent connection)
- * and drives the toolbar's timer through an imperative handle, so the 50 ms
- * tick never re-renders the tab (see `QueryTimer`).
+ * Every outcome becomes tabs through `lib/query/statementTabs` — a thrown
+ * error included, which is an error tab like a failed batch statement rather
+ * than a box of its own — and **a new run replaces every tab**. The run lands
+ * on `initialTabKey`'s choice. It records the run in the history (under the
+ * parent connection, with the batch's total time) and drives the toolbar's
+ * timer through an imperative handle, so the 50 ms tick never re-renders the
+ * tab (see `QueryTimer`).
  *
  * What it does **not** own: the grid's client-side filter (the results area
- * keeps it, and clears it on a tab switch), the database the tab targets
- * (`useDatabaseSelector`; this hook is handed the resulting id), and the
- * editor (the tab reads the buffer and passes text in).
+ * keeps it), the database the tab targets (`useDatabaseSelector`), and the
+ * editor (the tab reads it and passes text and its first line in).
  */
 
 import { useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
-import { panelsFromBatch, type ResultPanel } from "@/lib/query/resultPanels";
+import {
+  initialTabKey,
+  tabsFromBatch,
+  tabsFromFailure,
+  tabsFromSingle,
+  type RunOrigin,
+  type StatementTab,
+} from "@/lib/query/statementTabs";
 import { splitSql, type SqlDialect } from "@/lib/sql/sqlSplit";
 import { useQueryHistory } from "@/stores/query/queryHistory";
-import type { BatchResult } from "@/types";
 
 /** Imperative handle the run drives the toolbar's timer through. */
 export interface QueryTimerHandle {
@@ -48,26 +56,23 @@ export interface UseQueryRunOptions {
 }
 
 export interface QueryRun {
-  /** Every result set of the last run, one panel each, in statement order. */
-  panels: ResultPanel[];
-  /** The panel on screen; falls back to the first so it is never stale. */
-  active: ResultPanel | null;
-  /** Where `panels` came from — not necessarily `connectionId`, which the
+  /** Every tab of the last run, Summary first in a batch. */
+  tabs: StatementTab[];
+  /** The tab on screen; falls back to the first so it is never stale. */
+  active: StatementTab | null;
+  /** Where `tabs` came from — not necessarily `connectionId`, which the
    *  database selector can move after the run. A grid write goes here. */
   resultsOn: string;
-  /** The last batch's outcome, or `null` after a single run. */
-  batchSummary: BatchResult | null;
-  /** The message the results area shows in place of a grid. */
-  error: string | null;
   running: boolean;
-  run: (text: string) => Promise<void>;
-  runSingle: (text: string) => Promise<void>;
-  selectPanel: (key: string) => void;
-  /** Re-run the panel on screen after a grid write; failures notify. */
+  /**
+   * @param firstLine The editor line `text` starts on, for *Go to
+   *   statement*; `null` when the text is not in the editor.
+   */
+  run: (text: string, firstLine?: number | null) => Promise<void>;
+  runSingle: (text: string, firstLine?: number | null) => Promise<void>;
+  selectTab: (key: string) => void;
+  /** Re-run the rows tab on screen after a grid write; failures notify. */
   refreshActive: () => Promise<void>;
-  /** Show an error that did not come from a run (a database switch). Kept
-   *  only to preserve today's behaviour; ADR #137 moves it to `notify`. */
-  reportError: (message: string) => void;
 }
 
 export function useQueryRun({
@@ -79,11 +84,9 @@ export function useQueryRun({
   const { t } = useTranslation();
   const addHistory = useQueryHistory((s) => s.add);
 
-  const [panels, setPanels] = useState<ResultPanel[]>([]);
+  const [tabs, setTabs] = useState<StatementTab[]>([]);
   const [resultsOn, setResultsOn] = useState(connectionId);
   const [activeKey, setActiveKey] = useState<string | null>(null);
-  const [batchSummary, setBatchSummary] = useState<BatchResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   // The guard reads a ref, not `running`: two calls in the same render (a
   // double click) would both see `running === false` in their closure.
@@ -93,7 +96,6 @@ export function useQueryRun({
     if (runningRef.current) return false;
     runningRef.current = true;
     setRunning(true);
-    setError(null);
     timer.current?.start();
     return true;
   }, [timer]);
@@ -103,16 +105,24 @@ export function useQueryRun({
     setRunning(false);
   }, []);
 
+  /** Replace every tab with the run's, and land on the right one. */
+  const show = useCallback(
+    (next: StatementTab[]) => {
+      setTabs(next);
+      setResultsOn(connectionId);
+      setActiveKey(initialTabKey(next));
+    },
+    [connectionId],
+  );
+
   const runSingle = useCallback(
-    async (text: string) => {
+    async (text: string, firstLine: number | null = null) => {
       const toRun = text.trim();
       if (!toRun || !begin()) return;
-      setBatchSummary(null);
+      const origin: RunOrigin = { text, firstLine, dialect };
       try {
         const r = await api.executeQuery(connectionId, toRun);
-        setPanels([{ key: "0", statement: 1, set: null, result: r, sql: toRun }]);
-        setResultsOn(connectionId);
-        setActiveKey("0");
+        show(tabsFromSingle(origin, r));
         addHistory({
           sql: toRun,
           connectionId: historyConnectionId,
@@ -121,7 +131,7 @@ export function useQueryRun({
         });
         timer.current?.stop(true);
       } catch (e) {
-        setError(String(e));
+        show(tabsFromFailure(origin, String(e), false));
         addHistory({
           sql: toRun,
           connectionId: historyConnectionId,
@@ -134,82 +144,87 @@ export function useQueryRun({
         end();
       }
     },
-    [begin, end, connectionId, historyConnectionId, addHistory, timer],
+    [begin, end, show, dialect, connectionId, historyConnectionId, addHistory, timer],
   );
 
   /** One connection, every statement in order (the prepared protocol rejects
    *  a `;`-joined buffer). */
   const runBatch = useCallback(
-    async (texts: string[]) => {
+    async (origin: RunOrigin, texts: string[]) => {
       if (texts.length === 0 || !begin()) return;
       try {
         const r = await api.executeBatch(connectionId, texts);
-        setBatchSummary(r);
-        const next = panelsFromBatch(r.statements, texts);
-        setPanels(next);
-        setResultsOn(connectionId);
-        setActiveKey(next[0]?.key ?? null);
+        const next = tabsFromBatch(origin, r, texts);
+        show(next);
         const failed = r.statements.find((s) => s.error);
         addHistory({
-          sql: texts.join(";\n"),
+          // What the person ran, as they wrote it. It used to be the split
+          // texts re-joined with ";\n", over texts that already end in ";".
+          sql: origin.text.trim(),
           connectionId: historyConnectionId,
-          elapsedMs: 0,
+          elapsedMs: r.statements.reduce((n, s) => n + s.elapsed_ms, 0),
           rowsAffected: r.total_affected,
           error: failed?.error ?? undefined,
         });
         timer.current?.stop(!failed);
       } catch (e) {
-        setError(String(e));
+        show(tabsFromFailure(origin, String(e), true));
         timer.current?.stop(false);
       } finally {
         end();
       }
     },
-    [begin, end, connectionId, historyConnectionId, addHistory, timer],
+    [begin, end, show, connectionId, historyConnectionId, addHistory, timer],
   );
 
   const run = useCallback(
-    async (text: string) => {
+    async (text: string, firstLine: number | null = null) => {
       const statements = splitSql(text, dialect);
-      if (statements.length > 1) await runBatch(statements.map((s) => s.text));
-      else await runSingle(text);
+      if (statements.length > 1) {
+        await runBatch(
+          { text, firstLine, dialect },
+          statements.map((s) => s.text),
+        );
+      } else {
+        await runSingle(text, firstLine);
+      }
     },
     [dialect, runBatch, runSingle],
   );
 
   const active = useMemo(
-    () => panels.find((p) => p.key === activeKey) ?? panels[0] ?? null,
-    [panels, activeKey],
+    () => tabs.find((tab) => tab.key === activeKey) ?? tabs[0] ?? null,
+    [tabs, activeKey],
   );
 
   // Only that statement runs again — never the rest of a batch, whose other
   // statements may be writes. A failure here comes *after* the write
   // succeeded, so it is reported on its own rather than thrown to the grid.
-  const activeKeyNow = active?.key;
-  const activeSql = active?.sql;
+  const refreshKey =
+    active?.kind === "rows" && active.refreshable ? active.key : undefined;
+  const refreshSql = active?.kind === "rows" ? active.sql : undefined;
   const refreshActive = useCallback(async () => {
-    if (!activeKeyNow || !activeSql) return;
+    if (!refreshKey || !refreshSql) return;
     try {
-      const r = await api.executeQuery(resultsOn, activeSql);
-      setPanels((prev) =>
-        prev.map((p) => (p.key === activeKeyNow ? { ...p, result: r } : p)),
+      const r = await api.executeQuery(resultsOn, refreshSql);
+      setTabs((prev) =>
+        prev.map((tab) =>
+          tab.key === refreshKey && tab.kind === "rows" ? { ...tab, result: r } : tab,
+        ),
       );
     } catch (e) {
       notify.error(t("query.refreshFailed"), { description: String(e) });
     }
-  }, [activeKeyNow, activeSql, resultsOn, t]);
+  }, [refreshKey, refreshSql, resultsOn, t]);
 
   return {
-    panels,
+    tabs,
     active,
     resultsOn,
-    batchSummary,
-    error,
     running,
     run,
     runSingle,
-    selectPanel: setActiveKey,
+    selectTab: setActiveKey,
     refreshActive,
-    reportError: setError,
   };
 }

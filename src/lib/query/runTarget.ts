@@ -8,7 +8,8 @@
  * scratch buffer of twenty queries ran all twenty.
  *
  * Pure: the editor is read by the caller (`EditorSnapshot`), and what comes
- * back is text. Whether that text is one statement or several is the run's
+ * back is text and the editor line it starts on (what *Go to statement*
+ * offsets from). Whether that text is one statement or several is the run's
  * call (`useQueryRun.run` splits it), so a selection spanning three statements
  * still runs as a batch.
  */
@@ -19,8 +20,9 @@ import { statementAt, type SqlDialect } from "@/lib/sql/sqlSplit";
 export interface EditorSnapshot {
   /** The whole buffer. */
   source: string;
-  /** The selected text, or `null` when the selection is empty. */
-  selection: string | null;
+  /** The selected text and the line it starts on, or `null` when the
+   *  selection is empty. */
+  selection: { text: string; startLine: number } | null;
   /** The caret's 1-based line. */
   line: number;
   dialect: SqlDialect;
@@ -34,20 +36,31 @@ export interface EditorSnapshot {
  */
 export type RunScope = "cursor" | "selection" | "statement" | "all";
 
-/** The text `scope` names, or `null` when it names nothing (an empty
- *  selection, a caret between two statements, a blank buffer). */
-export function runTarget(snap: EditorSnapshot, scope: RunScope): string | null {
-  const nonBlank = (s: string | null | undefined) => (s?.trim() ? s : null);
-  const statement = () =>
-    nonBlank(statementAt(snap.source, snap.line, snap.dialect)?.text);
+/** Text to run, and the 1-based editor line it starts on. */
+export interface RunText {
+  text: string;
+  firstLine: number;
+}
+
+/** What `scope` names, or `null` when it names nothing (an empty selection,
+ *  a caret between two statements, a blank buffer). */
+export function runTarget(snap: EditorSnapshot, scope: RunScope): RunText | null {
+  const selection = (): RunText | null =>
+    snap.selection?.text.trim()
+      ? { text: snap.selection.text, firstLine: snap.selection.startLine }
+      : null;
+  const statement = (): RunText | null => {
+    const hit = statementAt(snap.source, snap.line, snap.dialect);
+    return hit?.text.trim() ? { text: hit.text, firstLine: hit.startLine } : null;
+  };
   switch (scope) {
     case "all":
-      return nonBlank(snap.source);
+      return snap.source.trim() ? { text: snap.source, firstLine: 1 } : null;
     case "selection":
-      return nonBlank(snap.selection);
+      return selection();
     case "statement":
       return statement();
     case "cursor":
-      return nonBlank(snap.selection) ?? statement();
+      return selection() ?? statement();
   }
 }

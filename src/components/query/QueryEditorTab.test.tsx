@@ -59,7 +59,13 @@ const h = vi.hoisted(() => ({
   /** Shortcut handlers the tab registered with the Monaco redispatch. */
   shortcuts: [] as { id: string; run: () => void }[],
   /** What the fake editor reports: its buffer, selection and caret line. */
-  editor: { value: "", selection: null as string | null, line: 1 },
+  editor: {
+    value: "",
+    selection: null as string | null,
+    line: 1,
+    /** The last range the tab selected (Go to statement). */
+    selected: null as unknown,
+  },
   aiTask: vi.fn(),
 }));
 
@@ -87,16 +93,25 @@ vi.mock("@monaco-editor/react", () => ({
     h.editor.value = value;
     useEffect(() => {
       const model = {
-        getLineCount: () => 1,
+        getLineCount: () => h.editor.value.split("\n").length,
         getValueLength: () => 0,
         getValue: () => h.editor.value,
         getValueInRange: () => h.editor.selection ?? "",
+        getLineMaxColumn: () => 80,
         uri: { toString: () => "inmemory://model/1" },
       };
       onMount(
         {
           getModel: () => model,
-          getSelection: () => ({ isEmpty: () => h.editor.selection === null }),
+          getSelection: () => ({
+            isEmpty: () => h.editor.selection === null,
+            startLineNumber: h.editor.line,
+          }),
+          setSelection: (r: unknown) => {
+            h.editor.selected = r;
+          },
+          revealLinesInCenter: () => {},
+          focus: () => {},
           getPosition: () => ({ lineNumber: h.editor.line }),
           onDidChangeModelContent: () => ({ dispose: () => {} }),
           onKeyDown: () => ({ dispose: () => {} }),
@@ -237,6 +252,7 @@ const stmt = (
   rows_affected: 0,
   is_select: false,
   error: null,
+  elapsed_ms: 10,
   results: [],
   ...extra,
 });
@@ -322,6 +338,19 @@ async function press(id: string) {
 /** `runAll` (Mod+Shift+Enter): the whole buffer, batched when it is several. */
 const runAll = () => press("runAll");
 
+/** Click the result tab whose label starts with `label` ("#3", the Summary…). */
+function pickTab(label: string) {
+  const tab = within(resultTabs()!)
+    .getAllByRole("radio")
+    .find((r) => r.textContent?.includes(label));
+  if (!tab) throw new Error(`no result tab ${label}`);
+  act(() => fireEvent.click(tab));
+}
+const tabLabels = () =>
+  within(resultTabs()!)
+    .getAllByRole("radio")
+    .map((r) => r.textContent);
+
 const resultTabs = () =>
   screen.queryByRole("radiogroup", { name: "query.resultTabs" });
 
@@ -332,7 +361,7 @@ beforeEach(() => {
   h.save = [];
   h.sqlEntry = null;
   h.shortcuts = [];
-  h.editor = { value: "", selection: null, line: 1 };
+  h.editor = { value: "", selection: null, line: 1, selected: null };
   for (const fn of Object.values(h.api)) fn.mockReset();
   for (const fn of Object.values(h.notify)) fn.mockReset();
   h.aiTask.mockReset();
@@ -484,23 +513,49 @@ describe("DML", () => {
 
     expect(screen.queryByTestId("result-grid")).toBeNull();
     expect(
-      screen.getByText(`query.rowsAffected${JSON.stringify({ rows: 4, ms: 3 })}`),
+      screen.getByText(`query.rowsAffected${JSON.stringify({ count: 4, ms: 3 })}`),
     ).toBeTruthy();
     expect(useQueryHistory.getState().entries[0]).toMatchObject({
       rowsAffected: 4,
       elapsedMs: 3,
     });
+    // The card shows the statement, and a single statement needs no strip.
+    expect(screen.getByText("DELETE FROM t", { selector: "pre" })).toBeTruthy();
+    expect(resultTabs()).toBeNull();
+  });
+
+  it("Go to statement selects the statement's lines in the editor", async () => {
+    seed("SELECT 1;\n\nDELETE FROM t\n  WHERE id = 1;");
+    h.api.executeQuery.mockResolvedValue(write(1));
+    renderTab();
+    h.editor.line = 3;
+    await press("runQuery");
+    act(() => fireEvent.click(screen.getByText("query.goToStatement")));
+    expect(h.editor.selected).toEqual({
+      startLineNumber: 3,
+      startColumn: 1,
+      endLineNumber: 4,
+      endColumn: 80,
+    });
   });
 });
 
 describe("error", () => {
-  it("shows the driver's message in place of the results and records it", async () => {
+  it("shows an error card with the driver's message and the statement, and records it", async () => {
     seed("SELEC 1");
     h.api.executeQuery.mockRejectedValue("syntax error at or near SELEC");
     renderTab();
     await clickRun();
 
     expect(screen.getByText("syntax error at or near SELEC")).toBeTruthy();
+    expect(
+      screen.getByText(`query.statementFailed${JSON.stringify({ index: 1 })}`),
+    ).toBeTruthy();
+    expect(screen.getByText("SELEC 1", { selector: "pre" })).toBeTruthy();
+    expect(screen.getByText("query.goToStatement")).toBeTruthy();
+    expect(screen.getByText("query.copyError")).toBeTruthy();
+    // No AI action on the card (ADR #137).
+    expect(h.aiTask).not.toHaveBeenCalled();
     expect(screen.queryByTestId("result-grid")).toBeNull();
     expect(useQueryHistory.getState().entries[0]).toMatchObject({
       sql: "SELEC 1",
@@ -543,14 +598,57 @@ describe("batch", () => {
     ]);
   });
 
-  it("the ok summary tallies the batch and lists every statement, writes included", async () => {
+  it("one tab per statement — reads, writes and the failure — with a Summary first", async () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
     await runAll();
 
+    expect(tabLabels()).toEqual([
+      "query.tabSummary",
+      `query.resultTab${JSON.stringify({ label: "#1 · SELECT a FROM t", count: 2 })}`,
+      `query.writeTab${JSON.stringify({ label: "#2 · UPDATE t SET a = 1", count: 5 })}`,
+      `query.resultTab${JSON.stringify({ label: "#3 · SELECT b FROM u", count: 1 })}`,
+    ]);
+  });
+
+  it("lands on the first set of rows when nothing failed", async () => {
+    seed(BATCH_SQL);
+    h.api.executeBatch.mockResolvedValue(BATCH_OK);
+    renderTab();
+    await runAll();
+    const radios = within(resultTabs()!).getAllByRole("radio");
+    expect(radios[1].getAttribute("aria-checked")).toBe("true");
+    expect(lastGrid().sql).toBe("SELECT a FROM t;");
+  });
+
+  it("lands on the Summary when no statement returned rows", async () => {
+    seed("UPDATE a SET x = 1;\nUPDATE b SET y = 2");
+    h.api.executeBatch.mockResolvedValue({
+      statements: [
+        stmt(0, "UPDATE a SET x = 1", { rows_affected: 1 }),
+        stmt(1, "UPDATE b SET y = 2", { rows_affected: 2 }),
+      ],
+      total_affected: 3,
+      stopped: null,
+    } satisfies BatchResult);
+    renderTab();
+    await runAll();
     expect(
-      screen.getByText(`query.batchOk${JSON.stringify({ count: 3, rows: 5 })}`),
+      screen.getByText(`query.batchOk${JSON.stringify({ count: 2, affected: `query.affectedRows${JSON.stringify({ count: 3 })}` })}`),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("result-grid")).toBeNull();
+  });
+
+  it("the Summary tallies the batch and lists every statement with its time", async () => {
+    seed(BATCH_SQL);
+    h.api.executeBatch.mockResolvedValue(BATCH_OK);
+    renderTab();
+    await runAll();
+    pickTab("query.tabSummary");
+
+    expect(
+      screen.getByText(`query.batchOk${JSON.stringify({ count: 3, affected: `query.affectedRows${JSON.stringify({ count: 5 })}` })}`),
     ).toBeTruthy();
     expect(screen.getByText("UPDATE t SET a = 1")).toBeTruthy();
     expect(
@@ -559,43 +657,34 @@ describe("batch", () => {
     expect(
       screen.getByText(`query.summaryAffected${JSON.stringify({ count: 5 })}`),
     ).toBeTruthy();
+    // Three statements at 10 ms each.
+    expect(screen.getByText("30 ms")).toBeTruthy();
+
+    // A line opens its statement's own tab.
+    act(() => fireEvent.click(screen.getByText("SELECT b FROM u")));
+    expect(lastGrid().sql).toBe("SELECT b FROM u");
   });
 
-  it("the failed summary names the statement that stopped the batch", async () => {
+  it("lands on the statement that failed, with its error card; the Summary says where it stopped", async () => {
     seed("SELECT a FROM t;\nUPDATE t SET a = 1");
     h.api.executeBatch.mockResolvedValue(BATCH_FAILED);
     renderTab();
     await runAll();
 
+    expect(screen.getByText("permission denied")).toBeTruthy();
+    expect(
+      screen.getByText(`query.statementFailed${JSON.stringify({ index: 2 })}`),
+    ).toBeTruthy();
+    expect(screen.queryByTestId("result-grid")).toBeNull();
+    expect(useQueryHistory.getState().entries[0].error).toBe("permission denied");
+
+    pickTab("query.tabSummary");
     expect(
       screen.getByText(`query.batchFailed${JSON.stringify({ index: 2, total: 2 })}`),
     ).toBeTruthy();
-    expect(screen.getByText("permission denied")).toBeTruthy();
-    // The read before it still has its rows on screen.
-    expect(lastGrid().sql).toBe("SELECT a FROM t;");
-    expect(useQueryHistory.getState().entries[0].error).toBe("permission denied");
   });
 
-  it("one result tab per set; writes and failures get none, and the first is selected", async () => {
-    seed(BATCH_SQL);
-    h.api.executeBatch.mockResolvedValue(BATCH_OK);
-    renderTab();
-    await runAll();
-
-    const strip = resultTabs()!;
-    const tabs = within(strip).getAllByRole("radio");
-    expect(tabs).toHaveLength(2);
-    expect(tabs[0].textContent).toBe(
-      `query.resultTab${JSON.stringify({ label: "#1", rows: 2 })}`,
-    );
-    expect(tabs[1].textContent).toBe(
-      `query.resultTab${JSON.stringify({ label: "#3", rows: 1 })}`,
-    );
-    expect(tabs[0].getAttribute("aria-checked")).toBe("true");
-    expect(lastGrid().sql).toBe("SELECT a FROM t;");
-  });
-
-  it("a statement with several sets gets a tab per set and no statement text", async () => {
+  it("a statement with several sets gets a tab per set, and its grid is read-only", async () => {
     seed("EXEC two_sets;\nSELECT 1");
     h.api.executeBatch.mockResolvedValue({
       statements: [
@@ -611,11 +700,11 @@ describe("batch", () => {
     renderTab();
     await runAll();
 
-    const tabs = within(resultTabs()!).getAllByRole("radio");
-    expect(tabs.map((b) => b.textContent)).toEqual([
-      `query.resultTab${JSON.stringify({ label: "#1.1", rows: 1 })}`,
-      `query.resultTab${JSON.stringify({ label: "#1.2", rows: 2 })}`,
-      `query.resultTab${JSON.stringify({ label: "#2", rows: 1 })}`,
+    expect(tabLabels()).toEqual([
+      "query.tabSummary",
+      `query.resultTab${JSON.stringify({ label: "#1.1 · EXEC two_sets", count: 1 })}`,
+      `query.resultTab${JSON.stringify({ label: "#1.2 · EXEC two_sets", count: 2 })}`,
+      `query.resultTab${JSON.stringify({ label: "#2 · SELECT 1", count: 1 })}`,
     ]);
     // Not refreshable: re-running it could not say which set to refresh.
     expect(lastGrid().sql).toBeUndefined();
@@ -640,7 +729,7 @@ describe("batch", () => {
     } satisfies BatchResult);
     renderTab();
     await runAll();
-    const [own, shed] = within(resultTabs()!).getAllByRole("radio");
+    const [, own, shed] = within(resultTabs()!).getAllByRole("radio");
     expect(own.title).toBe(
       `query.resultTabTruncatedTitle${JSON.stringify({ rows: 50_000 })}`,
     );
@@ -649,26 +738,37 @@ describe("batch", () => {
     );
   });
 
-  it("a batch that throws as a whole shows the error box", async () => {
+  it("a batch that throws as a whole is an error card naming no statement", async () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockRejectedValue("connection lost");
     renderTab();
     await runAll();
     expect(screen.getByText("connection lost")).toBeTruthy();
+    expect(screen.getByText("query.runFailed")).toBeTruthy();
     // Not recorded in the history.
     expect(useQueryHistory.getState().entries).toHaveLength(0);
   });
 
-  it("DEFECT: a batch is recorded in the history with elapsedMs: 0", async () => {
+  it("a new run replaces every tab", async () => {
+    seed(BATCH_SQL);
+    h.api.executeBatch.mockResolvedValue(BATCH_OK);
+    h.api.executeQuery.mockResolvedValue(rows(["z"], [[1]]));
+    renderTab();
+    await runAll();
+    expect(resultTabs()).not.toBeNull();
+    await clickRun();
+    expect(resultTabs()).toBeNull();
+    expect(lastGrid().sql).toBe("SELECT a FROM t;");
+  });
+
+  it("is recorded in the history as written, with the statements' total time", async () => {
     seed(BATCH_SQL);
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
     await runAll();
     expect(useQueryHistory.getState().entries[0]).toMatchObject({
-      // Joined with ";\n" over texts that already end in ";" — the doubled
-      // terminator is current behaviour too.
-      sql: "SELECT a FROM t;;\nUPDATE t SET a = 1;;\nSELECT b FROM u",
-      elapsedMs: 0,
+      sql: BATCH_SQL,
+      elapsedMs: 30,
       rowsAffected: 5,
     });
   });
@@ -680,11 +780,14 @@ describe("CodeLens", () => {
     h.api.executeQuery.mockResolvedValue(write(5));
     renderTab();
     expect(h.sqlEntry).not.toBeNull();
-    await act(async () => h.sqlEntry!.runStatement("UPDATE t SET a = 1"));
+    await act(async () => h.sqlEntry!.runStatement("UPDATE t SET a = 1;"));
     await flush();
-    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "UPDATE t SET a = 1");
+    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "UPDATE t SET a = 1;");
     expect(h.api.executeBatch).not.toHaveBeenCalled();
-    expect(useQueryHistory.getState().entries[0].sql).toBe("UPDATE t SET a = 1");
+    expect(useQueryHistory.getState().entries[0].sql).toBe("UPDATE t SET a = 1;");
+    // Its lines come from the lens cache, so Go to statement can find it.
+    act(() => fireEvent.click(screen.getByText("query.goToStatement")));
+    expect(h.editor.selected).toMatchObject({ startLineNumber: 2, endLineNumber: 2 });
   });
 });
 
@@ -702,8 +805,7 @@ describe("result tabs", () => {
     act(() => (lastGrid().onGlobalFilterChange as (v: string) => void)("abc"));
     expect(lastGrid().globalFilter).toBe("abc");
 
-    const [, second] = within(resultTabs()!).getAllByRole("radio");
-    act(() => fireEvent.click(second));
+    pickTab("#3");
     expect(lastGrid().sql).toBe("SELECT b FROM u");
     expect(lastGrid().globalFilter).toBe("");
   });
@@ -713,8 +815,7 @@ describe("result tabs", () => {
     h.api.executeBatch.mockResolvedValue(BATCH_OK);
     renderTab();
     await runAll();
-    const [, second] = within(resultTabs()!).getAllByRole("radio");
-    act(() => fireEvent.click(second));
+    pickTab("#3");
 
     h.api.executeQuery.mockResolvedValue(rows(["b"], [["y"], ["z"]]));
     await act(async () => {
@@ -726,8 +827,8 @@ describe("result tabs", () => {
     expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "SELECT b FROM u");
     expect((lastGrid().result as QueryResult).rows).toEqual([["y"], ["z"]]);
     // The tab label follows the fresh row count.
-    expect(within(resultTabs()!).getAllByRole("radio")[1].textContent).toBe(
-      `query.resultTab${JSON.stringify({ label: "#3", rows: 2 })}`,
+    expect(within(resultTabs()!).getAllByRole("radio")[3].textContent).toBe(
+      `query.resultTab${JSON.stringify({ label: "#3 · SELECT b FROM u", count: 2 })}`,
     );
   });
 
@@ -791,7 +892,7 @@ describe("database selector", () => {
     expect(screen.queryByTestId("db-select")).toBeNull();
   });
 
-  it("a failure to switch lands in the results' error box", async () => {
+  it("a failure to switch is a notification, not one of the run's tabs", async () => {
     seed("SELECT 1");
     h.api.listDatabases.mockResolvedValue([{ name: "sales" }]);
     h.api.openDatabaseView.mockRejectedValue("no access to sales");
@@ -803,8 +904,10 @@ describe("database selector", () => {
       );
     });
     await flush();
-    expect(screen.getByText("no access to sales")).toBeTruthy();
-    expect(h.notify.error).not.toHaveBeenCalled();
+    expect(h.notify.error).toHaveBeenCalledWith("query.switchDatabaseFailed", {
+      description: "no access to sales",
+    });
+    expect(screen.queryByText("no access to sales")).toBeNull();
   });
 });
 

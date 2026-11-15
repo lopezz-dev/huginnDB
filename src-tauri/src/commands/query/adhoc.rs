@@ -404,6 +404,7 @@ pub(crate) async fn execute_batch_stoppable(
                     rows_affected: ra,
                     is_select,
                     error: None,
+                    elapsed_ms: start.elapsed().as_millis() as u64,
                     results,
                 });
             }
@@ -416,6 +417,7 @@ pub(crate) async fn execute_batch_stoppable(
                     rows_affected: 0,
                     is_select,
                     error: Some(msg),
+                    elapsed_ms: start.elapsed().as_millis() as u64,
                     results: Vec::new(),
                 });
                 break;
@@ -474,6 +476,7 @@ pub(crate) fn stop_at(
         is_select,
         error: Some(msg),
         results: Vec::new(),
+        elapsed_ms: start.elapsed().as_millis() as u64,
     });
     BatchStop { index, outcome }
 }
@@ -737,6 +740,7 @@ mod batch_tests {
             rows_affected: 1,
             is_select: true,
             error: None,
+            elapsed_ms: 3,
             results: vec![QueryResult::rows(
                 vec![ColumnMeta {
                     name: "n".into(),
@@ -753,6 +757,9 @@ mod batch_tests {
         assert_eq!(json["results"].as_array().unwrap().len(), 1);
         assert_eq!(json["results"][0]["rows"][0][0], 1);
         assert_eq!(json["rows_affected"], 1);
+        // Per statement, so the Summary can show it and the history can
+        // record a batch's total (ADR #137).
+        assert_eq!(json["elapsed_ms"], 3);
     }
 
     #[test]
@@ -764,6 +771,7 @@ mod batch_tests {
                 rows_affected: 7,
                 is_select: false,
                 error: None,
+                elapsed_ms: 3,
                 results: Vec::new(),
             },
             StmtOutcome {
@@ -772,6 +780,7 @@ mod batch_tests {
                 rows_affected: 0,
                 is_select: true,
                 error: Some("no such column: boom".into()),
+                elapsed_ms: 3,
                 results: Vec::new(),
             },
         ] {

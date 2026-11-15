@@ -140,6 +140,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Changed
 
+- **A query's results show one tab per statement.** Running several
+  statements used to show a summary list above a strip of only the result
+  sets, tied together by `#n`; a write or a failure had nowhere of its own
+  to be selected. The results now have a tab for every statement that ran —
+  its rows, what a write changed, or why it failed — named by its number
+  and the start of the statement (`#2 · UPDATE Track SET Name =…`, comments
+  skipped), and with "1 row" / "2 rows" said properly. A batch starts
+  with a **Summary** tab that lists each statement with its rows and its
+  time (a line opens that statement's tab). A run lands on the statement
+  that failed, else the first rows, else the Summary, and each new run
+  replaces every tab. A write's card and a failure's card show the
+  statement and offer *Go to statement*, which selects it in the editor;
+  the error card also offers *Copy error*. A failure to switch database is
+  now a notification rather than something shown in place of the results.
+  The editor and the results now split 60/40 by default (a size you drag is
+  still remembered).
+
+- **A batch's time is recorded in the history.** Every batch used to be
+  recorded as taking 0 ms; it now records the total of its statements'
+  times, and its text as you wrote it.
+
 - **`Ctrl+Enter` runs the selection, or the statement under the cursor.**
   In a query tab it used to run the whole editor, so a scratch buffer of
   twenty queries ran all twenty. It now runs what is selected, and with

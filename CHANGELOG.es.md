@@ -156,6 +156,29 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Cambiado
 
+- **Los resultados de una consulta muestran una pestaña por sentencia.**
+  Ejecutar varias sentencias mostraba una lista de resumen encima de una
+  tira con solo los conjuntos de resultados, unidas por `#n`; una escritura
+  o un fallo no tenían un sitio propio que seleccionar. Ahora hay una
+  pestaña por cada sentencia ejecutada (sus filas, lo que cambió una
+  escritura o por qué falló), con su número y el principio de la sentencia
+  (`#2 · UPDATE Track SET Name =…`, sin los comentarios) y con «1 fila» /
+  «2 filas» bien dicho. Un lote empieza con una pestaña **Resumen**
+  que lista cada sentencia con sus filas y su tiempo (una línea abre la
+  pestaña de esa sentencia). Una ejecución se abre en la sentencia que
+  falló, si no en las primeras filas, si no en el Resumen, y cada ejecución
+  nueva sustituye todas las pestañas. La tarjeta de una escritura y la de
+  un fallo muestran la sentencia y ofrecen *Ir a la sentencia*, que la
+  selecciona en el editor; la de error ofrece además *Copiar error*. Un
+  fallo al cambiar de base de datos es ahora una notificación en vez de
+  mostrarse en lugar de los resultados. El editor y los resultados se
+  reparten ahora 60/40 por defecto (el tamaño que arrastres se sigue
+  recordando).
+
+- **El tiempo de un lote se guarda en el historial.** Cada lote se
+  guardaba con 0 ms; ahora guarda la suma de los tiempos de sus sentencias,
+  y su texto tal como lo escribiste.
+
 - **`Ctrl+Enter` ejecuta la selección, o la sentencia bajo el cursor.** En
   una pestaña de consulta ejecutaba todo el editor, así que un borrador con
   veinte consultas ejecutaba las veinte. Ahora ejecuta lo seleccionado y,

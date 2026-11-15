@@ -701,6 +701,8 @@ export interface StmtOutcome {
   is_select: boolean;
   /** Driver error message; when set, the batch stopped at this statement. */
   error: string | null;
+  /** Wall-clock time this statement took, failed or not (ADR #137). */
+  elapsed_ms: number;
   /**
    * Result sets this statement produced, in driver order — one results panel
    * each. Empty for a write, for a failure, and for a read whose rows were all
