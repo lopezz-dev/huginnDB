@@ -2635,7 +2635,7 @@
       "csvSemicolon": "CSV (punto y coma, para Excel)"
     },
     "refreshFailed": "Guardado, pero no se pudieron refrescar los resultados",
-    "newTabPlaceholder": "-- escribe una consulta SQL y pulsa Ctrl+Intro\n"
+    "newTabPlaceholder": "-- escribe una consulta SQL y ejecútala\n"
   },
   "saved": {
     "connectFirst": "Conéctate primero a una base de datos.",

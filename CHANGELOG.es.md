@@ -93,7 +93,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   *Ejecutar consulta*; ahora muestra el tuyo, y nada si la acción no tiene
   atajo. El tooltip del botón Ejecutar también lo sigue. Los contadores de
   líneas y caracteres y las "filas" / "afectadas" del resumen del lote
-  están ahora traducidos.
+  están ahora traducidos. El comentario con el que abre una pestaña de
+  consulta nueva ya no nombra ninguna tecla ("escribe una consulta SQL y
+  ejecútala"), así que no queda desfasado si cambias el atajo.
 
 - **El tooltip de un resultado cortado dice qué límite lo cortó.** En un
   lote, una pestaña de resultado cortada en su propio límite de 50 000
