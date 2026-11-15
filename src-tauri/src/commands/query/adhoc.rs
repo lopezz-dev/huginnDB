@@ -250,19 +250,33 @@ pub(crate) async fn execute_batch_stoppable(
         Session::acquire(&pool).await
     );
 
-    // What stops a statement of this session by its id, learnt once: the
-    // session is the same for the whole batch.
+    // What stops a statement of this session, set up once: the session is the
+    // same for the whole batch. SQLite through its progress handler, the
+    // network drivers that can by the session's id.
     let kill = match stop {
         Some(_) => {
-            let id = try_sql_sink!(
+            let interrupt = try_sql_sink!(
                 sink,
                 &connection_id,
                 driver,
                 "(batch)",
                 acquire_start,
-                session.backend_id().await
+                session.sqlite_interrupt().await
             );
-            super::bounded::Kill::for_backend(&pool, id)
+            match interrupt {
+                Some(flag) => Some(super::bounded::Kill::sqlite(flag)),
+                None => {
+                    let id = try_sql_sink!(
+                        sink,
+                        &connection_id,
+                        driver,
+                        "(batch)",
+                        acquire_start,
+                        session.backend_id().await
+                    );
+                    super::bounded::Kill::for_backend(&pool, id)
+                }
+            }
         }
         None => None,
     };
@@ -323,7 +337,11 @@ pub(crate) async fn execute_batch_stoppable(
                         let how = session.cancel().await;
                         stopped_error(StoppedBy::MsSql(how), writes, None)
                     }
-                    DbPool::Sqlite(_) => stopped_error(StoppedBy::Sqlite, writes, None),
+                    DbPool::Sqlite(_) => stopped_error(
+                        StoppedBy::Sqlite { told: &told },
+                        writes,
+                        ended.as_ref().and_then(|r| r.as_ref().err()),
+                    ),
                     _ => stopped_error(
                         StoppedBy::Kill {
                             told: &told,
