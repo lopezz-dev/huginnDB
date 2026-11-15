@@ -20,10 +20,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   *Stop* (`Ctrl+.`, rebindable), and stopping stops the statement on the
   server — not just the wait. The result says what the stop left behind: a
   statement that did not apply, or one that may have applied (a stop that
-  raced the commit, or SQLite, which cannot interrupt a statement and lets
-  it finish). A stopped batch lands on the statement it stopped at, says
-  that its session was closed so any transaction it had open was rolled
-  back, and its Summary says where it stopped.
+  raced the commit, or a SQLite statement waiting on another connection's
+  lock, which cannot be interrupted and is left to finish). A running SQLite
+  statement is interrupted and rolled back. A stopped batch lands on the
+  statement it stopped at, says that its session was closed so any
+  transaction it had open was rolled back, and its Summary says where it
+  stopped.
 
 - **Export a query's results as CSV for Excel.** The query results' *Export
   data* menu now offers two CSVs: *CSV (comma)* and *CSV (semicolon, for
