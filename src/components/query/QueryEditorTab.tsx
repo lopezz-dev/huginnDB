@@ -29,7 +29,7 @@
  * history, the results — is shared, because none of it is dialectal.
  *
  * An info bar at the bottom of the editor panel mirrors VS Code's status bar:
- * the shortcut hint, the database, line/character counts and the language.
+ * the run shortcut, the database, line/character counts and the language.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -50,7 +50,7 @@ import {
 import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
-import { formatComboForDisplay, getBinding } from "@/lib/keybindings";
+import { useShortcutLabel } from "@/lib/keybindings/useShortcutLabel";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { runAiTask } from "@/lib/ai/runTask";
 import { splitSql, statementAt, type SqlDialect } from "@/lib/sql/sqlSplit";
@@ -161,12 +161,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     return selectedDb || p.database || t("query.defaultDatabase");
   }, [profiles, parentId, selectedDb, t]);
 
-  // Shortcut chip on the Run button — reflects the user's current binding
-  // for `runQuery` (see `handleMount`, which dispatches the same combo).
-  const runQueryCombo = usePreferences((s) =>
-    getBinding(s.prefs.keybindings, "runQuery"),
-  );
-  const runHint = formatComboForDisplay(runQueryCombo);
+  // The user's current binding for `runQuery` (`handleMount` dispatches the
+  // same combo), for the Run button's chip and the info bar; `undefined`
+  // when the action is unbound.
+  const runShortcut = useShortcutLabel("runQuery");
   const [showHistory, setShowHistory] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   /** Line and character counts updated live by Monaco. */
@@ -496,7 +494,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             statementCount={statements.length}
             empty={!sql.trim()}
             running={run.running}
-            runHint={runHint}
+            runShortcut={runShortcut}
             onRun={() => void run.run(sql)}
             onSave={() => setSaveDialogOpen(true)}
             historyOpen={showHistory}
@@ -541,27 +539,30 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             )}
           </div>
 
-          {/* Editor info bar: keyboard hint · db name · line/char count · encoding */}
+          {/* Editor info bar: run shortcut · db name · line/char count · language.
+              The shortcut is the user's binding for `runQuery`, read from the
+              catalogue — it used to say Ctrl + Enter whatever it was bound
+              to — and the hint is left out when the action is unbound. */}
           <div className="flex items-center gap-0 border-t border-border bg-card px-3 py-1 text-2xs text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <kbd className="rounded-sm bg-muted px-1 font-mono text-3xs">
-                Ctrl
-              </kbd>
-              <span>+</span>
-              <kbd className="rounded-sm bg-muted px-1 font-mono text-3xs">
-                Enter
-              </kbd>
-              <span className="ml-1 text-muted-foreground/70">
-                {t("query.run")}
-              </span>
-            </span>
-            <span className="mx-3 text-muted-foreground/30">|</span>
+            {runShortcut && (
+              <>
+                <span className="flex items-center gap-1">
+                  <kbd className="rounded-sm bg-muted px-1 font-mono text-3xs">
+                    {runShortcut}
+                  </kbd>
+                  <span className="ml-1 text-muted-foreground/70">
+                    {t("query.run")}
+                  </span>
+                </span>
+                <span className="mx-3 text-muted-foreground/30">|</span>
+              </>
+            )}
             <span className="truncate">{dbName}</span>
             <span className="mx-3 text-muted-foreground/30">|</span>
             <span>
-              {editorStats.lines} line{editorStats.lines !== 1 ? "s" : ""}
+              {t("query.lines", { count: editorStats.lines })}
               {" · "}
-              {editorStats.chars} chars
+              {t("query.chars", { count: editorStats.chars })}
             </span>
             <span className="mx-3 text-muted-foreground/30">|</span>
             <span>{driver === "mongodb" ? "mongodb" : "sql"} · utf-8</span>

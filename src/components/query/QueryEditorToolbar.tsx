@@ -30,8 +30,8 @@ interface Props {
   /** Nothing to run or save. */
   empty: boolean;
   running: boolean;
-  /** The Run shortcut, formatted for display. */
-  runHint: string;
+  /** The Run shortcut, formatted for display; `undefined` when unbound. */
+  runShortcut: string | undefined;
   onRun: () => void;
   onSave: () => void;
   historyOpen: boolean;
@@ -47,7 +47,7 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
       statementCount,
       empty,
       running,
-      runHint,
+      runShortcut,
       onRun,
       onSave,
       historyOpen,
@@ -64,7 +64,13 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
           size="sm"
           onClick={onRun}
           disabled={empty || running}
-          title={multiStatement ? t("query.runAllTitle") : t("query.runTitle")}
+          title={
+            multiStatement
+              ? t("query.runAllTitle")
+              : runShortcut
+                ? t("query.runTitle", { shortcut: runShortcut })
+                : t("query.run")
+          }
           className="gap-1.5"
         >
           {running ? <Spinner size="sm" /> : <Play className="h-3.5 w-3.5" />}
@@ -73,9 +79,9 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
             : multiStatement
               ? t("query.runAll", { count: statementCount })
               : t("query.run")}
-          {!running && (
+          {!running && runShortcut && (
             <kbd className="ml-0.5 rounded-sm border border-brand-foreground/30 bg-brand-foreground/10 px-1 py-px text-3xs font-medium leading-none">
-              {runHint}
+              {runShortcut}
             </kbd>
           )}
         </Button>

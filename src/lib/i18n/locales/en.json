@@ -2599,7 +2599,7 @@
     "noQueries": "No queries yet.",
     "running": "running…",
     "run": "Run",
-    "runTitle": "Run — Ctrl/Cmd+Enter",
+    "runTitle": "Run — {{shortcut}}",
     "runAll": "Run all ({{count}})",
     "runAllTitle": "Run every statement in order on one connection",
     "runStatement": "Run this statement",
@@ -2610,17 +2610,25 @@
     "batchOk": "{{count}} statements · {{rows}} rows affected",
     "batchFailed": "Stopped at statement {{index}} of {{total}}",
     "rowsAffected": "{{rows}} rows affected · {{ms}} ms",
+    "summaryRows_one": "{{count}} row",
+    "summaryRows_other": "{{count}} rows",
+    "summaryAffected": "{{count}} affected",
+    "lines_one": "{{count}} line",
+    "lines_other": "{{count}} lines",
+    "chars_one": "{{count}} char",
+    "chars_other": "{{count}} chars",
     "resultTab": "{{label}} · {{rows}} rows",
     "resultTabs": "Result sets",
     "resultTabTitle": "Result of statement {{index}}",
-    "resultTabTruncatedTitle": "First {{rows}} rows — the batch's row budget was reached",
+    "resultTabTruncatedTitle": "First {{rows}} rows; the statement returns more",
+    "resultTabBudgetTitle": "First {{rows}} rows; the batch's shared row budget was reached",
     "notWritable": "Computed column — it is not a column of {{table}}, so it cannot be edited",
     "export": {
       "csvComma": "CSV (comma)",
       "csvSemicolon": "CSV (semicolon, for Excel)"
     },
     "refreshFailed": "Saved, but the results could not be refreshed",
-    "newTabPlaceholder": "-- write a SQL query and press Ctrl+Enter\n"
+    "newTabPlaceholder": "-- write a SQL query and run it\n"
   },
   "saved": {
     "connectFirst": "Connect to a database first.",

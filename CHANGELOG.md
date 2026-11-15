@@ -79,6 +79,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The query editor's info bar shows your Run shortcut.** It used to say
+  `Ctrl + Enter` whatever *Run query* was bound to; it now shows your
+  binding, and nothing when the action is unbound. The Run button's tooltip
+  follows it too. The line and character counts and the batch summary's
+  "rows" / "affected" are now translated. A new query tab's opening comment
+  no longer names a key ("write a SQL query and run it"), so it cannot go
+  stale when the shortcut is rebound.
+
+- **A cut result's tooltip says which cap cut it.** In a batch, a result
+  tab cut at its own 50 000-row cap used to blame the batch's shared row
+  budget. It now says the statement returns more, and keeps the budget for
+  the results the budget really shed.
+
 - ***Copy row as ▸ SQL UPDATE* works on a table whose every column is key.**
   On a junction table such as `playlist_track (playlist_id, track_id)` the
   snippet came out as `UPDATE … SET  WHERE …`, which no database runs,

@@ -59,8 +59,8 @@ export function BatchSummary({ summary }: { summary: BatchResult }) {
               {s.error
                 ? s.error
                 : s.is_select
-                  ? `${s.rows_affected} rows`
-                  : `${s.rows_affected} affected`}
+                  ? t("query.summaryRows", { count: s.rows_affected })
+                  : t("query.summaryAffected", { count: s.rows_affected })}
             </span>
           </div>
         ))}

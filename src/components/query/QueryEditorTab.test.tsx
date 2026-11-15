@@ -294,8 +294,9 @@ async function flush() {
 type Loose = Record<string, any>;
 const lastGrid = () => h.grid[h.grid.length - 1] as Loose;
 const lastSave = () => h.save[h.save.length - 1] as Loose;
+/** The Run button's title names the binding (or just "Run" when unbound). */
 const runButton = () =>
-  screen.getByTitle(/^query\.run(All)?Title$/) as HTMLButtonElement;
+  screen.getByTitle(/^query\.run(All)?Title|^query\.run$/) as HTMLButtonElement;
 
 async function clickRun() {
   await act(async () => {
@@ -471,9 +472,12 @@ describe("batch", () => {
       screen.getByText(`query.batchOk${JSON.stringify({ count: 3, rows: 5 })}`),
     ).toBeTruthy();
     expect(screen.getByText("UPDATE t SET a = 1")).toBeTruthy();
-    // Hard-coded English in the summary rows (fixed later in the plan).
-    expect(screen.getByText("2 rows")).toBeTruthy();
-    expect(screen.getByText("5 affected")).toBeTruthy();
+    expect(
+      screen.getByText(`query.summaryRows${JSON.stringify({ count: 2 })}`),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(`query.summaryAffected${JSON.stringify({ count: 5 })}`),
+    ).toBeTruthy();
   });
 
   it("the failed summary names the statement that stopped the batch", async () => {
@@ -535,23 +539,30 @@ describe("batch", () => {
     expect(lastGrid().sql).toBeUndefined();
   });
 
-  it("the tooltip of a truncated tab names the batch budget, whatever capped it", async () => {
-    seed("SELECT * FROM big;\nSELECT 1");
+  it("the tooltip of a cut tab says which cap cut it: its own, or the batch budget", async () => {
+    const full = Array.from({ length: 50_000 }, (_, i) => [i]);
+    seed("SELECT * FROM big;\nSELECT * FROM more");
     h.api.executeBatch.mockResolvedValue({
       statements: [
         stmt(0, "SELECT * FROM big", {
           is_select: true,
-          results: [rows(["a"], [[1]], { truncated: true })],
+          results: [rows(["a"], full, { truncated: true })],
         }),
-        stmt(1, "SELECT 1", { is_select: true, results: [rows(["x"], [[1]])] }),
+        stmt(1, "SELECT * FROM more", {
+          is_select: true,
+          results: [rows(["x"], [[1]], { truncated: true })],
+        }),
       ],
       total_affected: 0,
     } satisfies BatchResult);
     renderTab();
     await clickRun();
-    const [cut] = within(resultTabs()!).getAllByRole("radio");
-    expect(cut.title).toBe(
-      `query.resultTabTruncatedTitle${JSON.stringify({ rows: 1 })}`,
+    const [own, shed] = within(resultTabs()!).getAllByRole("radio");
+    expect(own.title).toBe(
+      `query.resultTabTruncatedTitle${JSON.stringify({ rows: 50_000 })}`,
+    );
+    expect(shed.title).toBe(
+      `query.resultTabBudgetTitle${JSON.stringify({ rows: 1 })}`,
     );
   });
 
@@ -826,21 +837,41 @@ describe("history", () => {
 // ---------------------------------------------------------------------------
 
 describe("info bar", () => {
-  it("DEFECT: hard-codes Ctrl + Enter even when runQuery is rebound", async () => {
+  it("shows the user's binding for runQuery, not a hard-coded Ctrl + Enter", async () => {
     usePreferences.setState((s) => ({
       prefs: { ...s.prefs, keybindings: { runQuery: ["F9"] } },
     }));
     seed("SELECT 1");
     const { container } = renderTab();
-    // The Run button's chip follows the binding…
-    expect(runButton().querySelector("kbd")?.textContent).toBe("F9");
-    // …the info bar does not.
     const kbds = Array.from(container.querySelectorAll("kbd")).map(
       (k) => k.textContent,
     );
-    expect(kbds).toContain("Ctrl");
-    expect(kbds).toContain("Enter");
+    // The Run button's chip and the info bar both follow the binding.
+    expect(kbds).toEqual(["F9", "F9"]);
+    expect(runButton().title).toBe(`query.runTitle${JSON.stringify({ shortcut: "F9" })}`);
     usePreferences.setState((s) => ({ prefs: { ...s.prefs, keybindings: {} } }));
+  });
+
+  it("leaves the shortcut out when runQuery is unbound", () => {
+    usePreferences.setState((s) => ({
+      prefs: { ...s.prefs, keybindings: { runQuery: [] } },
+    }));
+    seed("SELECT 1");
+    const { container } = renderTab();
+    expect(container.querySelectorAll("kbd")).toHaveLength(0);
+    expect(runButton().title).toBe("query.run");
+    usePreferences.setState((s) => ({ prefs: { ...s.prefs, keybindings: {} } }));
+  });
+
+  it("counts lines and characters through translations", () => {
+    seed("SELECT 1");
+    renderTab();
+    // The fake model reports 1 line, 0 characters.
+    expect(
+      screen.getByText(
+        `query.lines${JSON.stringify({ count: 1 })} · query.chars${JSON.stringify({ count: 0 })}`,
+      ),
+    ).toBeTruthy();
   });
 
   it("shows the database and the driver family with a hard-coded encoding", () => {
