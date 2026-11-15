@@ -48,6 +48,7 @@ mod policy;
 mod pool_reaper;
 mod prefs;
 mod pulse;
+mod runs;
 mod session_watch;
 mod ssh_known_hosts;
 mod state;
@@ -539,6 +540,7 @@ pub fn run() {
             commands::bulk::apply_bulk_update,
             commands::query::execute_query,
             commands::query::execute_batch,
+            commands::query::cancel_query,
             commands::query::fetch_table_data,
             commands::query::count_table_rows,
             commands::query::describe_table_query,

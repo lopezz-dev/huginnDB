@@ -174,6 +174,11 @@ pub async fn lock_app(app: &AppHandle) {
     for cancel in state.ai_turns.read().values() {
         cancel.notify_waiters();
     }
+    // A query run in flight is stopped on the server rather than left running
+    // for a window that is about to reload into the wall: nothing would be
+    // left to show its result, and a statement nobody sees go on is the
+    // failure ADR #137 stops (ADR #134's DECOCER).
+    state.runs.stop_all();
     // Pools carry their SSH tunnels and keepalives with them (ADR #104), so
     // closing them stops both. Pulse's sampler only samples open connections.
     crate::commands::connection::close_all_pools(state, Duration::from_secs(3)).await;

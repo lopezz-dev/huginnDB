@@ -13,7 +13,9 @@
 //! to catch.
 //!
 //! A person's read from the editor (`super::execute_with_state`) stays
-//! unbounded on purpose: the person is watching it and can stop it. An AI's
+//! unbounded on purpose: the person is watching it and can stop it — with
+//! Stop, which reuses this module's per-driver stop ([`Kill`], `InFlight`)
+//! through `super::stop` (ADR #137). An AI's
 //! read used to have no limit either. When the MCP client gave up (Claude
 //! Desktop does after 60 s), nothing told the app, and the statement went on
 //! loading the server. Against a client's production
@@ -38,6 +40,8 @@
 //! it by id (`pg_cancel_backend`, `KILL QUERY`). MongoDB gets a `maxTimeMS`,
 //! because dropping a driver future does not stop the operation either.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use sqlx::pool::PoolConnection;
@@ -61,7 +65,7 @@ const KILL_WAIT: Duration = Duration::from_secs(10);
 /// has no transaction to roll back afterwards, so the acknowledgement buys
 /// nothing but a nicer sentence, and with tiberius 0.13 it does not come
 /// anyway (gotcha #132).
-const MSSQL_CANCEL_WAIT: Duration = Duration::from_secs(5);
+pub(super) const MSSQL_CANCEL_WAIT: Duration = Duration::from_secs(5);
 
 /// What MongoDB is given past its own `maxTimeMS` before the client stops
 /// waiting: the server's limit is the one that stops the work, and its error
@@ -149,10 +153,7 @@ async fn read_sql(
                 .fetch_one("BEGIN READ ONLY; SELECT pg_backend_pid()::int8")
                 .await?
                 .try_get(0)?;
-            let kill = Kill {
-                pool: pool.clone(),
-                sql: format!("SELECT pg_cancel_backend({pid})"),
-            };
+            let kill = Kill::postgres(pool, pid);
             let (rows, truncated) = fetch_killable(conn, kill, sql, timeout, deadline).await?;
             Ok((with_meta(pg_result(&rows)), truncated))
         }
@@ -164,13 +165,10 @@ async fn read_sql(
             // front of the server may not pass multi-statements through.
             conn.execute("START TRANSACTION READ ONLY").await?;
             let id: i64 = conn
-                .fetch_one("SELECT CAST(CONNECTION_ID() AS SIGNED)")
+                .fetch_one(crate::db::session::MYSQL_SESSION_ID)
                 .await?
                 .try_get(0)?;
-            let kill = Kill {
-                pool: pool.clone(),
-                sql: format!("KILL QUERY {id}"),
-            };
+            let kill = Kill::mysql(pool, id);
             let (rows, truncated) = fetch_killable(conn, kill, sql, timeout, deadline).await?;
             Ok((with_meta(mysql_result(&rows)), truncated))
         }
@@ -276,12 +274,12 @@ where
                 Ok(()) => format!(
                     "The server was told to stop it ({}) and the session was closed; nothing \
                      was changed — it was a read.",
-                    kill.sql
+                    kill.sent
                 ),
                 Err(e) => format!(
                     "Telling the server to stop it ({}) failed: {e}. The session was closed; \
                      the server may run the statement until it next writes to the client.",
-                    kill.sql
+                    kill.sent
                 ),
             },
             None => "The session was closed.".to_string(),
@@ -304,13 +302,17 @@ where
 /// to the next borrower mid-statement, which `sqlx` would otherwise do once
 /// its on-release ping had waited for the statement to end — and its
 /// [`Kill`], if any, is sent from a task of its own.
-struct InFlight<DB: sqlx::Database> {
-    conn: Option<PoolConnection<DB>>,
-    kill: Option<Kill>,
+///
+/// Shared with a person's stoppable run (`super::stop`), which borrows the two
+/// fields apart — the statement runs on `conn` while `kill` is at hand for the
+/// stop — and clears `kill` once it has sent it itself.
+pub(super) struct InFlight<DB: sqlx::Database> {
+    pub(super) conn: Option<PoolConnection<DB>>,
+    pub(super) kill: Option<Kill>,
 }
 
 impl<DB: sqlx::Database> InFlight<DB> {
-    fn new(conn: PoolConnection<DB>, kill: Option<Kill>) -> Self {
+    pub(super) fn new(conn: PoolConnection<DB>, kill: Option<Kill>) -> Self {
         Self {
             conn: Some(conn),
             kill,
@@ -324,7 +326,7 @@ impl<DB: sqlx::Database> InFlight<DB> {
     }
 
     /// The statement finished: keep the session, and drop the cancel.
-    fn land(mut self) -> PoolConnection<DB> {
+    pub(super) fn land(mut self) -> PoolConnection<DB> {
         self.kill = None;
         self.conn.take().expect("an InFlight lands once")
     }
@@ -343,21 +345,90 @@ impl<DB: sqlx::Database> Drop for InFlight<DB> {
     }
 }
 
-/// The statement that stops another session's statement, and the pool to send
-/// it from.
-struct Kill {
-    pool: DbPool,
-    sql: String,
+/// What stops another session's statement while it runs.
+///
+/// The one place that knows how a running statement is stopped: PostgreSQL and
+/// MySQL by its session's id, from another connection of the pool; SQLite by
+/// the flag its progress handler reads ([`crate::db::session::sqlite_interrupt`]).
+/// Used for an AI's read past its deadline and for a person's run they
+/// stopped (`super::stop`, ADR #137) alike.
+pub(crate) struct Kill {
+    by: KillBy,
+    /// What is sent, in the words the stop's message quotes: the statement,
+    /// or for SQLite its interrupt.
+    pub(super) sent: String,
+}
+
+/// How a [`Kill`] reaches the statement.
+enum KillBy {
+    /// A statement sent from whichever connection of this pool is free.
+    Remote(DbPool),
+    /// The flag a SQLite connection's progress handler reads.
+    Interrupt(Arc<AtomicBool>),
 }
 
 impl Kill {
-    /// Send it, from whichever connection of the pool is free.
-    async fn run(&self) -> AppResult<()> {
+    /// `pg_cancel_backend` for the backend `pid`: stops its current statement
+    /// and leaves the session alive (which the callers close anyway).
+    pub(super) fn postgres(pool: &DbPool, pid: i64) -> Self {
+        Self {
+            by: KillBy::Remote(pool.clone()),
+            sent: format!("SELECT pg_cancel_backend({pid})"),
+        }
+    }
+
+    /// `KILL QUERY` for the connection `id`: stops its current statement, not
+    /// the connection.
+    pub(super) fn mysql(pool: &DbPool, id: i64) -> Self {
+        Self {
+            by: KillBy::Remote(pool.clone()),
+            sent: format!("KILL QUERY {id}"),
+        }
+    }
+
+    /// SQLite's interrupt, through the flag a connection's progress handler
+    /// reads (installed by [`crate::db::session::sqlite_interrupt`] before the
+    /// statement runs).
+    pub(super) fn sqlite(stop: Arc<AtomicBool>) -> Self {
+        Self {
+            by: KillBy::Interrupt(stop),
+            sent: "SQLite's interrupt".to_string(),
+        }
+    }
+
+    /// Whether this is SQLite's interrupt, which lands within milliseconds or
+    /// not at all (a statement waiting on a lock), rather than a statement
+    /// whose answer comes from the server.
+    pub(super) fn interrupts(&self) -> bool {
+        matches!(self.by, KillBy::Interrupt(_))
+    }
+
+    /// The kill for a session whose server-side id is `id`, on whichever of
+    /// the two drivers that can stop a statement by id `pool` is. `None` for
+    /// the others: SQL Server is stopped by closing its session (gotcha #132),
+    /// SQLite by [`Self::sqlite`], and MongoDB is not stopped by id here.
+    pub(super) fn for_backend(pool: &DbPool, id: Option<i64>) -> Option<Self> {
+        match (pool, id) {
+            (DbPool::Postgres(_), Some(id)) => Some(Self::postgres(pool, id)),
+            (DbPool::Mysql(_), Some(id)) => Some(Self::mysql(pool, id)),
+            _ => None,
+        }
+    }
+
+    /// Send it, from whichever connection of the pool is free — or, on SQLite,
+    /// raise the flag, which the running statement sees within milliseconds.
+    pub(super) async fn run(&self) -> AppResult<()> {
         let send = async {
-            match &self.pool {
-                DbPool::Postgres(p) => p.execute(self.sql.as_str()).await.map(|_| ()),
-                DbPool::Mysql(p) => p.execute(self.sql.as_str()).await.map(|_| ()),
-                _ => Ok(()),
+            match &self.by {
+                KillBy::Remote(DbPool::Postgres(p)) => {
+                    p.execute(self.sent.as_str()).await.map(|_| ())
+                }
+                KillBy::Remote(DbPool::Mysql(p)) => p.execute(self.sent.as_str()).await.map(|_| ()),
+                KillBy::Remote(_) => Ok(()),
+                KillBy::Interrupt(stop) => {
+                    stop.store(true, Ordering::Relaxed);
+                    Ok(())
+                }
             }
         };
         match tokio::time::timeout(KILL_WAIT, send).await {

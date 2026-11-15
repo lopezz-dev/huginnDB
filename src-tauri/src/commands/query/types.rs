@@ -368,6 +368,10 @@ pub struct StmtOutcome {
     pub rows_affected: u64,
     pub is_select: bool,
     pub error: Option<String>,
+    /// Wall-clock time this statement took on the server's session, failed
+    /// or not. The batch's own total is the sum the query tab records in its
+    /// history (ADR #137), which used to say `0` for every batch.
+    pub elapsed_ms: u64,
     /// Result sets this statement produced, in the order the driver returned
     /// them. Empty for a write, for a failure, and for a read whose rows were
     /// all shed by [`MAX_BATCH_RESULT_ROWS`].
@@ -387,6 +391,18 @@ pub struct StmtOutcome {
 pub struct BatchResult {
     pub statements: Vec<StmtOutcome>,
     pub total_affected: u64,
+    /// Set when a person stopped the batch (ADR #137): the statement it was
+    /// stopped at — the last in `statements`, whose `error` says what happened
+    /// on the server — and whether that statement may have applied. Always
+    /// serialised, `null` when the batch was not stopped.
+    pub stopped: Option<BatchStop>,
+}
+
+/// Where a stopped batch stopped, and what that statement left behind.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct BatchStop {
+    pub index: usize,
+    pub outcome: crate::error::StopOutcome,
 }
 
 /// One-line, length-capped echo of a statement for the batch summary.

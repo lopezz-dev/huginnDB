@@ -88,6 +88,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **La barra de información del editor de consultas muestra tu atajo de
+  Ejecutar.** Antes decía `Ctrl + Enter` fuera cual fuera el atajo de
+  *Ejecutar consulta*; ahora muestra el tuyo, y nada si la acción no tiene
+  atajo. El tooltip del botón Ejecutar también lo sigue. Los contadores de
+  líneas y caracteres y las "filas" / "afectadas" del resumen del lote
+  están ahora traducidos. El comentario con el que abre una pestaña de
+  consulta nueva ya no nombra ninguna tecla ("escribe una consulta SQL y
+  ejecútala"), así que no queda desfasado si cambias el atajo.
+
+- **El tooltip de un resultado cortado dice qué límite lo cortó.** En un
+  lote, una pestaña de resultado cortada en su propio límite de 50 000
+  filas culpaba al presupuesto de filas compartido del lote. Ahora dice que
+  la sentencia devuelve más, y deja el presupuesto para los resultados que
+  de verdad recortó.
+
 - ***Copiar fila como ▸ SQL UPDATE* funciona en una tabla cuyas columnas son
   todas clave.** En una tabla de unión como `playlist_track (playlist_id,
   track_id)` el fragmento salía como `UPDATE … SET  WHERE …`, que ninguna
@@ -140,6 +155,41 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   simultáneos ya no pueden dejar en disco el más antiguo.
   
 ### Cambiado
+
+- **Los resultados de una consulta muestran una pestaña por sentencia.**
+  Ejecutar varias sentencias mostraba una lista de resumen encima de una
+  tira con solo los conjuntos de resultados, unidas por `#n`; una escritura
+  o un fallo no tenían un sitio propio que seleccionar. Ahora hay una
+  pestaña por cada sentencia ejecutada (sus filas, lo que cambió una
+  escritura o por qué falló), con su número y el principio de la sentencia
+  (`#2 · UPDATE Track SET Name =…`, sin los comentarios) y con «1 fila» /
+  «2 filas» bien dicho. Un lote empieza con una pestaña **Resumen**
+  que lista cada sentencia con sus filas y su tiempo (una línea abre la
+  pestaña de esa sentencia). Una ejecución se abre en la sentencia que
+  falló, si no en las primeras filas, si no en el Resumen, y cada ejecución
+  nueva sustituye todas las pestañas. La tarjeta de una escritura y la de
+  un fallo muestran la sentencia y ofrecen *Ir a la sentencia*, que la
+  selecciona en el editor; la de error ofrece además *Copiar error*. Un
+  fallo al cambiar de base de datos es ahora una notificación en vez de
+  mostrarse en lugar de los resultados. El editor y los resultados se
+  reparten ahora 60/40 por defecto (el tamaño que arrastres se sigue
+  recordando).
+
+- **El tiempo de un lote se guarda en el historial.** Cada lote se
+  guardaba con 0 ms; ahora guarda la suma de los tiempos de sus sentencias,
+  y su texto tal como lo escribiste.
+
+- **`Ctrl+Enter` ejecuta la selección, o la sentencia bajo el cursor.** En
+  una pestaña de consulta ejecutaba todo el editor, así que un borrador con
+  veinte consultas ejecutaba las veinte. Ahora ejecuta lo seleccionado y,
+  sin selección, la sentencia en la que está el cursor: la regla que ya
+  seguían las acciones *Explicar* de la IA. Una selección que abarca varias
+  sentencias las ejecuta como lote. Con el cursor entre dos sentencias no se
+  ejecuta nada, y una notificación explica por qué. Ejecutarlo todo tiene su
+  propio atajo, `Ctrl+Shift+Enter` (*Ejecutar todas las sentencias del
+  editor*, reasignable en Ajustes → Atajos). El botón Ejecutar sigue la
+  misma regla, y su nuevo ▾ ofrece *Ejecutar la sentencia bajo el cursor*,
+  *Ejecutar la selección* y *Ejecutar todo (N)*.
 
 - **Un binario de release más pequeño y ajustado.** Las builds de release
   enlazan ahora con LTO *thin* y una sola unidad de generación de código, y

@@ -14,7 +14,12 @@ use crate::state::{AppState, DbPool};
 // sqlx's text/simple-query protocol — the unprepared path — whereas
 // `sqlx::query(sql)` always prepares. Inherent `Query::execute` calls elsewhere
 // are unaffected (inherent methods win over the trait).
-use super::types::{column_meta, stmt_preview, with_meta, BatchResult, QueryResult, StmtOutcome};
+use super::stop::{race, writes, Raced, Stopped, StoppedBy};
+use super::types::{
+    column_meta, stmt_preview, with_meta, BatchResult, BatchStop, QueryResult, StmtOutcome,
+};
+use crate::error::StopOutcome;
+use crate::runs::StopSignal;
 use sqlx::Executor as _;
 use std::time::Instant;
 
@@ -191,12 +196,36 @@ pub(crate) async fn execute_batch_inner(
     connection_id: String,
     statements: Vec<String>,
 ) -> AppResult<BatchResult> {
+    execute_batch_stoppable(sink, state, connection_id, statements, None).await
+}
+
+/// [`execute_batch_inner`], and with a `stop` a person's batch that can be
+/// stopped (ADR #137): each statement is raced against it, and when it fires
+/// the statement in flight is stopped on the server (`super::stop`), the
+/// statements after it are not run, and the session is given up rather than
+/// pooled — so the server rolls back whatever transaction the batch had open.
+/// The statement it stopped at carries the [`AppError::Stopped`] text as its
+/// error, and [`BatchResult::stopped`] says which one it was and whether it
+/// may have applied.
+pub(crate) async fn execute_batch_stoppable(
+    sink: &dyn LogSink,
+    state: &AppState,
+    connection_id: String,
+    statements: Vec<String>,
+    stop: Option<&StopSignal>,
+) -> AppResult<BatchResult> {
     let pool = state.pool_for(&connection_id)?;
     let driver = pool.driver_name();
 
     if let DbPool::Mongo(conn) = &pool {
-        return crate::db::mongo::query::execute_batch(conn, &statements, sink, &connection_id)
-            .await;
+        return crate::db::mongo::query::execute_batch(
+            conn,
+            &statements,
+            sink,
+            &connection_id,
+            stop,
+        )
+        .await;
     }
 
     let mut outcomes: Vec<StmtOutcome> = Vec::with_capacity(statements.len());
@@ -221,6 +250,38 @@ pub(crate) async fn execute_batch_inner(
         Session::acquire(&pool).await
     );
 
+    // What stops a statement of this session, set up once: the session is the
+    // same for the whole batch. SQLite through its progress handler, the
+    // network drivers that can by the session's id.
+    let kill = match stop {
+        Some(_) => {
+            let interrupt = try_sql_sink!(
+                sink,
+                &connection_id,
+                driver,
+                "(batch)",
+                acquire_start,
+                session.sqlite_interrupt().await
+            );
+            match interrupt {
+                Some(flag) => Some(super::bounded::Kill::sqlite(flag)),
+                None => {
+                    let id = try_sql_sink!(
+                        sink,
+                        &connection_id,
+                        driver,
+                        "(batch)",
+                        acquire_start,
+                        session.backend_id().await
+                    );
+                    super::bounded::Kill::for_backend(&pool, id)
+                }
+            }
+        }
+        None => None,
+    };
+    let mut stopped: Option<BatchStop> = None;
+
     let log = SqlLog::new(sink, &connection_id, driver);
     for (index, raw) in statements.iter().enumerate() {
         let sql = raw.trim();
@@ -229,8 +290,82 @@ pub(crate) async fn execute_batch_inner(
         }
         let is_select = is_read_only(sql);
         let start = Instant::now();
-        let outcome: AppResult<(u64, Vec<QueryResult>)> = if is_select {
-            session.fetch(sql, MAX_ADHOC_QUERY_ROWS).await.map(|sets| {
+        if stop.is_some_and(StopSignal::is_requested) {
+            // Asked between two statements: this one never ran.
+            let stop = Stopped {
+                outcome: StopOutcome::NotApplied,
+                detail: format!("It was stopped before it ran. {BATCH_STOPPED}"),
+            };
+            stopped = Some(stop_at(
+                index,
+                stop,
+                &mut outcomes,
+                sql,
+                is_select,
+                &log,
+                start,
+            ));
+            break;
+        }
+        let work = async {
+            if is_select {
+                session
+                    .fetch(sql, MAX_ADHOC_QUERY_ROWS)
+                    .await
+                    .map(Ran::Rows)
+            } else {
+                // Through the unprepared protocol — see `Session::exec`.
+                session.exec(sql).await.map(Ran::Affected)
+            }
+        };
+        let raced = match stop {
+            Some(stop) => race(work, stop, kill.as_ref()).await,
+            None => Raced::Ended(work.await),
+        };
+        let fetched = match raced {
+            Raced::Ended(fetched) => fetched,
+            // Finished before the stop reached it: its result is the truth,
+            // and the next statement will find the stop asked for.
+            Raced::Stopped {
+                ended: Some(Ok(fetched)),
+                ..
+            } => Ok(fetched),
+            Raced::Stopped { told, ended } => {
+                let writes = writes(sql);
+                let stop = match &pool {
+                    DbPool::MsSql(_) => {
+                        let how = session.cancel().await;
+                        stopped_error(StoppedBy::MsSql(how), writes, None)
+                    }
+                    DbPool::Sqlite(_) => stopped_error(
+                        StoppedBy::Sqlite { told: &told },
+                        writes,
+                        ended.as_ref().and_then(|r| r.as_ref().err()),
+                    ),
+                    _ => stopped_error(
+                        StoppedBy::Kill {
+                            told: &told,
+                            mysql: matches!(pool, DbPool::Mysql(_)),
+                        },
+                        writes,
+                        ended.as_ref().and_then(|r| r.as_ref().err()),
+                    ),
+                };
+                stopped = Some(stop_at(
+                    index,
+                    stop,
+                    &mut outcomes,
+                    sql,
+                    is_select,
+                    &log,
+                    start,
+                ));
+                break;
+            }
+        };
+        let outcome: AppResult<(u64, Vec<QueryResult>)> = fetched.map(|ran| match ran {
+            Ran::Affected(ra) => (ra, Vec::new()),
+            Ran::Rows(sets) => {
                 // Every set the statement returned, not just the first: one
                 // T-SQL statement can return several, and keeping one of them
                 // was a silent discard back when there was only ever one grid
@@ -257,11 +392,8 @@ pub(crate) async fn execute_batch_inner(
                     );
                 }
                 (ra, results)
-            })
-        } else {
-            // Through the unprepared protocol — see `Session::exec`.
-            session.exec(sql).await.map(|ra| (ra, Vec::new()))
-        };
+            }
+        });
         match outcome {
             Ok((ra, results)) => {
                 total_affected += ra;
@@ -272,6 +404,7 @@ pub(crate) async fn execute_batch_inner(
                     rows_affected: ra,
                     is_select,
                     error: None,
+                    elapsed_ms: start.elapsed().as_millis() as u64,
                     results,
                 });
             }
@@ -284,6 +417,7 @@ pub(crate) async fn execute_batch_inner(
                     rows_affected: 0,
                     is_select,
                     error: Some(msg),
+                    elapsed_ms: start.elapsed().as_millis() as u64,
                     results: Vec::new(),
                 });
                 break;
@@ -291,10 +425,68 @@ pub(crate) async fn execute_batch_inner(
         }
     }
 
+    // After a stop the session is never pooled again, whatever state the
+    // stopped statement left it in — including a stop asked for as the last
+    // statement ended.
+    if stop.is_some_and(StopSignal::is_requested) {
+        session.abandon();
+    }
+
     Ok(BatchResult {
         statements: outcomes,
         total_affected,
+        stopped,
     })
+}
+
+/// The end of every stopped batch statement's message: what the stop did to
+/// the rest of the batch.
+pub(crate) const BATCH_STOPPED: &str = "The statements after it did not run. The batch's \
+     session was closed, so any transaction it had opened was rolled back by the server; \
+     statements before this one that ran outside a transaction stay applied.";
+
+/// What one batch statement came back with.
+enum Ran {
+    /// A read's result sets.
+    Rows(Vec<crate::db::session::RowSet>),
+    /// A write's row count.
+    Affected(u64),
+}
+
+/// Record the statement a batch was stopped at — its outcome carries the
+/// stop's text, rendered as the [`AppError::Stopped`] it is, as its error —
+/// and say which one it was. Shared with the MongoDB batch
+/// (`db::mongo::query::execute_batch`).
+pub(crate) fn stop_at(
+    index: usize,
+    stop: Stopped,
+    outcomes: &mut Vec<StmtOutcome>,
+    sql: &str,
+    is_select: bool,
+    log: &SqlLog<'_>,
+    start: Instant,
+) -> BatchStop {
+    let outcome = stop.outcome;
+    let msg = AppError::from(stop).to_string();
+    log.err(sql, start, &msg);
+    outcomes.push(StmtOutcome {
+        index,
+        preview: stmt_preview(sql),
+        rows_affected: 0,
+        is_select,
+        error: Some(msg),
+        results: Vec::new(),
+        elapsed_ms: start.elapsed().as_millis() as u64,
+    });
+    BatchStop { index, outcome }
+}
+
+/// [`super::stop::stopped`] for one statement of a batch, whose message also
+/// says what the stop did to the rest of it ([`BATCH_STOPPED`]).
+fn stopped_error(by: StoppedBy<'_>, writes: bool, ended: Option<&AppError>) -> Stopped {
+    let mut stop = super::stop::stopped(by, writes, ended);
+    stop.detail = format!("{} {BATCH_STOPPED}", stop.detail);
+    stop
 }
 
 /// Upper bound on how many rows an ad-hoc query (the editor's `execute_query`/
@@ -548,6 +740,7 @@ mod batch_tests {
             rows_affected: 1,
             is_select: true,
             error: None,
+            elapsed_ms: 3,
             results: vec![QueryResult::rows(
                 vec![ColumnMeta {
                     name: "n".into(),
@@ -564,6 +757,9 @@ mod batch_tests {
         assert_eq!(json["results"].as_array().unwrap().len(), 1);
         assert_eq!(json["results"][0]["rows"][0][0], 1);
         assert_eq!(json["rows_affected"], 1);
+        // Per statement, so the Summary can show it and the history can
+        // record a batch's total (ADR #137).
+        assert_eq!(json["elapsed_ms"], 3);
     }
 
     #[test]
@@ -575,6 +771,7 @@ mod batch_tests {
                 rows_affected: 7,
                 is_select: false,
                 error: None,
+                elapsed_ms: 3,
                 results: Vec::new(),
             },
             StmtOutcome {
@@ -583,6 +780,7 @@ mod batch_tests {
                 rows_affected: 0,
                 is_select: true,
                 error: Some("no such column: boom".into()),
+                elapsed_ms: 3,
                 results: Vec::new(),
             },
         ] {
@@ -594,16 +792,31 @@ mod batch_tests {
     }
 
     #[test]
-    fn a_batch_result_carries_only_the_statements_and_the_tally() {
+    fn a_batch_result_carries_the_statements_the_tally_and_the_stop() {
         let batch = BatchResult {
             statements: Vec::new(),
             total_affected: 0,
+            stopped: None,
         };
         let json = serde_json::to_value(&batch).unwrap();
         let keys: Vec<&String> = json.as_object().unwrap().keys().collect();
         // `last_result` is gone on purpose: with a result set on every
         // statement it was a second full copy of the largest payload in the
         // batch, crossing IPC for a consumer that no longer exists.
-        assert_eq!(keys, vec!["statements", "total_affected"]);
+        assert_eq!(keys, vec!["statements", "stopped", "total_affected"]);
+        // `null`, not missing, when the batch was not stopped (gotcha #14).
+        assert!(json["stopped"].is_null());
+
+        let stopped = BatchResult {
+            statements: Vec::new(),
+            total_affected: 0,
+            stopped: Some(BatchStop {
+                index: 2,
+                outcome: StopOutcome::MayHaveApplied,
+            }),
+        };
+        let json = serde_json::to_value(&stopped).unwrap();
+        assert_eq!(json["stopped"]["index"], 2);
+        assert_eq!(json["stopped"]["outcome"], "may_have_applied");
     }
 }
