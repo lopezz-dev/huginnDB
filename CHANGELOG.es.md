@@ -93,7 +93,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   *Ejecutar consulta*; ahora muestra el tuyo, y nada si la acción no tiene
   atajo. El tooltip del botón Ejecutar también lo sigue. Los contadores de
   líneas y caracteres y las "filas" / "afectadas" del resumen del lote
-  están ahora traducidos.
+  están ahora traducidos. El comentario con el que abre una pestaña de
+  consulta nueva ya no nombra ninguna tecla ("escribe una consulta SQL y
+  ejecútala"), así que no queda desfasado si cambias el atajo.
 
 - **El tooltip de un resultado cortado dice qué límite lo cortó.** En un
   lote, una pestaña de resultado cortada en su propio límite de 50 000
@@ -171,7 +173,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   tira con solo los conjuntos de resultados, unidas por `#n`; una escritura
   o un fallo no tenían un sitio propio que seleccionar. Ahora hay una
   pestaña por cada sentencia ejecutada (sus filas, lo que cambió una
-  escritura o por qué falló) y un lote empieza con una pestaña **Resumen**
+  escritura o por qué falló), con su número y el principio de la sentencia
+  (`#2 · UPDATE Track SET Name =…`, sin los comentarios) y con «1 fila» /
+  «2 filas» bien dicho. Un lote empieza con una pestaña **Resumen**
   que lista cada sentencia con sus filas y su tiempo (una línea abre la
   pestaña de esa sentencia). Una ejecución se abre en la sentencia que
   falló, si no en las primeras filas, si no en el Resumen, y cada ejecución

@@ -83,7 +83,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `Ctrl + Enter` whatever *Run query* was bound to; it now shows your
   binding, and nothing when the action is unbound. The Run button's tooltip
   follows it too. The line and character counts and the batch summary's
-  "rows" / "affected" are now translated.
+  "rows" / "affected" are now translated. A new query tab's opening comment
+  no longer names a key ("write a SQL query and run it"), so it cannot go
+  stale when the shortcut is rebound.
 
 - **A cut result's tooltip says which cap cut it.** In a batch, a result
   tab cut at its own 50 000-row cap used to blame the batch's shared row
@@ -153,7 +155,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   statements used to show a summary list above a strip of only the result
   sets, tied together by `#n`; a write or a failure had nowhere of its own
   to be selected. The results now have a tab for every statement that ran —
-  its rows, what a write changed, or why it failed — and a batch starts
+  its rows, what a write changed, or why it failed — named by its number
+  and the start of the statement (`#2 · UPDATE Track SET Name =…`, comments
+  skipped), and with "1 row" / "2 rows" said properly. A batch starts
   with a **Summary** tab that lists each statement with its rows and its
   time (a line opens that statement's tab). A run lands on the statement
   that failed, else the first rows, else the Summary, and each new run
