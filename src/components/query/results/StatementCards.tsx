@@ -52,7 +52,7 @@ export function WriteCard({ tab, onGoTo }: CardProps<WriteTab>) {
       <div className="flex items-center gap-2 text-xs">
         <Check className="h-3.5 w-3.5 shrink-0 text-primary" />
         <span>
-          {t("query.rowsAffected", { rows: tab.rowsAffected, ms: tab.elapsedMs })}
+          {t("query.rowsAffected", { count: tab.rowsAffected, ms: tab.elapsedMs })}
         </span>
         <span className="ml-auto">
           <GoTo lines={tab.lines} onGoTo={onGoTo} />

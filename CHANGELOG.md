@@ -113,7 +113,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   `Ctrl + Enter` whatever *Run query* was bound to; it now shows your
   binding, and nothing when the action is unbound. The Run button's tooltip
   follows it too. The line and character counts and the batch summary's
-  "rows" / "affected" are now translated.
+  "rows" / "affected" are now translated. A new query tab's opening comment
+  no longer names a key ("write a SQL query and run it"), so it cannot go
+  stale when the shortcut is rebound.
 
 - **A cut result's tooltip says which cap cut it.** In a batch, a result
   tab cut at its own 50 000-row cap used to blame the batch's shared row
@@ -181,24 +183,30 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   dock (its activity-bar button, *View → History*, or the History button in
   the query toolbar), showing the history of the connection of the tab you
   are in, with a switch to show every connection's. Clicking an entry opens
-  it in a new query tab; its ▶ opens it and runs it.
+  it in a new query tab; its ▶ opens it and runs it. The status bar's
+  *history: N* now opens this panel instead of a menu of its own (whose
+  *Clear history* emptied every connection's history without asking).
 
 - **The query editor's toolbar shows every action as an icon.** Next to Run
   and the timer: *Format SQL*, *Save query*, *Query history* and — on a
   connection where the AI is on — *Explain with AI*, which explains the
-  selection or the statement under the cursor. In a narrow pane they move
-  into a "⋯" menu, and in a very narrow one the database selector does too.
+  selection or the statement under the cursor; the AI entries of the
+  editor's right-click menu now also appear only there, instead of being
+  offered and refused where the AI is off. In a narrow pane they move into a
+  "⋯" menu, and in a very narrow one the database selector does too.
   *Format SQL* (`Shift+Alt+F`, rebindable) formats the selection or the
   whole editor as one step you can undo; it is not offered on MongoDB. The
   info bar under the editor now shows the cursor's line and column, the
   number of statements and the driver, instead of the line and character
-  counts and "sql · utf-8".
+  counts and "sql · utf-8", and stays on one line in a narrow pane.
 
 - **A query's results show one tab per statement.** Running several
   statements used to show a summary list above a strip of only the result
   sets, tied together by `#n`; a write or a failure had nowhere of its own
   to be selected. The results now have a tab for every statement that ran —
-  its rows, what a write changed, or why it failed — and a batch starts
+  its rows, what a write changed, or why it failed — named by its number
+  and the start of the statement (`#2 · UPDATE Track SET Name =…`, comments
+  skipped), and with "1 row" / "2 rows" said properly. A batch starts
   with a **Summary** tab that lists each statement with its rows and its
   time (a line opens that statement's tab). A run lands on the statement
   that failed, else the first rows, else the Summary, and each new run

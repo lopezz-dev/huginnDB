@@ -19,7 +19,7 @@
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, CircleStop, ListChecks, X } from "lucide-react";
 import { Segmented } from "@/components/ui/segmented";
-import type { StatementTab } from "@/lib/query/statementTabs";
+import { sqlPreview, type StatementTab } from "@/lib/query/statementTabs";
 import { cutBy } from "@/lib/query/resultCap";
 
 type T = (key: string, opts?: Record<string, unknown>) => string;
@@ -32,18 +32,25 @@ function numberOf(tab: Exclude<StatementTab, { kind: "summary" }>): string {
     : `#${tab.statement}`;
 }
 
+/** `#2 · UPDATE Track SET…`: the number the Summary counts by, and enough of
+ *  the statement to tell the tabs apart without opening it. */
+function nameOf(tab: Exclude<StatementTab, { kind: "summary" }>): string {
+  const preview = sqlPreview(tab.sql);
+  return preview ? `${numberOf(tab)} · ${preview}` : numberOf(tab);
+}
+
 function labelOf(tab: StatementTab, t: T): string {
   switch (tab.kind) {
     case "summary":
       return t("query.tabSummary");
     case "rows":
-      return t("query.resultTab", { label: numberOf(tab), rows: tab.result.rows.length });
+      return t("query.resultTab", { label: nameOf(tab), count: tab.result.rows.length });
     case "write":
-      return t("query.writeTab", { label: numberOf(tab), rows: tab.rowsAffected });
+      return t("query.writeTab", { label: nameOf(tab), count: tab.rowsAffected });
     case "error":
-      return t("query.errorTab", { label: numberOf(tab) });
+      return t("query.errorTab", { label: nameOf(tab) });
     case "stopped":
-      return t("query.stoppedTab", { label: numberOf(tab) });
+      return t("query.stoppedTab", { label: nameOf(tab) });
   }
 }
 
