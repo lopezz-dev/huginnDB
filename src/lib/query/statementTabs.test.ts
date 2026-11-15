@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   initialTabKey,
+  sqlPreview,
   tabsFromBatch,
   tabsFromFailure,
   tabsFromSingle,
@@ -244,5 +245,34 @@ describe("initialTabKey", () => {
   it("a single write lands on its own card; nothing lands nowhere", () => {
     expect(initialTabKey(tabsFromSingle(sql("DELETE"), write(1)))).toBe("0:w");
     expect(initialTabKey([])).toBeNull();
+  });
+});
+
+describe("sqlPreview", () => {
+  it("keeps a short statement whole, on one line", () => {
+    expect(sqlPreview("SELECT 1")).toBe("SELECT 1");
+    expect(sqlPreview("SELECT 1; ")).toBe("SELECT 1");
+    expect(sqlPreview(`  SELECT a,
+	 b
+FROM t `)).toBe("SELECT a, b FROM t");
+  });
+
+  it("cuts a long one with an ellipsis", () => {
+    expect(sqlPreview("UPDATE Track SET Name = Name WHERE TrackId = 1")).toBe(
+      "UPDATE Track SET Name =…",
+    );
+  });
+
+  it("skips leading comments, SQL and Mongo alike", () => {
+    expect(sqlPreview(`-- fix the prices
+UPDATE t SET p = 1`)).toBe("UPDATE t SET p = 1");
+    expect(sqlPreview(`/* a
+b */ DELETE FROM t`)).toBe("DELETE FROM t");
+    expect(sqlPreview(`// seed
+db.users.find({})`)).toBe("db.users.find({})");
+  });
+
+  it("is empty for a statement that is only a comment", () => {
+    expect(sqlPreview("-- nothing")).toBe("");
   });
 });

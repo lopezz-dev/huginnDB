@@ -296,3 +296,33 @@ export function initialTabKey(tabs: readonly StatementTab[]): string | null {
     null
   );
 }
+
+/** How many characters of a statement a result tab shows. */
+const PREVIEW_CHARS = 24;
+
+/**
+ * The start of a statement, for its result tab's label (ADR #137): enough to
+ * tell `#2 · UPDATE Track SET…` from `#3 · INSERT INTO Genre…` without
+ * reading the Summary.
+ *
+ * Leading comments are skipped — a tab that says `-- fix the prices…` names
+ * the comment, not the statement — and whitespace runs, line breaks included,
+ * become one space, and the closing `;` goes. Longer than `max` is cut with
+ * an ellipsis.
+ */
+export function sqlPreview(sql: string, max = PREVIEW_CHARS): string {
+  let text = sql.trim();
+  for (;;) {
+    if (text.startsWith("--") || text.startsWith("//")) {
+      const nl = text.indexOf("\n");
+      text = nl === -1 ? "" : text.slice(nl + 1).trimStart();
+    } else if (text.startsWith("/*")) {
+      const close = text.indexOf("*/");
+      text = close === -1 ? "" : text.slice(close + 2).trimStart();
+    } else {
+      break;
+    }
+  }
+  const flat = text.replace(/[\s;]+$/, "").replace(/\s+/g, " ");
+  return flat.length > max ? `${flat.slice(0, max).trimEnd()}…` : flat;
+}
