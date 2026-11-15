@@ -155,7 +155,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   dock (its activity-bar button, *View → History*, or the History button in
   the query toolbar), showing the history of the connection of the tab you
   are in, with a switch to show every connection's. Clicking an entry opens
-  it in a new query tab; its ▶ opens it and runs it.
+  it in a new query tab; its ▶ opens it and runs it. The status bar's
+  *history: N* now opens this panel instead of a menu of its own (whose
+  *Clear history* emptied every connection's history without asking).
 
 - **The query editor's toolbar shows every action as an icon.** Next to Run
   and the timer: *Format SQL*, *Save query*, *Query history* and — on a

@@ -173,7 +173,10 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   *Ver → Historial* o el botón Historial de la barra del editor), que
   muestra el historial de la conexión de la pestaña en la que estás, con un
   interruptor para ver el de todas. Pulsar una entrada la abre en una
-  pestaña de consulta nueva; su ▶ la abre y la ejecuta.
+  pestaña de consulta nueva; su ▶ la abre y la ejecuta. El *historial: N*
+  de la barra de estado abre ahora este panel en vez de un menú propio
+  (cuyo *Limpiar historial* vaciaba el de todas las conexiones sin
+  preguntar).
 
 - **La barra de herramientas del editor de consultas muestra cada acción
   como un icono.** Junto a Ejecutar y el cronómetro: *Formatear SQL*,

@@ -3,8 +3,8 @@
  * `StatusConnections`) plus the active tab's selection count, if any (query
  * tabs have their own run stats — timer, rows, history — inside the query
  * editor itself, see `QueryEditorTab`, rather than duplicated here). Right
- * side: encoding, the connected server version, a clickable query-history
- * popover, and quick density / theme toggles.
+ * side: encoding, the connected server version, the query-history count
+ * (which opens the History panel), and quick density / theme toggles.
  *
  * Everything here subscribes to reference-stable store values and derives
  * scalars locally, per the Zustand selector rule in CLAUDE.md.
@@ -17,7 +17,6 @@ import {
   Rows3,
   SquareTerminal,
   Sun,
-  Trash2,
 } from "lucide-react";
 import { useConnections } from "@/stores/session/connections";
 import { useCommandPalette } from "@/stores/dialogs/commandPalette";
@@ -40,14 +39,11 @@ import {
   DropdownMenuContent,
   DropdownMenuLabel,
   DropdownMenuItem,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown";
 import { SimpleTooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { IconButton } from "@/components/ui/icon-button";
 import { cn } from "@/lib/utils";
-import { openQueryTab } from "@/lib/tabs/openQueryTab";
-import { copyToClipboard } from "@/lib/clipboard";
 
 /** Thin vertical divider between status bar sections. */
 function Sep() {
@@ -143,7 +139,7 @@ export function StatusBar() {
           </>
         )}
         <span className="text-muted-foreground/30">·</span>
-        <HistoryMenu count={historyCount} />
+        <HistoryButton count={historyCount} />
         <Sep />
         <DensityMenu />
         <ConsoleToggle />
@@ -153,83 +149,37 @@ export function StatusBar() {
   );
 }
 
-/** Clickable query-history popover. */
-function HistoryMenu({ count }: { count: number }) {
+/**
+ * The bar's query-history readout: the count, and a click that opens the
+ * History panel in the dock (ADR #137).
+ *
+ * It used to be a menu of its own — the last 15 entries and a "Clear
+ * history" that emptied every connection's history without asking — which
+ * the dock panel made a second, weaker copy of the same list. Decided with
+ * Alex on 2026-11-15: keep the count where it always was, and send the click
+ * to the one place the history lives. It opens the panel rather than
+ * toggling it: a status-bar readout that closed what you came to look at
+ * would read as broken.
+ */
+function HistoryButton({ count }: { count: number }) {
   const { t } = useTranslation();
-  const entries = useQueryHistory((s) => s.entries);
-  const clear = useQueryHistory((s) => s.clear);
-  const active = useConnections((s) => s.active);
-
-  function openEntry(connectionId: string, sql: string) {
-    if (active.has(connectionId)) {
-      // Open a fresh query tab prefilled with the SQL on its connection, which
-      // `focusFollowsTab` then makes the focused one. `resolveTarget: false` on
-      // purpose: this reopens a past query on the connection it actually ran
-      // against, not on whichever database happens to be in front of the user
-      // now.
-      openQueryTab(connectionId, { sql, resolveTarget: false });
-    } else {
-      // The connection isn't live — fall back to copying the SQL.
-      void copyToClipboard(sql);
-    }
-  }
-
+  const showRightPanel = useSessionPanelLayout((s) => s.showRightPanel);
   return (
-    <DropdownMenu>
-      <SimpleTooltip label={t("statusBar.recentQueries")} side="top">
-        <DropdownMenuTrigger asChild>
-          <Button
-            type="button"
-            flat
-            variant="quiet"
-            size="xs"
-            className={cn(STATUS_TEXT_BUTTON, "gap-1")}
-          >
-            {/* A child rather than `icon`: the bar's type is `text-2xs`, a
-                step below the smallest size whose glyph the button owns. */}
-            <History className="h-3 w-3" />
-            {t("statusBar.history")} {count}
-          </Button>
-        </DropdownMenuTrigger>
-      </SimpleTooltip>
-      <DropdownMenuContent side="top" align="end" className="w-96">
-        <DropdownMenuLabel>{t("statusBar.recentQueries")}</DropdownMenuLabel>
-        {entries.length === 0 ? (
-          <div className="px-2 py-1.5 text-xs text-muted-foreground">
-            {t("statusBar.noHistory")}
-          </div>
-        ) : (
-          <>
-            <div className="max-h-72 overflow-auto">
-              {entries.slice(0, 15).map((e) => (
-                <DropdownMenuItem
-                  key={e.id}
-                  onSelect={() => openEntry(e.connectionId, e.sql)}
-                  className="flex-col items-start gap-0.5"
-                >
-                  <span className="line-clamp-2 w-full font-mono text-2xs text-foreground">
-                    {e.sql}
-                  </span>
-                  <span className="text-3xs text-muted-foreground">
-                    {e.error
-                      ? e.error
-                      : `${e.rowsAffected} ${t("statusBar.rows")} · ${e.elapsedMs} ${t("statusBar.ms")}`}
-                  </span>
-                </DropdownMenuItem>
-              ))}
-            </div>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onSelect={() => clear()}
-              className="gap-2 text-xs text-muted-foreground"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              {t("statusBar.clearHistory")}
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <SimpleTooltip label={t("statusBar.openHistory")} side="top">
+      <Button
+        type="button"
+        flat
+        variant="quiet"
+        size="xs"
+        className={cn(STATUS_TEXT_BUTTON, "gap-1")}
+        onClick={() => showRightPanel("history")}
+      >
+        {/* A child rather than `icon`: the bar's type is `text-2xs`, a
+            step below the smallest size whose glyph the button owns. */}
+        <History className="h-3 w-3" />
+        {t("statusBar.history")} {count}
+      </Button>
+    </SimpleTooltip>
   );
 }
 
