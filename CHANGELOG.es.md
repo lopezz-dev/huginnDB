@@ -104,7 +104,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   *Ejecutar consulta*; ahora muestra el tuyo, y nada si la acción no tiene
   atajo. El tooltip del botón Ejecutar también lo sigue. Los contadores de
   líneas y caracteres y las "filas" / "afectadas" del resumen del lote
-  están ahora traducidos.
+  están ahora traducidos. El comentario con el que abre una pestaña de
+  consulta nueva ya no nombra ninguna tecla ("escribe una consulta SQL y
+  ejecútala"), así que no queda desfasado si cambias el atajo.
 
 - **El tooltip de un resultado cortado dice qué límite lo cortó.** En un
   lote, una pestaña de resultado cortada en su propio límite de 50 000
@@ -177,20 +179,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   como un icono.** Junto a Ejecutar y el cronómetro: *Formatear SQL*,
   *Guardar consulta*, *Historial de consultas* y, en una conexión con la IA
   activada, *Explicar con IA*, que explica la selección o la sentencia bajo
-  el cursor. En un panel estrecho pasan a un menú "⋯", y en uno muy
+  el cursor; las entradas de IA del menú contextual del editor también
+  aparecen ahora solo ahí, en vez de ofrecerse y rechazarse donde la IA
+  está apagada. En un panel estrecho pasan a un menú "⋯", y en uno muy
   estrecho también el selector de base de datos. *Formatear SQL*
   (`Shift+Alt+F`, reasignable) formatea la selección o todo el editor en un
   solo paso que se puede deshacer; no se ofrece en MongoDB. La barra de
   información bajo el editor muestra ahora la línea y columna del cursor, el
   número de sentencias y el driver, en lugar de los contadores de líneas y
-  caracteres y "sql · utf-8".
+  caracteres y "sql · utf-8", y se queda en una línea en un panel estrecho.
 
 - **Los resultados de una consulta muestran una pestaña por sentencia.**
   Ejecutar varias sentencias mostraba una lista de resumen encima de una
   tira con solo los conjuntos de resultados, unidas por `#n`; una escritura
   o un fallo no tenían un sitio propio que seleccionar. Ahora hay una
   pestaña por cada sentencia ejecutada (sus filas, lo que cambió una
-  escritura o por qué falló) y un lote empieza con una pestaña **Resumen**
+  escritura o por qué falló), con su número y el principio de la sentencia
+  (`#2 · UPDATE Track SET Name =…`, sin los comentarios) y con «1 fila» /
+  «2 filas» bien dicho. Un lote empieza con una pestaña **Resumen**
   que lista cada sentencia con sus filas y su tiempo (una línea abre la
   pestaña de esa sentencia). Una ejecución se abre en la sentencia que
   falló, si no en las primeras filas, si no en el Resumen, y cada ejecución

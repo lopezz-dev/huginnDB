@@ -31,7 +31,10 @@ export function SummaryView({
       >
         <span>
           {ok
-            ? t("query.batchOk", { count: tab.statements.length, rows: tab.totalAffected })
+            ? t("query.batchOk", {
+                count: tab.statements.length,
+                affected: t("query.affectedRows", { count: tab.totalAffected }),
+              })
             : t("query.batchFailed", { index: tab.failedAt, total: tab.statements.length })}
         </span>
         <span className="ml-auto tabular-nums text-muted-foreground">
