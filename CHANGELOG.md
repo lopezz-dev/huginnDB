@@ -79,6 +79,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **The query editor's info bar shows your Run shortcut.** It used to say
+  `Ctrl + Enter` whatever *Run query* was bound to; it now shows your
+  binding, and nothing when the action is unbound. The Run button's tooltip
+  follows it too. The line and character counts and the batch summary's
+  "rows" / "affected" are now translated. A new query tab's opening comment
+  no longer names a key ("write a SQL query and run it"), so it cannot go
+  stale when the shortcut is rebound.
+
+- **A cut result's tooltip says which cap cut it.** In a batch, a result
+  tab cut at its own 50 000-row cap used to blame the batch's shared row
+  budget. It now says the statement returns more, and keeps the budget for
+  the results the budget really shed.
+
 - ***Copy row as ▸ SQL UPDATE* works on a table whose every column is key.**
   On a junction table such as `playlist_track (playlist_id, track_id)` the
   snippet came out as `UPDATE … SET  WHERE …`, which no database runs,
@@ -126,6 +139,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   can also no longer leave the older one on disk.
   
 ### Changed
+
+- **`Ctrl+Enter` runs the selection, or the statement under the cursor.**
+  In a query tab it used to run the whole editor, so a scratch buffer of
+  twenty queries ran all twenty. It now runs what is selected, and with
+  nothing selected, the statement the cursor is in — the rule the AI's
+  *Explain* actions already followed. A selection spanning several
+  statements runs them as a batch. With the cursor between two statements
+  nothing runs, and a notification says why. Running everything has its own
+  shortcut, `Ctrl+Shift+Enter` (*Run every statement in the editor*,
+  rebindable in Settings → Shortcuts). The Run button follows the same rule,
+  and its new ▾ offers *Run the statement under the cursor*, *Run the
+  selection* and *Run all (N)*.
 
 - **A smaller, tighter release binary.** Release builds now link with thin
   LTO and a single codegen unit, and drop their debug info, so the compiler

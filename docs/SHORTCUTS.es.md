@@ -57,6 +57,27 @@ tiene y ofrece quitársela.
 `Ctrl+B` de un shell no deben abrir ni cerrar un panel. Allí solo se oyen la
 paleta de comandos, Preferencias y los conmutadores de Consola / Terminal.
 
+## El editor de consultas
+
+Estos atajos se oyen mientras el foco está en el editor de una pestaña de
+consulta (ámbito `editor`), y cualquiera de ellos se puede reasignar como
+cualquier otra acción.
+
+| Acción | Por defecto | Qué ejecuta |
+| --- | --- | --- |
+| Ejecutar la selección, o la sentencia bajo el cursor | `Mod+Enter` | Lo seleccionado; sin selección, la sentencia en la que está el cursor. Un cursor en la línea en blanco tras la última sentencia sigue contando como dentro de ella. Una selección que abarca varias sentencias las ejecuta como lote. |
+| Ejecutar todas las sentencias del editor | `Mod+Shift+Enter` | Todo el contenido, sentencia a sentencia, en una sola conexión. |
+
+El botón Ejecutar hace lo mismo que `Mod+Enter`. Su ▾ ofrece los tres
+alcances por su nombre: la sentencia bajo el cursor (aunque haya
+selección), la selección y todo.
+
+Antes `Mod+Enter` ejecutaba todo el contenido. Un borrador con veinte
+consultas ejecutaba las veinte, mientras que las acciones *Explicar* de la
+IA en el mismo editor ya actuaban sobre la selección o la sentencia actual:
+un gesto, dos reglas. Ahora sigue la regla de la IA, y ejecutar todo tiene
+su propio atajo.
+
 ## Teclas que la app se reserva
 
 `Mod+R` siempre refresca, además de lo que le asignes a esa acción. No se

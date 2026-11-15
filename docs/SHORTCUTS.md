@@ -56,6 +56,26 @@ and offers to take it away from that one.
 `Ctrl+R`, `Ctrl+K` or `Ctrl+B` must not toggle a panel. Only the command
 palette, Preferences and the Console / Terminal toggles are heard there.
 
+## The query editor
+
+These are heard while the focus is in a query tab's editor (`editor` scope),
+and every one of them can be rebound like any other action.
+
+| Action | Default | What it runs |
+| --- | --- | --- |
+| Run the selection, or the statement under the cursor | `Mod+Enter` | What is selected; with nothing selected, the statement the cursor is in. A caret on the blank line after the last statement still counts as in it. A selection that spans several statements runs them as a batch. |
+| Run every statement in the editor | `Mod+Shift+Enter` | The whole buffer, statement by statement on one connection. |
+
+The Run button does what `Mod+Enter` does. Its ▾ offers the three scopes by
+name: the statement under the cursor (ignoring a selection), the selection,
+and everything.
+
+`Mod+Enter` used to run the whole buffer. A scratch buffer of twenty queries
+then ran all twenty, while the AI's *Explain* actions in the same editor
+already acted on the selection or the current statement — one gesture, two
+rules. It now follows the AI's rule, and the whole buffer has a key of its
+own.
+
 ## Keys the app keeps
 
 `Mod+R` always refreshes, on top of whatever you bind to that action. It

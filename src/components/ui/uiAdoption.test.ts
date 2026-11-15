@@ -262,7 +262,8 @@ describe("raw <button> outside ui/", () => {
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
     "src/components/pulse/PulsePanel.tsx": 1,
     "src/components/query/Console.tsx": 1,
-    "src/components/query/QueryEditorTab.tsx": 1,
+    // Moved from QueryEditorTab.tsx by the ADR #137 extraction, unchanged.
+    "src/components/query/QueryHistorySidebar.tsx": 1,
     "src/components/schema/SecurityTab.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
     "src/components/settings/sections/AppearanceSection.tsx": 1,
@@ -327,7 +328,6 @@ describe("the OS tooltip outside ui/", () => {
   const SPREADS_TO_DOM = new Set(["Button", "Switch", "SelectTrigger"]);
 
   const BUDGET: Record<string, number> = {
-    "src/components/query/QueryEditorTab.tsx": 6,
     "src/components/pulse/PulseWindow.tsx": 5,
     // Was 8. `MatchBadge`'s six arms became one `SimpleTooltip` — every one of
     // them explains a state the glyph cannot carry ("—" means four different
@@ -338,6 +338,9 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/connection/ConnectionTreeRow.tsx": 4,
     "src/components/connection/EnvironmentSwitcher.tsx": 4,
     "src/components/grid/DocumentListView.tsx": 4,
+    // These four, and the timer's and the history sidebar's below, were
+    // QueryEditorTab.tsx's 6 before the ADR #137 extraction split it.
+    "src/components/query/QueryEditorToolbar.tsx": 4,
     // Three of the four are the colour swatches inside `ContextMenuContent`,
     // which is the menu-content case `tooltip.tsx` reserves for the OS
     // tooltip. They are host elements rather than `ContextMenuItem`s, so the
@@ -369,6 +372,8 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/origins/OriginEditorHeader.tsx": 1,
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
     "src/components/origins/sections/SchemasPane.tsx": 1,
+    "src/components/query/QueryHistorySidebar.tsx": 1,
+    "src/components/query/QueryTimer.tsx": 1,
     "src/components/settings/sections/JsonSchemasSection.tsx": 1,
     // Documented exception, the same one the raw-button budget records for
     // this file: a Radix tooltip portals below Sonner's toaster, so the file
@@ -376,7 +381,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/NotificationCard.tsx": 1,
   };
 
-  it(`is down to ${71} in ${34} files`, () => {
+  it(`is down to ${71} in ${36} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const [tag, attrs] of openingTags(src)) {
