@@ -160,13 +160,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   como un icono.** Junto a Ejecutar y el cronómetro: *Formatear SQL*,
   *Guardar consulta*, *Historial de consultas* y, en una conexión con la IA
   activada, *Explicar con IA*, que explica la selección o la sentencia bajo
-  el cursor. En un panel estrecho pasan a un menú "⋯", y en uno muy
+  el cursor; las entradas de IA del menú contextual del editor también
+  aparecen ahora solo ahí, en vez de ofrecerse y rechazarse donde la IA
+  está apagada. En un panel estrecho pasan a un menú "⋯", y en uno muy
   estrecho también el selector de base de datos. *Formatear SQL*
   (`Shift+Alt+F`, reasignable) formatea la selección o todo el editor en un
   solo paso que se puede deshacer; no se ofrece en MongoDB. La barra de
   información bajo el editor muestra ahora la línea y columna del cursor, el
   número de sentencias y el driver, en lugar de los contadores de líneas y
-  caracteres y "sql · utf-8".
+  caracteres y "sql · utf-8", y se queda en una línea en un panel estrecho.
 
 - **Los resultados de una consulta muestran una pestaña por sentencia.**
   Ejecutar varias sentencias mostraba una lista de resumen encima de una

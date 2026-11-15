@@ -143,13 +143,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **The query editor's toolbar shows every action as an icon.** Next to Run
   and the timer: *Format SQL*, *Save query*, *Query history* and — on a
   connection where the AI is on — *Explain with AI*, which explains the
-  selection or the statement under the cursor. In a narrow pane they move
-  into a "⋯" menu, and in a very narrow one the database selector does too.
+  selection or the statement under the cursor; the AI entries of the
+  editor's right-click menu now also appear only there, instead of being
+  offered and refused where the AI is off. In a narrow pane they move into a
+  "⋯" menu, and in a very narrow one the database selector does too.
   *Format SQL* (`Shift+Alt+F`, rebindable) formats the selection or the
   whole editor as one step you can undo; it is not offered on MongoDB. The
   info bar under the editor now shows the cursor's line and column, the
   number of statements and the driver, instead of the line and character
-  counts and "sql · utf-8".
+  counts and "sql · utf-8", and stays on one line in a narrow pane.
 
 - **A query's results show one tab per statement.** Running several
   statements used to show a summary list above a strip of only the result

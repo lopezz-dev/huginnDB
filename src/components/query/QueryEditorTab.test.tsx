@@ -71,6 +71,8 @@ const h = vi.hoisted(() => ({
     moveCaret: (_line: number, _column: number) => {},
   },
   aiTask: vi.fn(),
+  /** Ids of the editor's own context-menu actions currently registered. */
+  contextActions: new Set<string>(),
 }));
 
 vi.mock("@/lib/tauri", () => ({ api: h.api }));
@@ -133,7 +135,10 @@ vi.mock("@monaco-editor/react", () => ({
           onDidChangeModelContent: () => ({ dispose: () => {} }),
           onKeyDown: () => ({ dispose: () => {} }),
           addCommand: () => null,
-          addAction: () => ({ dispose: () => {} }),
+          addAction: (action: { id: string }) => {
+            h.contextActions.add(action.id);
+            return { dispose: () => h.contextActions.delete(action.id) };
+          },
         },
         {},
       );
@@ -1140,6 +1145,33 @@ describe("toolbar", () => {
     usePreferences.setState((s) => ({
       prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: false } },
     }));
+  });
+
+  it("the editor's AI context-menu entries come and go with the connection's AI", () => {
+    h.contextActions.clear();
+    seed("SELECT 1");
+    renderTab();
+    expect([...h.contextActions]).toEqual([]);
+
+    act(() => {
+      usePreferences.setState((s) => ({
+        prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: true } },
+      }));
+      useConnections.setState({
+        profiles: [{ ...profile(CONN, "postgres"), ai_enabled: true }],
+      });
+    });
+    expect([...h.contextActions].sort()).toEqual([
+      "huginndb.ai.explainQuery",
+      "huginndb.ai.explainSlow",
+    ]);
+
+    act(() => {
+      usePreferences.setState((s) => ({
+        prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: false } },
+      }));
+    });
+    expect([...h.contextActions]).toEqual([]);
   });
 
   it("History is a toggle that says whether it is open", () => {
