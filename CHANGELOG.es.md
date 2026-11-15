@@ -161,7 +161,9 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   tira con solo los conjuntos de resultados, unidas por `#n`; una escritura
   o un fallo no tenían un sitio propio que seleccionar. Ahora hay una
   pestaña por cada sentencia ejecutada (sus filas, lo que cambió una
-  escritura o por qué falló) y un lote empieza con una pestaña **Resumen**
+  escritura o por qué falló), con su número y el principio de la sentencia
+  (`#2 · UPDATE Track SET Name =…`, sin los comentarios) y con «1 fila» /
+  «2 filas» bien dicho. Un lote empieza con una pestaña **Resumen**
   que lista cada sentencia con sus filas y su tiempo (una línea abre la
   pestaña de esa sentencia). Una ejecución se abre en la sentencia que
   falló, si no en las primeras filas, si no en el Resumen, y cada ejecución

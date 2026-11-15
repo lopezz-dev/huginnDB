@@ -144,7 +144,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   statements used to show a summary list above a strip of only the result
   sets, tied together by `#n`; a write or a failure had nowhere of its own
   to be selected. The results now have a tab for every statement that ran —
-  its rows, what a write changed, or why it failed — and a batch starts
+  its rows, what a write changed, or why it failed — named by its number
+  and the start of the statement (`#2 · UPDATE Track SET Name =…`, comments
+  skipped), and with "1 row" / "2 rows" said properly. A batch starts
   with a **Summary** tab that lists each statement with its rows and its
   time (a line opens that statement's tab). A run lands on the statement
   that failed, else the first rows, else the Summary, and each new run
