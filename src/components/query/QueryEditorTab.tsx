@@ -95,6 +95,12 @@ interface Props {
   connectionId: string;
 }
 
+/** The AI entries of the editor's context menu, in menu order. */
+const AI_CONTEXT_ACTIONS = [
+  { task: "explainQuery" as const, key: "ai.task.explainQuery", order: 1.5 },
+  { task: "explainSlow" as const, key: "ai.task.explainSlow", order: 1.6 },
+];
+
 export function QueryEditorTab({ tabId, connectionId }: Props) {
   const { t } = useTranslation();
   const tab = useTabs((s) => s.tabs.find((t) => t.id === tabId));
@@ -367,6 +373,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     runAtRef.current = runAt;
   }, [runAt]);
   const [hasSelection, setHasSelection] = useState(false);
+  /** Set once Monaco has mounted: what the context-menu effect waits for. */
+  const [editorReady, setEditorReady] = useState(false);
 
   // A tab opened with `openQueryTab(…, { run: true })` (the history panel's
   // Run) runs its whole buffer once, through this tab's own runner — so a
@@ -438,6 +446,43 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         : undefined,
     [aiReachable, dialect, connectionId, t],
   );
+
+  /**
+   * The two assisted-mode entries in the editor's own right-click menu
+   * ("Explain query", "Why is it slow"), offered only where the AI is on for
+   * this connection, like the toolbar's Explain (ADR #136): a connection
+   * without AI does not offer AI. They used to be added once at mount and
+   * stay, so a connection with the AI off showed them and the backend
+   * refused them.
+   *
+   * `addAction` is scoped to this editor, unlike the language providers, so
+   * N tabs give N menus rather than one menu with N duplicates (not gotcha
+   * #9's shape). The disposers take the entries away when the AI goes off,
+   * the connection changes or the tab unmounts. The label is resolved when
+   * they are added; a language switch mid-session leaves it stale until the
+   * next add, as with every Monaco action.
+   */
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editorReady || !editor || !aiReachable) return;
+    const added = AI_CONTEXT_ACTIONS.map((entry) =>
+      editor.addAction({
+        id: `huginndb.ai.${entry.task}`,
+        label: i18n.t(entry.key),
+        contextMenuGroupId: "huginndb",
+        contextMenuOrder: entry.order,
+        run: (ed) => {
+          // The selection when there is one, else the statement the caret is
+          // in — the same rule `runQuery` follows (`lib/query/runTarget`).
+          const statement = runTarget(snapshotOf(ed, dialectRef.current), "cursor")?.text;
+          if (!statement) return;
+          void runAiTask({ task: entry.task, connection: connectionId, statement });
+        },
+      }),
+    );
+    return () => added.forEach((d) => d.dispose());
+    // `editorRef` and `dialectRef` are refs, read when an entry runs.
+  }, [editorReady, aiReachable, connectionId]);
 
   /**
    * Ref to the live completion list for the same reason as `runQueryRef`:
@@ -526,36 +571,9 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     // live data (read through the existing refs) and keep the disposer for
     // unmount — registering the providers per editor is what produced the
     // duplicate "▶ Run" lenses when several query tabs were open.
-    // Two assisted-mode entries in the editor's own right-click menu. Added
-    // per *editor instance*, which looks like gotcha #9's shape and is not:
-    // `addAction` is scoped to this editor, unlike the language providers
-    // below, so N tabs give N menus rather than one menu with N duplicates.
-    //
-    // The label is resolved once at mount. A language switch mid-session
-    // leaves it stale until the tab is reopened — the same limitation every
-    // Monaco action has, and not worth a re-mount to fix.
-    for (const entry of [
-      { task: "explainQuery" as const, key: "ai.task.explainQuery", order: 1.5 },
-      { task: "explainSlow" as const, key: "ai.task.explainSlow", order: 1.6 },
-    ]) {
-      editor?.addAction({
-        id: `huginndb.ai.${entry.task}`,
-        label: i18n.t(entry.key),
-        contextMenuGroupId: "huginndb",
-        contextMenuOrder: entry.order,
-        run: (ed) => {
-          // The selection when there is one, else the statement the caret is
-          // in — the same rule `runQuery` follows (`lib/query/runTarget`).
-          const statement = runTarget(snapshotOf(ed, dialectRef.current), "cursor")?.text;
-          if (!statement) return;
-          void runAiTask({
-            task: entry.task,
-            connection: connectionId,
-            statement,
-          });
-        },
-      });
-    }
+    // The assisted-mode entries in the right-click menu are added by the
+    // `aiReachable` effect, not here: they come and go with the AI.
+    setEditorReady(true);
 
     // Both language families are installed unconditionally. They are global
     // per Monaco instance and idempotent, so the cost is one registration

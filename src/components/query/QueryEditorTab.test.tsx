@@ -71,6 +71,8 @@ const h = vi.hoisted(() => ({
     moveCaret: (_line: number, _column: number) => {},
   },
   aiTask: vi.fn(),
+  /** Ids of the editor's own context-menu actions currently registered. */
+  contextActions: new Set<string>(),
 }));
 
 vi.mock("@/lib/tauri", () => ({ api: h.api }));
@@ -133,7 +135,10 @@ vi.mock("@monaco-editor/react", () => ({
           onDidChangeModelContent: () => ({ dispose: () => {} }),
           onKeyDown: () => ({ dispose: () => {} }),
           addCommand: () => null,
-          addAction: () => ({ dispose: () => {} }),
+          addAction: (action: { id: string }) => {
+            h.contextActions.add(action.id);
+            return { dispose: () => h.contextActions.delete(action.id) };
+          },
         },
         {},
       );
@@ -538,7 +543,7 @@ describe("DML", () => {
 
     expect(screen.queryByTestId("result-grid")).toBeNull();
     expect(
-      screen.getByText(`query.rowsAffected${JSON.stringify({ rows: 4, ms: 3 })}`),
+      screen.getByText(`query.rowsAffected${JSON.stringify({ count: 4, ms: 3 })}`),
     ).toBeTruthy();
     expect(useQueryHistory.getState().entries[0]).toMatchObject({
       rowsAffected: 4,
@@ -631,9 +636,9 @@ describe("batch", () => {
 
     expect(tabLabels()).toEqual([
       "query.tabSummary",
-      `query.resultTab${JSON.stringify({ label: "#1", rows: 2 })}`,
-      `query.writeTab${JSON.stringify({ label: "#2", rows: 5 })}`,
-      `query.resultTab${JSON.stringify({ label: "#3", rows: 1 })}`,
+      `query.resultTab${JSON.stringify({ label: "#1 · SELECT a FROM t", count: 2 })}`,
+      `query.writeTab${JSON.stringify({ label: "#2 · UPDATE t SET a = 1", count: 5 })}`,
+      `query.resultTab${JSON.stringify({ label: "#3 · SELECT b FROM u", count: 1 })}`,
     ]);
   });
 
@@ -659,7 +664,7 @@ describe("batch", () => {
     renderTab();
     await runAll();
     expect(
-      screen.getByText(`query.batchOk${JSON.stringify({ count: 2, rows: 3 })}`),
+      screen.getByText(`query.batchOk${JSON.stringify({ count: 2, affected: `query.affectedRows${JSON.stringify({ count: 3 })}` })}`),
     ).toBeTruthy();
     expect(screen.queryByTestId("result-grid")).toBeNull();
   });
@@ -672,7 +677,7 @@ describe("batch", () => {
     pickTab("query.tabSummary");
 
     expect(
-      screen.getByText(`query.batchOk${JSON.stringify({ count: 3, rows: 5 })}`),
+      screen.getByText(`query.batchOk${JSON.stringify({ count: 3, affected: `query.affectedRows${JSON.stringify({ count: 5 })}` })}`),
     ).toBeTruthy();
     expect(screen.getByText("UPDATE t SET a = 1")).toBeTruthy();
     expect(
@@ -725,9 +730,9 @@ describe("batch", () => {
 
     expect(tabLabels()).toEqual([
       "query.tabSummary",
-      `query.resultTab${JSON.stringify({ label: "#1.1", rows: 1 })}`,
-      `query.resultTab${JSON.stringify({ label: "#1.2", rows: 2 })}`,
-      `query.resultTab${JSON.stringify({ label: "#2", rows: 1 })}`,
+      `query.resultTab${JSON.stringify({ label: "#1.1 · EXEC two_sets", count: 1 })}`,
+      `query.resultTab${JSON.stringify({ label: "#1.2 · EXEC two_sets", count: 2 })}`,
+      `query.resultTab${JSON.stringify({ label: "#2 · SELECT 1", count: 1 })}`,
     ]);
     // Not refreshable: re-running it could not say which set to refresh.
     expect(lastGrid().sql).toBeUndefined();
@@ -850,7 +855,7 @@ describe("result tabs", () => {
     expect((lastGrid().result as QueryResult).rows).toEqual([["y"], ["z"]]);
     // The tab label follows the fresh row count.
     expect(within(resultTabs()!).getAllByRole("radio")[3].textContent).toBe(
-      `query.resultTab${JSON.stringify({ label: "#3", rows: 2 })}`,
+      `query.resultTab${JSON.stringify({ label: "#3 · SELECT b FROM u", count: 2 })}`,
     );
   });
 
@@ -1141,6 +1146,32 @@ describe("toolbar", () => {
     }));
   });
 
+  it("the editor's AI context-menu entries come and go with the connection's AI", () => {
+    h.contextActions.clear();
+    seed("SELECT 1");
+    renderTab();
+    expect([...h.contextActions]).toEqual([]);
+
+    act(() => {
+      usePreferences.setState((s) => ({
+        prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: true } },
+      }));
+      useConnections.setState({
+        profiles: [{ ...profile(CONN, "postgres"), ai_enabled: true }],
+      });
+    });
+    expect([...h.contextActions].sort()).toEqual([
+      "huginndb.ai.explainQuery",
+      "huginndb.ai.explainSlow",
+    ]);
+
+    act(() => {
+      usePreferences.setState((s) => ({
+        prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: false } },
+      }));
+    });
+    expect([...h.contextActions]).toEqual([]);
+  });
 });
 
 describe("MongoDB", () => {
