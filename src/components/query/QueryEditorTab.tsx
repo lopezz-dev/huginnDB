@@ -672,11 +672,17 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           {/* Editor info bar (ADR #137): run shortcut · database · Ln, Col ·
               statements · driver. The shortcut is the user's binding for
               `runQuery`, read from the catalogue, and left out when the
-              action is unbound. */}
-          <div className="flex items-center gap-0 border-t border-border bg-card px-3 py-1 text-2xs text-muted-foreground">
+              action is unbound.
+
+              One line at any width: in a narrow pane the readouts used to
+              wrap word by word ("Ln 13, Col 5" on four lines) and the bar
+              grew. Now nothing wraps, the database name is the one part that
+              gives way (with an ellipsis), and whatever still does not fit
+              is clipped at the right edge. */}
+          <div className="flex items-center gap-0 overflow-hidden whitespace-nowrap border-t border-border bg-card px-3 py-1 text-2xs text-muted-foreground">
             {runShortcut && (
               <>
-                <span className="flex items-center gap-1">
+                <span className="flex shrink-0 items-center gap-1">
                   <kbd className="rounded-sm bg-muted px-1 font-mono text-3xs">
                     {runShortcut}
                   </kbd>
@@ -684,18 +690,20 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                     {t("query.run")}
                   </span>
                 </span>
-                <span className="mx-3 text-muted-foreground/30">|</span>
+                <InfoSep />
               </>
             )}
-            <span className="truncate">{dbName}</span>
-            <span className="mx-3 text-muted-foreground/30">|</span>
-            <span className="tabular-nums">
+            <span className="min-w-0 truncate">{dbName}</span>
+            <InfoSep />
+            <span className="shrink-0 tabular-nums">
               {t("query.cursorPosition", { line: cursor.line, column: cursor.column })}
             </span>
-            <span className="mx-3 text-muted-foreground/30">|</span>
-            <span>{t("query.statementCount", { count: statements.length })}</span>
-            <span className="mx-3 text-muted-foreground/30">|</span>
-            <span>{driver ?? ""}</span>
+            <InfoSep />
+            <span className="shrink-0">
+              {t("query.statementCount", { count: statements.length })}
+            </span>
+            <InfoSep />
+            <span className="shrink-0">{driver ?? ""}</span>
           </div>
         </div>
       </Panel>
@@ -752,4 +760,9 @@ function snapshotOf(
     line: editor.getPosition()?.lineNumber ?? 1,
     dialect,
   };
+}
+
+/** The info bar's separator; never shrinks, so the readouts stay apart. */
+function InfoSep() {
+  return <span className="mx-3 shrink-0 text-muted-foreground/30">|</span>;
 }
