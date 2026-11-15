@@ -15,9 +15,11 @@
  *    `results/ResultTabs` for why only one grid is ever mounted).
  *
  * Editor features:
- *  - `Ctrl+Enter` runs the entire buffer. Bound through Monaco's `onKeyDown`
- *    (not a `window` listener) because Monaco swallows the keypress inside
- *    the editor focus area — see gotcha #9.
+ *  - `Ctrl+Enter` (`runQuery`) runs the selection, else the statement under
+ *    the cursor; `Ctrl+Shift+Enter` (`runAll`) runs the whole buffer, batched
+ *    when it holds more than one statement (ADR #137, `lib/query/runTarget`).
+ *    Bound through Monaco's `onKeyDown` (not a `window` listener) because
+ *    Monaco swallows the keypress inside the editor focus area — gotcha #9.
  *  - A CodeLens "▶ Run" appears on the first line of every `;`-delimited
  *    statement and runs just that fragment.
  *  - Autocomplete blends tables, columns and SQL keywords (driver-aware);
@@ -53,7 +55,9 @@ import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { useShortcutLabel } from "@/lib/keybindings/useShortcutLabel";
 import { registerEditorActionRedispatch } from "@/lib/monaco/monacoKeybindings";
 import { runAiTask } from "@/lib/ai/runTask";
-import { splitSql, statementAt, type SqlDialect } from "@/lib/sql/sqlSplit";
+import { splitSql, type SqlDialect } from "@/lib/sql/sqlSplit";
+import { notify } from "@/lib/notify";
+import { runTarget, type EditorSnapshot, type RunScope } from "@/lib/query/runTarget";
 import i18n from "@/lib/i18n";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { QueryEditorToolbar } from "@/components/query/QueryEditorToolbar";
@@ -177,9 +181,13 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       getLineCount: () => number;
       getValueLength: () => number;
       getValue: () => string;
+      getValueInRange: (range: unknown) => string;
       uri: { toString: () => string };
     } | null;
+    getSelection: () => { isEmpty: () => boolean } | null;
+    getPosition: () => { lineNumber: number } | null;
     onDidChangeModelContent: (fn: () => void) => { dispose: () => void };
+    onDidChangeCursorSelection?: (fn: () => void) => { dispose: () => void };
     addCommand: (keybinding: number, handler: () => void) => string | null;
     onKeyDown: (fn: (e: { browserEvent: KeyboardEvent }) => void) => {
       dispose: () => void;
@@ -304,10 +312,35 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   useEffect(() => {
     runQueryRef.current = run.runSingle;
   }, [run.runSingle]);
-  const runDefaultRef = useRef<() => void>(() => {});
+  /** Run what `scope` names in the editor right now (ADR #137): the
+   *  selection, else the statement under the caret, for `runQuery` and the
+   *  Run button; the whole buffer for `runAll`. */
+  const runAt = useCallback(
+    (scope: RunScope) => {
+      const editor = editorRef.current;
+      const snap: EditorSnapshot = editor
+        ? snapshotOf(editor, dialect)
+        : { source: sql, selection: null, line: 1, dialect };
+      const text = runTarget(snap, scope);
+      if (text === null) {
+        // A caret between two statements names nothing; running the whole
+        // buffer instead would be exactly the surprise this rule removes.
+        if (scope === "cursor" || scope === "statement") {
+          notify.info(t("query.nothingAtCursor"), {
+            description: t("query.nothingAtCursorHint"),
+          });
+        }
+        return;
+      }
+      void run.run(text);
+    },
+    [dialect, sql, run.run, t],
+  );
+  const runAtRef = useRef(runAt);
   useEffect(() => {
-    runDefaultRef.current = () => void run.run(sql);
-  }, [run.run, sql]);
+    runAtRef.current = runAt;
+  }, [runAt]);
+  const [hasSelection, setHasSelection] = useState(false);
 
   /**
    * Ref to the live completion list for the same reason as `runQueryRef`:
@@ -356,6 +389,11 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         setEditorStats({ lines: m.getLineCount(), chars: m.getValueLength() });
     });
 
+    // The ▾ menu's "Run the selection" is offered only with one.
+    editor?.onDidChangeCursorSelection?.(() => {
+      setHasSelection(editor.getSelection()?.isEmpty() === false);
+    });
+
     // runQuery / toggleCommandPalette / toggleTabSwitcher are all
     // user-rebindable (issue #75), so they can't use Monaco's `addCommand`
     // (a fixed keybinding bitmask resolved once, with no way to re-check a
@@ -368,7 +406,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       editorShortcutsDisposeRef.current = registerEditorActionRedispatch(
         editor,
         [
-          { id: "runQuery", run: () => runDefaultRef.current() },
+          { id: "runQuery", run: () => runAtRef.current("cursor") },
+          { id: "runAll", run: () => runAtRef.current("all") },
           {
             id: "toggleCommandPalette",
             run: () => useCommandPalette.getState().toggle(),
@@ -409,24 +448,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
         contextMenuGroupId: "huginndb",
         contextMenuOrder: entry.order,
         run: (ed) => {
-          const current = ed.getModel();
-          if (!current) return;
           // The selection when there is one, else the statement the caret is
-          // in: highlighting three lines of a long query and asking about them
-          // is a real gesture, and honouring it costs one branch.
-          const selection = ed.getSelection();
-          const selected =
-            selection && !selection.isEmpty()
-              ? current.getValueInRange(selection)
-              : null;
-          const statement =
-            selected ??
-            statementAt(
-              current.getValue(),
-              ed.getPosition()?.lineNumber ?? 1,
-              dialectRef.current,
-            )?.text;
-          if (!statement?.trim()) return;
+          // in — the same rule `runQuery` follows (`lib/query/runTarget`).
+          const statement = runTarget(snapshotOf(ed, dialectRef.current), "cursor");
+          if (!statement) return;
           void runAiTask({
             task: entry.task,
             connection: connectionId,
@@ -492,10 +517,11 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           <QueryEditorToolbar
             ref={queryTimerRef}
             statementCount={statements.length}
+            hasSelection={hasSelection}
             empty={!sql.trim()}
             running={run.running}
             runShortcut={runShortcut}
-            onRun={() => void run.run(sql)}
+            onRun={runAt}
             onSave={() => setSaveDialogOpen(true)}
             historyOpen={showHistory}
             onToggleHistory={() => setShowHistory((v) => !v)}
@@ -594,4 +620,30 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
       />
     </PanelGroup>
   );
+}
+
+/** What `runTarget` needs from a Monaco editor, read at the moment of the
+ *  gesture. Typed structurally for the same reason `editorRef` is. */
+function snapshotOf(
+  editor: {
+    getModel: () => {
+      getValue: () => string;
+      getValueInRange: (range: unknown) => string;
+    } | null;
+    getSelection: () => { isEmpty: () => boolean } | null;
+    getPosition: () => { lineNumber: number } | null;
+  },
+  dialect: SqlDialect,
+): EditorSnapshot {
+  const model = editor.getModel();
+  const selection = editor.getSelection();
+  return {
+    source: model?.getValue() ?? "",
+    selection:
+      model && selection && !selection.isEmpty()
+        ? model.getValueInRange(selection)
+        : null,
+    line: editor.getPosition()?.lineNumber ?? 1,
+    dialect,
+  };
 }

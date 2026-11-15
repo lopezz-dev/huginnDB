@@ -54,6 +54,7 @@ export type ActionId =
   | "togglePinTab"
   // query
   | "runQuery"
+  | "runAll"
   // grid
   | "refreshData"
   | "expandSelectedCell"
@@ -159,6 +160,16 @@ export const ACTIONS: ActionSpec[] = [
     scope: "editor",
     defaults: ["Mod+Enter"],
     labelKey: "settings.shortcuts.runQuery",
+  },
+  // ADR #137: `runQuery` runs the selection, else the statement under the
+  // cursor (`lib/query/runTarget`), so the whole buffer gets a key of its own.
+  // It is batched when it holds more than one statement.
+  {
+    id: "runAll",
+    category: "query",
+    scope: "editor",
+    defaults: ["Mod+Shift+Enter"],
+    labelKey: "settings.shortcuts.runAll",
   },
 
   // ── The schema tree's search ─────────────────────────────────────────────

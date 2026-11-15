@@ -140,6 +140,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Changed
 
+- **`Ctrl+Enter` runs the selection, or the statement under the cursor.**
+  In a query tab it used to run the whole editor, so a scratch buffer of
+  twenty queries ran all twenty. It now runs what is selected, and with
+  nothing selected, the statement the cursor is in — the rule the AI's
+  *Explain* actions already followed. A selection spanning several
+  statements runs them as a batch. With the cursor between two statements
+  nothing runs, and a notification says why. Running everything has its own
+  shortcut, `Ctrl+Shift+Enter` (*Run every statement in the editor*,
+  rebindable in Settings → Shortcuts). The Run button follows the same rule,
+  and its new ▾ offers *Run the statement under the cursor*, *Run the
+  selection* and *Run all (N)*.
+
 - **A smaller, tighter release binary.** Release builds now link with thin
   LTO and a single codegen unit, and drop their debug info, so the compiler
   can inline across crates (sqlx, serde_json, the drivers) instead of
