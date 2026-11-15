@@ -13,12 +13,13 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 - **Detener una consulta en curso.** Mientras se ejecuta una consulta, el
   botón Ejecutar pasa a ser *Detener* (`Ctrl+.`, reasignable), y detenerla
   detiene la sentencia en el servidor, no solo la espera. El resultado dice
-  qué dejó la parada: una sentencia que no se aplicó, o una que puede que
-  se aplicara (una parada que se cruzó con el commit, o SQLite, que no
-  puede interrumpir una sentencia y la deja terminar). Un lote detenido se
-  abre en la sentencia en la que se detuvo, dice que su sesión se cerró y
-  que por tanto se deshizo cualquier transacción que tuviera abierta, y su
-  Resumen indica dónde se detuvo.
+  qué dejó la parada: una sentencia que no se aplicó, o una que puede que se
+  aplicara (una parada que se cruzó con el commit, o una sentencia de SQLite
+  que espera el bloqueo de otra conexión, que no se puede interrumpir y se
+  deja terminar). Una sentencia de SQLite en marcha se interrumpe y se
+  deshace. Un lote detenido se abre en la sentencia en la que se detuvo,
+  dice que su sesión se cerró y que por tanto se deshizo cualquier
+  transacción que tuviera abierta, y su Resumen indica dónde se detuvo.
 
 - **Exportar los resultados de una consulta como CSV para Excel.** El menú
   *Exportar datos* de los resultados ofrece ahora dos CSV: *CSV (coma)* y
