@@ -95,6 +95,7 @@ describe("tabsFromBatch", () => {
         stmt(2, { error: "boom" }),
       ],
       total_affected: 5,
+      stopped: null,
     };
     const tabs = tabsFromBatch(sql(TEXT, 10), batch, TEXTS);
     expect(kinds(tabs)).toEqual([
@@ -117,6 +118,7 @@ describe("tabsFromBatch", () => {
         stmt(2, { error: "boom", elapsed_ms: 1 }),
       ],
       total_affected: 5,
+      stopped: null,
     };
     const [summary] = tabsFromBatch(sql(TEXT), batch, TEXTS);
     expect(summary).toMatchObject({
@@ -136,6 +138,7 @@ describe("tabsFromBatch", () => {
     const batch: BatchResult = {
       statements: [stmt(0, { results: [rows(1), rows(2)] }), stmt(1, { results: [rows(3)] })],
       total_affected: 0,
+      stopped: null,
     };
     const tabs = tabsFromBatch(sql("EXEC p;\nSELECT 1"), batch, ["EXEC p;", "SELECT 1"]);
     expect(
@@ -148,7 +151,7 @@ describe("tabsFromBatch", () => {
   });
 
   it("a batch whose text is not in the editor has no lines", () => {
-    const batch: BatchResult = { statements: [stmt(0, { results: [rows(1)] })], total_affected: 0 };
+    const batch: BatchResult = { statements: [stmt(0, { results: [rows(1)] })], total_affected: 0, stopped: null };
     const [, tab] = tabsFromBatch(sql("SELECT 1;\nSELECT 2", null), batch, ["SELECT 1;", "SELECT 2"]);
     expect(tab.kind === "rows" && tab.lines).toBeNull();
   });
@@ -165,6 +168,7 @@ describe("tabsFromBatch", () => {
         stmt(1, { preview: "db.users.deleteMany(…)", is_select: false, rows_affected: 4 }),
       ],
       total_affected: 4,
+      stopped: null,
     };
     const tabs = tabsFromBatch(origin, batch, [
       "db.users.find({})",
@@ -177,7 +181,7 @@ describe("tabsFromBatch", () => {
 
 describe("initialTabKey", () => {
   const batch = (over: StmtOutcome[]): StatementTab[] =>
-    tabsFromBatch(sql("a;\nb;\nc"), { statements: over, total_affected: 0 }, ["a;", "b;", "c"]);
+    tabsFromBatch(sql("a;\nb;\nc"), { statements: over, total_affected: 0, stopped: null }, ["a;", "b;", "c"]);
 
   it("lands on the statement that failed", () => {
     const tabs = batch([stmt(0, { results: [rows(1)] }), stmt(1, { error: "x" })]);

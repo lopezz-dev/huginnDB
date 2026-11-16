@@ -1573,6 +1573,9 @@ pub struct AppState {
     /// streaming future, and dropping that future closes the socket, which is
     /// what makes the abort real rather than cosmetic.
     pub ai_turns: Arc<RwLock<HashMap<String, Arc<tokio::sync::Notify>>>>,
+    /// A person's query runs in flight, by the id the query tab gave each one,
+    /// and the means of stopping it (`cancel_query`, ADR #137).
+    pub runs: Arc<crate::runs::RunRegistry>,
     /// This machine's managed policy (`crate::policy`). Starts unmanaged in
     /// every `AppState`; the desktop app and the MCP sidecar call
     /// `policy::install` on it at startup, so a test never inherits the policy
@@ -1694,6 +1697,7 @@ impl AppState {
             pulse_store: crate::pulse::store::PulseStore::new(),
             ai_probe: Arc::new(RwLock::new(None)),
             ai_turns: Arc::new(RwLock::new(HashMap::new())),
+            runs: Arc::new(crate::runs::RunRegistry::default()),
             policy: crate::policy::unmanaged(),
             open_locks: parking_lot::Mutex::new(HashMap::new()),
         }
