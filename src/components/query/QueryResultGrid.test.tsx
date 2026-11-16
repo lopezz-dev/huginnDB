@@ -20,7 +20,7 @@
  * `DataGrid` and `DeleteRowsDialog` are stubs that record their props.
  */
 
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ColumnInfo, QueryResult } from "@/types";
 
@@ -503,6 +503,31 @@ describe("QueryResultGrid — export", () => {
     expect((grid().insertExtra as { id: string }[]).map((i) => i.id)).toEqual([
       "export-results",
     ]);
+  });
+
+  /** Render the export entry's bar control and open its menu. */
+  async function openExportMenu() {
+    const [item] = grid().insertExtra as { bar: React.ReactElement }[];
+    const view = render(item.bar);
+    const trigger = view.getByText("tableData.exportData.label").closest("button")!;
+    await act(async () => {
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    return view;
+  }
+
+  it("a whole result lists the formats directly", async () => {
+    await mount();
+    const view = await openExportMenu();
+    expect(view.queryByText("query.export.rowsShown")).toBeNull();
+    expect(view.getAllByRole("menuitem").length).toBeGreaterThan(0);
+  });
+
+  it("a cut result puts the formats under “The rows shown (N)” (ADR #137)", async () => {
+    await mount(SQL, { ...RESULT, truncated: true });
+    const view = await openExportMenu();
+    expect(view.getByText("query.export.rowsShown")).toBeTruthy();
   });
 
   it("still shows it under an export lock — disabled, with the reason", async () => {
