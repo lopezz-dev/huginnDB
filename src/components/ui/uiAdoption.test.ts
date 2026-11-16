@@ -262,8 +262,6 @@ describe("raw <button> outside ui/", () => {
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
     "src/components/pulse/PulsePanel.tsx": 1,
     "src/components/query/Console.tsx": 1,
-    // Moved from QueryEditorTab.tsx by the ADR #137 extraction, unchanged.
-    "src/components/query/QueryHistorySidebar.tsx": 1,
     "src/components/schema/SecurityTab.tsx": 1,
     "src/components/settings/dialogs/CaptureShortcutDialog.tsx": 1,
     "src/components/settings/sections/AppearanceSection.tsx": 1,
@@ -273,7 +271,7 @@ describe("raw <button> outside ui/", () => {
     "src/components/shell/dialogs/WhatsNewDialog.tsx": 1,
   };
 
-  it(`is down to ${66} in ${40} files`, () => {
+  it(`is down to ${65} in ${39} files`, () => {
     const measured = census(
       (src) => (src.match(/<button[\s/>]/g) || []).length,
     );
@@ -281,7 +279,7 @@ describe("raw <button> outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(66);
+    expect(total(BUDGET)).toBeLessThanOrEqual(65);
   });
 });
 
@@ -354,7 +352,8 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/pulse/PulsePanel.tsx": 2,
     "src/components/query/Console.tsx": 2,
     // Was 4 when the ADR #137 extraction split it out of QueryEditorTab.tsx
-    // (whose 6 also became the timer's and the history sidebar's 1 below).
+    // (whose 6 also became the timer's 1 below, and the history sidebar's 1,
+    // gone with the sidebar when the history became a dock panel).
     // Save and History became `IconButton`s with the toolbar redesign; Run's
     // title and the database `SelectTrigger`'s remain.
     "src/components/query/QueryEditorToolbar.tsx": 2,
@@ -374,7 +373,6 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/origins/OriginEditorHeader.tsx": 1,
     "src/components/origins/sections/EnvironmentsPane.tsx": 1,
     "src/components/origins/sections/SchemasPane.tsx": 1,
-    "src/components/query/QueryHistorySidebar.tsx": 1,
     "src/components/query/QueryTimer.tsx": 1,
     "src/components/settings/sections/JsonSchemasSection.tsx": 1,
     // Documented exception, the same one the raw-button budget records for
@@ -383,7 +381,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/NotificationCard.tsx": 1,
   };
 
-  it(`is down to ${69} in ${36} files`, () => {
+  it(`is down to ${68} in ${35} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const [tag, attrs] of openingTags(src)) {
@@ -396,7 +394,7 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(69);
+    expect(total(BUDGET)).toBeLessThanOrEqual(68);
   });
 });
 

@@ -227,6 +227,8 @@ import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useQueryHistory } from "@/stores/query/queryHistory";
 import { usePreferences } from "@/stores/preferences/preferences";
+import { useSessionPanelLayout } from "@/stores/session/panelLayout";
+import { usePendingRuns } from "@/stores/query/pendingRuns";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -403,6 +405,7 @@ beforeEach(() => {
   // The catalogue fetch is not under test; keep it off the network mock.
   useSchema.setState({ refresh: vi.fn(async () => {}) } as never);
   useQueryHistory.setState({ entries: [] });
+  usePendingRuns.setState({ ids: new Set() });
 });
 
 afterEach(() => cleanup());
@@ -944,106 +947,57 @@ describe("database selector", () => {
 // History
 // ---------------------------------------------------------------------------
 
-function openHistory() {
-  act(() => fireEvent.click(screen.getByLabelText("query.history")));
-}
-
 describe("history", () => {
-  it("lists only this connection's entries, newest first", async () => {
-    useQueryHistory.getState().add({
-      sql: "SELECT other",
-      connectionId: "other",
-      elapsedMs: 1,
-      rowsAffected: 0,
-    });
-    useQueryHistory.getState().add({
-      sql: "SELECT mine",
-      connectionId: CONN,
-      elapsedMs: 1,
-      rowsAffected: 0,
-    });
+  it("the History button shows and hides the history dock panel", () => {
+    useSessionPanelLayout.setState({ rightPanel: null });
     seed("");
     renderTab();
-    openHistory();
-    expect(screen.getByTitle("SELECT mine")).toBeTruthy();
-    expect(screen.queryByTitle("SELECT other")).toBeNull();
+    const button = () => screen.getByLabelText("query.history");
+    expect(button().getAttribute("aria-pressed")).toBe("false");
+    act(() => fireEvent.click(button()));
+    expect(useSessionPanelLayout.getState().rightPanel).toBe("history");
+    expect(button().getAttribute("aria-pressed")).toBe("true");
+    act(() => fireEvent.click(button()));
+    expect(useSessionPanelLayout.getState().rightPanel).toBeNull();
   });
 
-  it("clicking an entry loads it into the editor without running it", async () => {
-    useQueryHistory.getState().add({
-      sql: "SELECT mine",
-      connectionId: CONN,
-      elapsedMs: 1,
-      rowsAffected: 0,
-    });
-    seed("");
+  it("a tab opened to run (the history's Run) runs a batch down the batch path", async () => {
+    seed("SELECT a FROM t;\nUPDATE t SET a = 1");
+    usePendingRuns.getState().mark(tabId);
+    h.api.executeBatch.mockResolvedValue(BATCH_FAILED);
     renderTab();
-    openHistory();
-    act(() => fireEvent.click(screen.getByTitle("SELECT mine")));
-    expect(useTabs.getState().tabs.find((x) => x.id === tabId)?.query).toBe(
-      "SELECT mine",
-    );
+    await flush();
+    expect(h.api.executeQuery).not.toHaveBeenCalled();
+    expect(h.api.executeBatch).toHaveBeenCalledWith(CONN, [
+      "SELECT a FROM t;",
+      "UPDATE t SET a = 1",
+    ]);
+    // Once: the mark is consumed.
+    expect(usePendingRuns.getState().ids.has(tabId)).toBe(false);
+  });
+
+  it("a tab that was not asked to run does not run on mount", async () => {
+    seed("DELETE FROM t");
+    renderTab();
+    await flush();
     expect(h.api.executeQuery).not.toHaveBeenCalled();
   });
 
-  it("Run again on a single entry runs it through execute_query", async () => {
-    useQueryHistory.getState().add({
-      sql: "SELECT mine",
-      connectionId: CONN,
-      elapsedMs: 1,
-      rowsAffected: 0,
-    });
-    h.api.executeQuery.mockResolvedValue(rows(["x"], [[1]]));
-    seed("");
-    renderTab();
-    openHistory();
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText("query.runAgain"));
-    });
-    await flush();
-    expect(h.api.executeQuery).toHaveBeenCalledWith(CONN, "SELECT mine");
-  });
-
-  it("DEFECT: a batch replayed from the history goes down the single path", async () => {
-    useQueryHistory.getState().add({
-      sql: "SELECT a FROM t;\nUPDATE t SET a = 1",
-      connectionId: CONN,
-      elapsedMs: 0,
-      rowsAffected: 0,
-    });
-    h.api.executeQuery.mockRejectedValue("cannot insert multiple commands");
-    seed("");
-    renderTab();
-    openHistory();
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText("query.runAgain"));
-    });
+  it("waits for the connection's driver before running, so MongoDB splits as MongoDB", async () => {
+    useConnections.setState({ profiles: [] });
+    seed("db.a.countDocuments()\ndb.b.countDocuments()", "m1");
+    usePendingRuns.getState().mark(tabId);
+    h.api.executeBatch.mockResolvedValue({ statements: [], total_affected: 0 });
+    renderTab("m1");
     await flush();
     expect(h.api.executeBatch).not.toHaveBeenCalled();
-    expect(h.api.executeQuery).toHaveBeenCalledWith(
-      CONN,
-      "SELECT a FROM t;\nUPDATE t SET a = 1",
-    );
-  });
-
-  it("DEFECT: Clear history clears every connection's entries, not only those listed", async () => {
-    useQueryHistory.getState().add({
-      sql: "SELECT other",
-      connectionId: "other",
-      elapsedMs: 1,
-      rowsAffected: 0,
-    });
-    useQueryHistory.getState().add({
-      sql: "SELECT mine",
-      connectionId: CONN,
-      elapsedMs: 1,
-      rowsAffected: 0,
-    });
-    seed("");
-    renderTab();
-    openHistory();
-    act(() => fireEvent.click(screen.getByLabelText("query.clearHistory")));
-    expect(useQueryHistory.getState().entries).toEqual([]);
+    expect(h.api.executeQuery).not.toHaveBeenCalled();
+    act(() => useConnections.setState({ profiles: [profile("m1", "mongodb")] }));
+    await flush();
+    expect(h.api.executeBatch).toHaveBeenCalledWith("m1", [
+      "db.a.countDocuments()",
+      "db.b.countDocuments()",
+    ]);
   });
 });
 
@@ -1177,15 +1131,6 @@ describe("toolbar", () => {
       }));
     });
     expect([...h.contextActions]).toEqual([]);
-  });
-
-  it("History is a toggle that says whether it is open", () => {
-    seed("");
-    renderTab();
-    const button = screen.getByLabelText("query.history");
-    expect(button.getAttribute("aria-pressed")).toBe("false");
-    act(() => fireEvent.click(button));
-    expect(screen.getByLabelText("query.history").getAttribute("aria-pressed")).toBe("true");
   });
 });
 

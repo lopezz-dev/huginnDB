@@ -27,6 +27,7 @@ import {
   Blocks,
   Bot,
   CalendarClock,
+  History,
   Moon,
   Save,
   Settings,
@@ -51,6 +52,7 @@ import {
 import { useSettingsDialog } from "@/components/settings/useSettingsDialog";
 import { ConnectionsTree } from "@/components/connection/ConnectionsTree";
 import { SavedQueriesPanel } from "@/components/query/SavedQueriesPanel";
+import { QueryHistoryPanel } from "@/components/query/QueryHistoryPanel";
 import { PulsePanel } from "@/components/pulse/PulsePanel";
 import { AiPanel } from "@/components/ai/AiPanel";
 import { ConnectionErrorBoundary } from "@/components/connection/ConnectionErrorBoundary";
@@ -199,6 +201,13 @@ function RightSidePanel() {
   // The Dates panel holds nothing worth keeping between visits — its input
   // lives in `useEpochPanel` — but mounting it lazily still spares everyone
   // who never opens it a once-a-second clock.
+  // The query history (ADR #137) mounts on first selection too, and stays:
+  // its connection switch and text filter are worth keeping between visits.
+  const [historyMounted, setHistoryMounted] = useState(rightPanel === "history");
+  useEffect(() => {
+    if (rightPanel === "history") setHistoryMounted(true);
+  }, [rightPanel]);
+
   const [datesMounted, setDatesMounted] = useState(rightPanel === "dates");
   useEffect(() => {
     if (rightPanel === "dates") setDatesMounted(true);
@@ -249,6 +258,11 @@ function RightSidePanel() {
             <div className="h-full" hidden={docked !== "saved"}>
               {SAVED_PANEL_ELEMENT}
             </div>
+            {historyMounted && (
+              <div className="h-full" hidden={docked !== "history"}>
+                <QueryHistoryPanel connectionId={selectedConnectionId} />
+              </div>
+            )}
             {pulseMounted && (
               <div className="h-full" hidden={docked !== "pulse"}>
                 <PulsePanel active={open && rightPanel === "pulse"} />
@@ -381,6 +395,13 @@ export function AppShell() {
       label: t("panels.saved"),
       active: rightPanel === "saved",
       onClick: () => selectRightPanel("saved"),
+    },
+    {
+      id: "history",
+      icon: History,
+      label: t("panels.history"),
+      active: rightPanel === "history",
+      onClick: () => selectRightPanel("history"),
     },
     // Always present, unlike Pulse and the AI: it reads nothing and sends
     // nothing, so there is no module switch for it to sit behind.

@@ -21,6 +21,10 @@ interface HistoryState {
     },
   ) => void;
   clear: () => void;
+  /** Drop one connection's entries (the history panel's Clear, ADR #137). */
+  clearFor: (connectionId: string) => void;
+  /** Drop exactly these entries — what a filtered list shows. */
+  removeMany: (ids: ReadonlySet<string>) => void;
 }
 
 export const useQueryHistory = create<HistoryState>()(
@@ -46,6 +50,12 @@ export const useQueryHistory = create<HistoryState>()(
           };
         }),
       clear: () => set({ entries: [] }),
+      clearFor: (connectionId) =>
+        set((s) => ({
+          entries: s.entries.filter((e) => e.connectionId !== connectionId),
+        })),
+      removeMany: (ids) =>
+        set((s) => ({ entries: s.entries.filter((e) => !ids.has(e.id)) })),
     }),
     { name: STORAGE_KEYS.queryHistory },
   ),

@@ -73,6 +73,7 @@
   "panels": {
     "schema": "Esquema",
     "saved": "Guardadas",
+    "history": "Historial",
     "pulse": "Pulse",
     "rightDock": "Panel derecho",
     "console": "Consola",
@@ -1262,10 +1263,9 @@
   },
   "statusBar": {
     "disconnected": "desconectado",
-    "rows": "filas",
-    "ms": "ms",
     "encoding": "utf-8",
     "history": "historial:",
+    "openHistory": "Abrir el historial de consultas",
     "connections": "{{count}} conectada(s)",
     "connectionsActive": "Conexiones activas",
     "activeLabel": "activa",
@@ -1273,9 +1273,6 @@
     "jumpTo": "Ir al espacio de trabajo",
     "disconnect": "Desconectar",
     "selected": "{{count}} seleccionada(s)",
-    "recentQueries": "Consultas recientes",
-    "noHistory": "Aún no hay consultas",
-    "clearHistory": "Limpiar historial",
     "density": "Densidad de filas",
     "densityCompact": "Compacta",
     "densityCosy": "Media",
@@ -1719,6 +1716,7 @@
       "fixedHint": "Reservado por la app: no se puede reasignar.",
       "togglePanelSchema": "Mostrar u ocultar el panel Esquema",
       "togglePanelSaved": "Mostrar u ocultar el panel Guardadas",
+      "togglePanelHistory": "Mostrar u ocultar el panel Historial de consultas",
       "togglePanelPulse": "Mostrar el panel Pulse",
       "togglePanelAi": "Panel de asistente",
       "togglePanelConsole": "Mostrar u ocultar el panel Consola",
@@ -2667,6 +2665,19 @@
     "edit": "Editar",
     "delete": "Eliminar",
     "deleteConfirm": "¿Eliminar \"{{name}}\"?"
+  },
+  "history": {
+    "title": "Historial de consultas",
+    "allConnections": "Todas las conexiones",
+    "clear": "Borrar lo que se muestra",
+    "open": "Abrir en una pestaña de consulta nueva",
+    "noConnection": "Abre una pestaña de consulta para ver el historial de su conexión.",
+    "clearConnectionConfirm_one": "¿Borrar {{count}} entrada del historial de {{name}}?",
+    "clearConnectionConfirm_other": "¿Borrar las {{count}} entradas del historial de {{name}}?",
+    "clearAllConfirm_one": "¿Borrar {{count}} entrada del historial?",
+    "clearAllConfirm_other": "¿Borrar las {{count}} entradas del historial, de todas las conexiones?",
+    "clearMatchesConfirm_one": "¿Borrar la {{count}} entrada que coincide con el filtro?",
+    "clearMatchesConfirm_other": "¿Borrar las {{count}} entradas que coinciden con el filtro?"
   },
   "saveQuery": {
     "titleUpdate": "Actualizar consulta guardada",

@@ -79,6 +79,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **Re-running a batch from the history works.** A history entry holding
+  several statements was sent as one text down the single-statement path,
+  which PostgreSQL and MySQL refuse. It now opens in a query tab that runs
+  it as a batch.
+
+- **Clearing the history clears only what it shows.** *Clear history*
+  emptied every connection's history behind a list that showed one. It now
+  clears the entries on screen — the connection's, every connection's when
+  they are all shown, or only those matching the filter — after asking.
+
 - **The query editor's info bar shows your Run shortcut.** It used to say
   `Ctrl + Enter` whatever *Run query* was bound to; it now shows your
   binding, and nothing when the action is unbound. The Run button's tooltip
@@ -139,6 +149,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   can also no longer leave the older one on disk.
   
 ### Changed
+
+- **The query history is a panel beside Saved queries.** It used to be a
+  sidebar inside each query tab. It is now a panel of its own in the right
+  dock (its activity-bar button, *View → History*, or the History button in
+  the query toolbar), showing the history of the connection of the tab you
+  are in, with a switch to show every connection's. Clicking an entry opens
+  it in a new query tab; its ▶ opens it and runs it. The status bar's
+  *history: N* now opens this panel instead of a menu of its own (whose
+  *Clear history* emptied every connection's history without asking).
 
 - **The query editor's toolbar shows every action as an icon.** Next to Run
   and the timer: *Format SQL*, *Save query*, *Query history* and — on a

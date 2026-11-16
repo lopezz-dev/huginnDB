@@ -71,6 +71,7 @@ export type ActionId =
   // panels
   | "togglePanelSchema"
   | "togglePanelSaved"
+  | "togglePanelHistory"
   | "togglePanelPulse"
   | "togglePanelAi"
   | "togglePanelConsole"
@@ -376,6 +377,15 @@ export const ACTIONS: ActionSpec[] = [
     scope: "global",
     defaults: [],
     labelKey: "settings.shortcuts.togglePanelSaved",
+  },
+  // ADR #137: the query history became a dock panel beside Saved. Unbound,
+  // like most of the catalogue.
+  {
+    id: "togglePanelHistory",
+    category: "panels",
+    scope: "global",
+    defaults: [],
+    labelKey: "settings.shortcuts.togglePanelHistory",
   },
   {
     id: "togglePanelPulse",

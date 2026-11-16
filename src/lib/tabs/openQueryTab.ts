@@ -21,6 +21,7 @@ import i18n from "i18next";
 import { useTabs } from "@/stores/session/tabs";
 import { useConnections } from "@/stores/session/connections";
 import { resolveConnectionDriver } from "@/lib/connectionLabel";
+import { usePendingRuns } from "@/stores/query/pendingRuns";
 
 export interface OpenQueryTabOptions {
   /** SQL to seed the tab with. Omitted means a new, empty query. */
@@ -29,6 +30,9 @@ export interface OpenQueryTabOptions {
   title?: string;
   /** Route through `queryTargetFor`. Defaults to `true`. */
   resolveTarget?: boolean;
+  /** Run the buffer once the tab mounts, through the tab's own runner — a
+   *  batch goes down the batch path (ADR #137). The history panel's Run. */
+  run?: boolean;
 }
 
 /**
@@ -69,7 +73,7 @@ export function openQueryTab(
 ): string {
   const tabs = useTabs.getState();
   const fallback = defaultQuerySeed(connectionId);
-  return tabs.open({
+  const id = tabs.open({
     kind: "query",
     title: opts.title ?? fallback.title,
     connectionId:
@@ -78,4 +82,6 @@ export function openQueryTab(
         : tabs.queryTargetFor(connectionId),
     query: opts.sql ?? fallback.query,
   });
+  if (opts.run) usePendingRuns.getState().mark(id);
+  return id;
 }
