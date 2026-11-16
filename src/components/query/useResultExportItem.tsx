@@ -7,9 +7,17 @@
  * **A cut result says so here too** (ADR #137). When the query returned more
  * than the row cap, the grid holds only the first 50 000, and exporting it
  * used to write those without a word. The formats then sit under "The rows
- * shown (N)", which is what they write; "Everything, from the server…" — a
- * second group that runs the statement again and streams every row — joins
- * them with the server-side export command.
+ * shown (N)", which is what they write, and a second group, "Everything,
+ * from the server…", runs the statement again on the server and streams every
+ * row to the file (`export_query_rows`), with no row cap and the same bytes.
+ *
+ * The server group is offered only where it means something: a cut result
+ * (the backend cuts only what its classifier read as a read, so this is a
+ * read by `db::classify`'s own decision, not a second one here), with its
+ * statement known (one of several sets has none: re-running could not say
+ * which set), and not on MongoDB, which the command does not export. The
+ * backend checks all of it again, and the policy, before the save dialog
+ * opens (ADR #96).
  *
  * Chrome only: the source says whether exporting is allowed (`export`, the
  * policy's lock as its reason) and which table an INSERT names (`sqlTarget`);
@@ -27,6 +35,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -35,6 +44,7 @@ import {
 import { PolicyLockHint } from "@/components/common/PolicyLock";
 import type { GridToolbarItem } from "@/components/grid/DataGrid";
 import { notify } from "@/lib/notify";
+import { api } from "@/lib/tauri";
 import { runExport } from "@/lib/grid/exportTable";
 import { reasonOf, type GridSource } from "@/lib/grid/gridSource";
 import { cutBy } from "@/lib/query/resultCap";
@@ -43,7 +53,7 @@ import {
   exportResult,
   type ResultExportFormat,
 } from "@/lib/query/exportResult";
-import type { Driver, QueryResult } from "@/types";
+import type { Driver, QueryResult, ServerSqlTarget } from "@/types";
 
 /** Each format's menu label: the two CSVs say which delimiter they use. */
 function formatLabel(
@@ -67,6 +77,8 @@ export function useResultExportItem(
   connectionId: string,
   driver: Driver | undefined,
   result: QueryResult,
+  /** The statement behind `result`; `undefined` when it cannot be re-run. */
+  sql: string | undefined,
 ): GridToolbarItem[] {
   const { t } = useTranslation();
   const { sqlTarget } = source;
@@ -75,6 +87,7 @@ export function useResultExportItem(
   const formats = useMemo(() => exportFormats(sqlTarget), [sqlTarget]);
   const cut = cutBy(result) !== null;
   const shown = result.rows.length;
+  const fromServer = cut && !!sql && driver !== "mongodb";
 
   const run = useCallback(
     (format: ResultExportFormat) =>
@@ -92,6 +105,28 @@ export function useResultExportItem(
     [connectionId, sqlTarget, result, driver, t],
   );
 
+  /** "Everything, from the server…": the statement again, every row. */
+  const runFromServer = useCallback(
+    (format: ResultExportFormat) => {
+      if (!sql) return;
+      // A function cannot cross IPC: the target travels with `columnOf`
+      // evaluated for each result column, in result order.
+      const target: ServerSqlTarget | undefined =
+        format === "sql" && sqlTarget
+          ? {
+              table: sqlTarget.table,
+              columns: result.columns.map((c) => sqlTarget.columnOf(c.name)),
+            }
+          : undefined;
+      void runExport(
+        () => api.exportQueryRows(connectionId, sql, format, target),
+        (path) => notify.file(t("notifications.fileSaved.rows"), { path }),
+        (message) => notify.error(message),
+      );
+    },
+    [connectionId, sql, sqlTarget, result.columns, t],
+  );
+
   return useMemo(() => {
     if (!offered) return [];
     const items = (className?: string) => [
@@ -107,6 +142,24 @@ export function useResultExportItem(
           {formatLabel(f, t)}
         </DropdownMenuItem>
       )),
+      ...(fromServer
+        ? [
+            <DropdownMenuSeparator key="server-sep" />,
+            <DropdownMenuLabel key="server" className="text-2xs">
+              {t("query.export.fromServer")}
+            </DropdownMenuLabel>,
+            ...formats.map((f) => (
+              <DropdownMenuItem
+                key={`server-${f}`}
+                className={className}
+                title={t("query.export.fromServerHint")}
+                onSelect={() => runFromServer(f)}
+              >
+                {formatLabel(f, t)}…
+              </DropdownMenuItem>
+            )),
+          ]
+        : []),
     ];
     return [
       {
@@ -144,5 +197,5 @@ export function useResultExportItem(
         ),
       },
     ];
-  }, [offered, formats, run, lock, t, cut, shown]);
+  }, [offered, formats, run, runFromServer, fromServer, lock, t, cut, shown]);
 }

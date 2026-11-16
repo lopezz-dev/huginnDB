@@ -2662,7 +2662,9 @@
     "export": {
       "csvComma": "CSV (comma)",
       "csvSemicolon": "CSV (semicolon, for Excel)",
-      "rowsShown": "The rows shown ({{count}})"
+      "rowsShown": "The rows shown ({{count}})",
+      "fromServer": "Everything, from the server",
+      "fromServerHint": "Run the query again on the server and write every row it returns, with no row limit"
     },
     "refreshFailed": "Saved, but the results could not be refreshed",
     "newTabPlaceholder": "-- write a SQL query and run it\n"

@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Export every row of a cut result, from the server.** When a query's
+  result was cut at 50 000 rows, its *Export data* menu now also offers
+  *Everything, from the server…*: it runs the query again on the server and
+  writes every row it returns to the file, with no row limit, in the same
+  CSV, JSON or SQL INSERT as the rows on screen. It is offered only for a
+  read, and not on MongoDB; under a managed policy it needs what exporting
+  a query's results already needs, and running SQL freely.
+
 - **Stop a running query.** While a query runs, the Run button becomes
   *Stop* (`Ctrl+.`, rebindable), and stopping stops the statement on the
   server — not just the wait. The result says what the stop left behind: a

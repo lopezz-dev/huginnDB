@@ -10,6 +10,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Exportar todas las filas de un resultado cortado, desde el servidor.**
+  Cuando el resultado de una consulta se cortó en 50 000 filas, su menú
+  *Exportar datos* ofrece también *Todo, desde el servidor…*: vuelve a
+  ejecutar la consulta en el servidor y escribe en el fichero todas las
+  filas que devuelva, sin límite, en el mismo CSV, JSON o SQL INSERT que las
+  filas en pantalla. Solo se ofrece para una lectura, y no en MongoDB; con
+  una política gestionada necesita lo mismo que ya necesitaba exportar los
+  resultados de una consulta, y poder ejecutar SQL libremente.
+
 - **Detener una consulta en curso.** Mientras se ejecuta una consulta, el
   botón Ejecutar pasa a ser *Detener* (`Ctrl+.`, reasignable), y detenerla
   detiene la sentencia en el servidor, no solo la espera. El resultado dice
