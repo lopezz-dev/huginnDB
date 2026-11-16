@@ -391,6 +391,18 @@ pub struct StmtOutcome {
 pub struct BatchResult {
     pub statements: Vec<StmtOutcome>,
     pub total_affected: u64,
+    /// Set when a person stopped the batch (ADR #137): the statement it was
+    /// stopped at — the last in `statements`, whose `error` says what happened
+    /// on the server — and whether that statement may have applied. Always
+    /// serialised, `null` when the batch was not stopped.
+    pub stopped: Option<BatchStop>,
+}
+
+/// Where a stopped batch stopped, and what that statement left behind.
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct BatchStop {
+    pub index: usize,
+    pub outcome: crate::error::StopOutcome,
 }
 
 /// One-line, length-capped echo of a statement for the batch summary.

@@ -1,4 +1,5 @@
-//! An AI's read, stopped on a real server (ADR #134).
+//! An AI's read, and a person's run, stopped on a real server (ADRs #134,
+//! #137).
 //!
 //! What the SQLite tests beside `execute_read_bounded` cannot show is the
 //! server's side: that a statement past its deadline, or whose caller went
@@ -302,5 +303,202 @@ async fn read_cancel_live_mssql_deadline() {
 async fn read_cancel_live_mssql_dropped() {
     if let Some((pool, watch)) = mssql().await {
         drop_stops_it(pool, watch, &mssql_slow()).await;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// A person's Stop (ADR #137): `cancel_query` on a run `execute_query` /
+// `execute_batch` started with a `run_id`. Same probes, same activity views;
+// what changes is who stops it (the registry, not a deadline) and that writes
+// are stopped too, with an outcome that says whether they applied.
+//
+//   cargo test --features mcp stop_live -- --ignored --nocapture
+// ---------------------------------------------------------------------------
+
+use crate::commands::query::{execute_batch_stoppable, execute_stoppable};
+use crate::error::{AppError, StopOutcome};
+
+/// A table of the test's own for the write probes, emptied first.
+const PROBE_TABLE: &str = "huginndb_stop_probe";
+
+/// Start `sql` as a person's run `id` in a task, and wait until the server
+/// shows the probe running.
+async fn start_run(
+    state: std::sync::Arc<AppState>,
+    watch: &Watch,
+    sql: String,
+) -> tokio::task::JoinHandle<crate::error::AppResult<crate::commands::query::QueryResult>> {
+    let run = state.runs.start("live".into()).unwrap();
+    let task = tokio::spawn(async move {
+        let signal = run.signal();
+        let result = execute_stoppable(&Quiet, &state, "c", &sql, &signal).await;
+        drop(run);
+        result
+    });
+    for _ in 0..20 {
+        if watch.probe_is_running().await {
+            return task;
+        }
+        assert!(!task.is_finished(), "the probe ended before it was seen");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("the probe never showed up in the server's activity view");
+}
+
+fn outcome_of(e: &AppError) -> StopOutcome {
+    match e {
+        AppError::Stopped { outcome, .. } => *outcome,
+        other => panic!("expected a stop, got {other}"),
+    }
+}
+
+/// Stop a running read: the error is a stop that applied nothing, the
+/// registry forgets the run, and the server agrees it is gone.
+async fn stop_stops_a_read(pool: DbPool, watch: Watch, slow: &str) {
+    let state = std::sync::Arc::new(state_with(pool));
+    let runs = state.runs.clone();
+    let task = start_run(state.clone(), &watch, slow.to_string()).await;
+    assert!(runs.stop("live"));
+    let err = task.await.unwrap().expect_err("the probe was stopped");
+    eprintln!("stop (read): {err}");
+    assert_eq!(outcome_of(&err), StopOutcome::NotApplied);
+    watch.assert_probe_stops("after Stop").await;
+    assert_eq!(runs.len(), 0);
+    assert!(!runs.stop("live"), "a stopped run is not found again");
+}
+
+/// Stop a running write, and check what the outcome claims against the table.
+async fn stop_stops_a_write(pool: DbPool, watch: Watch, write: &str, expected: StopOutcome) {
+    crate::db::exec::execute(&pool, &format!("DELETE FROM {PROBE_TABLE}"))
+        .await
+        .unwrap();
+    let state = std::sync::Arc::new(state_with(pool.clone()));
+    let runs = state.runs.clone();
+    let task = start_run(state.clone(), &watch, write.to_string()).await;
+    assert!(runs.stop("live"));
+    let err = task.await.unwrap().expect_err("the probe was stopped");
+    eprintln!("stop (write): {err}");
+    assert_eq!(outcome_of(&err), expected);
+    watch.assert_probe_stops("after Stop").await;
+    let (_, rows) =
+        crate::db::exec::query_rows(&pool, &format!("SELECT COUNT(*) FROM {PROBE_TABLE}"), &[])
+            .await
+            .unwrap();
+    assert_eq!(
+        rows[0][0].as_i64(),
+        Some(0),
+        "the stopped insert left nothing behind"
+    );
+}
+
+async fn probe_table(pool: &DbPool) {
+    crate::db::exec::execute(
+        pool,
+        &format!("CREATE TABLE IF NOT EXISTS {PROBE_TABLE} (x INT)"),
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+#[ignore = "needs HUGINNDB_TEST_PG_URL"]
+async fn stop_live_pg_read() {
+    if let Some((pool, watch)) = pg().await {
+        stop_stops_a_read(pool, watch, &pg_slow()).await;
+    }
+}
+
+/// PostgreSQL answers the cancel with the statement's failure, and a
+/// statement in autocommit is atomic: certainly not applied.
+#[tokio::test]
+#[ignore = "needs HUGINNDB_TEST_PG_URL"]
+async fn stop_live_pg_write() {
+    if let Some((pool, watch)) = pg().await {
+        probe_table(&pool).await;
+        let write = format!("INSERT INTO {PROBE_TABLE} SELECT 1 FROM pg_sleep(60) /* {MARK} */");
+        stop_stops_a_write(pool, watch, &write, StopOutcome::NotApplied).await;
+    }
+}
+
+/// A batch inside its own transaction, stopped at its third statement: the
+/// session is closed, so the server rolls the insert before it back.
+#[tokio::test]
+#[ignore = "needs HUGINNDB_TEST_PG_URL"]
+async fn stop_live_pg_batch_rolls_its_transaction_back() {
+    if let Some((pool, watch)) = pg().await {
+        probe_table(&pool).await;
+        crate::db::exec::execute(&pool, &format!("DELETE FROM {PROBE_TABLE}"))
+            .await
+            .unwrap();
+        let state = std::sync::Arc::new(state_with(pool.clone()));
+        let runs = state.runs.clone();
+        let run = runs.start("batch".into()).unwrap();
+        let statements = vec![
+            "BEGIN".to_string(),
+            format!("INSERT INTO {PROBE_TABLE} VALUES (1)"),
+            pg_slow(),
+        ];
+        let task = tokio::spawn({
+            let state = state.clone();
+            async move {
+                let signal = run.signal();
+                execute_batch_stoppable(&Quiet, &state, "c".into(), statements, Some(&signal)).await
+            }
+        });
+        for _ in 0..20 {
+            if watch.probe_is_running().await {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert!(runs.stop("batch"));
+        let batch = task.await.unwrap().unwrap();
+        let stop = batch.stopped.expect("the batch says it was stopped");
+        eprintln!("stop (batch): {:?}", batch.statements.last().unwrap().error);
+        assert_eq!(stop.index, 2);
+        watch.assert_probe_stops("after Stop").await;
+        for _ in 0..50 {
+            let (_, rows) = crate::db::exec::query_rows(
+                &pool,
+                &format!("SELECT COUNT(*) FROM {PROBE_TABLE}"),
+                &[],
+            )
+            .await
+            .unwrap();
+            if rows[0][0].as_i64() == Some(0) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        panic!("the batch's transaction was not rolled back");
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs HUGINNDB_TEST_MYSQL_URL"]
+async fn stop_live_mysql_read() {
+    if let Some((pool, watch)) = mysql().await {
+        stop_stops_a_read(pool, watch, &mysql_slow()).await;
+    }
+}
+
+/// MySQL answers `KILL QUERY` with the statement's failure too, but the app
+/// cannot know the table's engine, so the outcome stays "may have applied";
+/// on InnoDB the table must still be empty.
+#[tokio::test]
+#[ignore = "needs HUGINNDB_TEST_MYSQL_URL"]
+async fn stop_live_mysql_write() {
+    if let Some((pool, watch)) = mysql().await {
+        probe_table(&pool).await;
+        let write = format!("INSERT INTO {PROBE_TABLE} SELECT SLEEP(60) /* {MARK} */");
+        stop_stops_a_write(pool, watch, &write, StopOutcome::MayHaveApplied).await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "needs HUGINNDB_TEST_MSSQL_HOST"]
+async fn stop_live_mssql_read() {
+    if let Some((pool, watch)) = mssql().await {
+        stop_stops_a_read(pool, watch, &mssql_slow()).await;
     }
 }

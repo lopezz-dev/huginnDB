@@ -809,19 +809,38 @@ export const api = {
 
   // Query execution ------------------------------------------------------
 
-  /** Run arbitrary SQL on the connection. */
-  executeQuery: (connectionId: string, sql: string) =>
-    invoke<QueryResult>("execute_query", { connectionId, sql }),
+  /**
+   * Run arbitrary SQL on the connection.
+   *
+   * With a `runId` the run can be stopped by `cancelQuery(runId)`, which stops
+   * the statement on the server (ADR #137). A stopped run rejects with an
+   * error `stoppedOutcome` (`lib/db/driver`) recognises, saying whether the
+   * statement may have applied. Without one it runs as it always has.
+   */
+  executeQuery: (connectionId: string, sql: string, runId?: string) =>
+    invoke<QueryResult>("execute_query", { connectionId, sql, runId }),
 
   /**
    * Run a list of statements sequentially on a single pooled connection and
-   * return a per-statement summary plus the last SELECT's result set. This
-   * is the multi-statement path: a single `executeQuery` over a `;`-joined
-   * buffer goes through the prepared protocol, which rejects multiple
-   * commands. Statements are split client-side via `splitSql`.
+   * return a per-statement summary, each statement with its own result sets.
+   * This is the multi-statement path: a single `executeQuery` over a
+   * `;`-joined buffer goes through the prepared protocol, which rejects
+   * multiple commands. Statements are split client-side via `splitSql`.
+   *
+   * With a `runId` the batch can be stopped by `cancelQuery(runId)`: it then
+   * resolves (it does not reject) with `stopped` set to the statement it
+   * stopped at, whose `error` says what happened on the server (ADR #137).
    */
-  executeBatch: (connectionId: string, statements: string[]) =>
-    invoke<BatchResult>("execute_batch", { connectionId, statements }),
+  executeBatch: (connectionId: string, statements: string[], runId?: string) =>
+    invoke<BatchResult>("execute_batch", { connectionId, statements, runId }),
+
+  /**
+   * Stop the run `runId` that `executeQuery` / `executeBatch` is running, on
+   * the server. Resolves to whether there was one in flight: `false` when it
+   * had already ended (Stop pressed as the result arrived), which is not an
+   * error. The run itself answers its own caller with what happened.
+   */
+  cancelQuery: (runId: string) => invoke<boolean>("cancel_query", { runId }),
 
   /**
    * Paginated SELECT against a known table.
