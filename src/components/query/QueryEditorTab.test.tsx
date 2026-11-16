@@ -876,6 +876,7 @@ describe("result tabs", () => {
         stmt(1, "SELECT 1", { is_select: true, results: [rows(["x"], [[1]])] }),
       ],
       total_affected: 0,
+      stopped: null,
     } satisfies BatchResult);
     renderTab();
     await runAll();
@@ -900,6 +901,7 @@ describe("result tabs", () => {
         }),
       ],
       total_affected: 0,
+      stopped: null,
     } satisfies BatchResult);
     renderTab();
     await runAll();
