@@ -338,9 +338,6 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/connection/ConnectionTreeRow.tsx": 4,
     "src/components/connection/EnvironmentSwitcher.tsx": 4,
     "src/components/grid/DocumentListView.tsx": 4,
-    // These four, and the timer's and the history sidebar's below, were
-    // QueryEditorTab.tsx's 6 before the ADR #137 extraction split it.
-    "src/components/query/QueryEditorToolbar.tsx": 4,
     // Three of the four are the colour swatches inside `ContextMenuContent`,
     // which is the menu-content case `tooltip.tsx` reserves for the OS
     // tooltip. They are host elements rather than `ContextMenuItem`s, so the
@@ -356,6 +353,11 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/grid/TableDataTab.tsx": 2,
     "src/components/pulse/PulsePanel.tsx": 2,
     "src/components/query/Console.tsx": 2,
+    // Was 4 when the ADR #137 extraction split it out of QueryEditorTab.tsx
+    // (whose 6 also became the timer's and the history sidebar's 1 below).
+    // Save and History became `IconButton`s with the toolbar redesign; Run's
+    // title and the database `SelectTrigger`'s remain.
+    "src/components/query/QueryEditorToolbar.tsx": 2,
     "src/components/schema/SchemaTableRow.tsx": 2,
     "src/components/schema/StructureEditorTab.tsx": 2,
     "src/components/settings/sections/ShortcutRow.tsx": 2,
@@ -381,7 +383,7 @@ describe("the OS tooltip outside ui/", () => {
     "src/components/shell/NotificationCard.tsx": 1,
   };
 
-  it(`is down to ${71} in ${36} files`, () => {
+  it(`is down to ${69} in ${36} files`, () => {
     const measured = census((src) => {
       let n = 0;
       for (const [tag, attrs] of openingTags(src)) {
@@ -394,7 +396,7 @@ describe("the OS tooltip outside ui/", () => {
   });
 
   it("headline count only moves down", () => {
-    expect(total(BUDGET)).toBeLessThanOrEqual(72);
+    expect(total(BUDGET)).toBeLessThanOrEqual(69);
   });
 });
 

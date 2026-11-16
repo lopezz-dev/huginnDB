@@ -39,9 +39,18 @@ export type ToolbarDensity = "wide" | "compact" | "narrow";
  */
 export const TOOLBAR_DENSITY_BREAKPOINTS = { wide: 940, compact: 560 } as const;
 
-export function densityForWidth(width: number): ToolbarDensity {
-  if (width >= TOOLBAR_DENSITY_BREAKPOINTS.wide) return "wide";
-  if (width >= TOOLBAR_DENSITY_BREAKPOINTS.compact) return "compact";
+/** Where a toolbar changes level; each consumer states its own widths. */
+export interface DensityBreakpoints {
+  wide: number;
+  compact: number;
+}
+
+export function densityForWidth(
+  width: number,
+  breakpoints: DensityBreakpoints = TOOLBAR_DENSITY_BREAKPOINTS,
+): ToolbarDensity {
+  if (width >= breakpoints.wide) return "wide";
+  if (width >= breakpoints.compact) return "compact";
   return "narrow";
 }
 
@@ -56,9 +65,13 @@ export function densityForWidth(width: number): ToolbarDensity {
  * threshold — a splitter drag across 300 px re-renders at most twice.
  *
  * @param ref - The toolbar element. May be null before mount.
+ * @param breakpoints - The grid toolbar's widths by default. The query
+ *   editor's toolbar (ADR #137) is the second consumer and passes its own;
+ *   read once per mount, so pass a module constant.
  */
 export function useToolbarDensity(
   ref: React.RefObject<HTMLElement | null>,
+  breakpoints: DensityBreakpoints = TOOLBAR_DENSITY_BREAKPOINTS,
 ): ToolbarDensity {
   // Optimistic default: assume there's room. A first paint that briefly shows
   // the full bar and then collapses is far less jarring than one that starts
@@ -73,12 +86,14 @@ export function useToolbarDensity(
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width;
       if (width === undefined) return;
-      const next = densityForWidth(width);
+      const next = densityForWidth(width, breakpoints);
       setDensity((prev) => (prev === next ? prev : next));
     });
     observer.observe(el);
-    setDensity(densityForWidth(el.clientWidth));
+    setDensity(densityForWidth(el.clientWidth, breakpoints));
     return () => observer.disconnect();
+    // `breakpoints` is a module constant at every call site (see @param).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref]);
   return density;
 }

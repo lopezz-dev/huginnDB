@@ -65,8 +65,14 @@ const h = vi.hoisted(() => ({
     line: 1,
     /** The last range the tab selected (Go to statement). */
     selected: null as unknown,
+    /** Edits the tab applied (Format). */
+    edits: [] as { range: unknown; text: string }[],
+    /** Fire Monaco's caret-moved event. */
+    moveCaret: (_line: number, _column: number) => {},
   },
   aiTask: vi.fn(),
+  /** Ids of the editor's own context-menu actions currently registered. */
+  contextActions: new Set<string>(),
 }));
 
 vi.mock("@/lib/tauri", () => ({ api: h.api }));
@@ -96,8 +102,10 @@ vi.mock("@monaco-editor/react", () => ({
         getLineCount: () => h.editor.value.split("\n").length,
         getValueLength: () => 0,
         getValue: () => h.editor.value,
-        getValueInRange: () => h.editor.selection ?? "",
+        getValueInRange: (range: unknown) =>
+          range === "FULL" ? h.editor.value : (h.editor.selection ?? ""),
         getLineMaxColumn: () => 80,
+        getFullModelRange: () => "FULL",
         uri: { toString: () => "inmemory://model/1" },
       };
       onMount(
@@ -111,12 +119,26 @@ vi.mock("@monaco-editor/react", () => ({
             h.editor.selected = r;
           },
           revealLinesInCenter: () => {},
+          executeEdits: (_source: string, edits: { range: unknown; text: string }[]) => {
+            h.editor.edits.push(...edits);
+            return true;
+          },
+          pushUndoStop: () => true,
+          onDidChangeCursorPosition: (
+            fn: (e: { position: { lineNumber: number; column: number } }) => void,
+          ) => {
+            h.editor.moveCaret = (lineNumber, column) => fn({ position: { lineNumber, column } });
+            return { dispose: () => {} };
+          },
           focus: () => {},
           getPosition: () => ({ lineNumber: h.editor.line }),
           onDidChangeModelContent: () => ({ dispose: () => {} }),
           onKeyDown: () => ({ dispose: () => {} }),
           addCommand: () => null,
-          addAction: () => ({ dispose: () => {} }),
+          addAction: (action: { id: string }) => {
+            h.contextActions.add(action.id);
+            return { dispose: () => h.contextActions.delete(action.id) };
+          },
         },
         {},
       );
@@ -361,7 +383,14 @@ beforeEach(() => {
   h.save = [];
   h.sqlEntry = null;
   h.shortcuts = [];
-  h.editor = { value: "", selection: null, line: 1, selected: null };
+  h.editor = {
+    value: "",
+    selection: null,
+    line: 1,
+    selected: null,
+    edits: [],
+    moveCaret: () => {},
+  };
   for (const fn of Object.values(h.api)) fn.mockReset();
   for (const fn of Object.values(h.notify)) fn.mockReset();
   h.aiTask.mockReset();
@@ -916,7 +945,7 @@ describe("database selector", () => {
 // ---------------------------------------------------------------------------
 
 function openHistory() {
-  act(() => fireEvent.click(screen.getByTitle("query.history")));
+  act(() => fireEvent.click(screen.getByLabelText("query.history")));
 }
 
 describe("history", () => {
@@ -1049,22 +1078,114 @@ describe("info bar", () => {
     usePreferences.setState((s) => ({ prefs: { ...s.prefs, keybindings: {} } }));
   });
 
-  it("counts lines and characters through translations", () => {
-    seed("SELECT 1");
+  it("shows the caret's Ln, Col and the statement count, live", () => {
+    seed("SELECT 1;\nSELECT 2");
     renderTab();
-    // The fake model reports 1 line, 0 characters.
     expect(
-      screen.getByText(
-        `query.lines${JSON.stringify({ count: 1 })} · query.chars${JSON.stringify({ count: 0 })}`,
-      ),
+      screen.getByText(`query.cursorPosition${JSON.stringify({ line: 1, column: 1 })}`),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(`query.statementCount${JSON.stringify({ count: 2 })}`),
+    ).toBeTruthy();
+    act(() => h.editor.moveCaret(2, 5));
+    expect(
+      screen.getByText(`query.cursorPosition${JSON.stringify({ line: 2, column: 5 })}`),
     ).toBeTruthy();
   });
 
-  it("shows the database and the driver family with a hard-coded encoding", () => {
+  it("shows the database and the driver, and no longer an encoding", () => {
     seed("SELECT 1");
     renderTab();
     expect(screen.getByText("app")).toBeTruthy();
-    expect(screen.getByText("sql · utf-8")).toBeTruthy();
+    expect(screen.getByText("postgres")).toBeTruthy();
+    expect(screen.queryByText(/utf-8/)).toBeNull();
+  });
+});
+
+describe("toolbar", () => {
+  it("Format rewrites the buffer (or the selection) as one edit, and Shift+Alt+F does too", async () => {
+    seed("select a,b from t where x=1");
+    renderTab();
+    h.editor.value = "select a,b from t where x=1";
+    act(() => fireEvent.click(screen.getByLabelText("query.format")));
+    expect(h.editor.edits).toHaveLength(1);
+    expect(h.editor.edits[0].range).toBe("FULL");
+    expect(h.editor.edits[0].text).toMatch(/^SELECT\n/);
+
+    h.editor.selection = "select 1";
+    await press("formatQuery");
+    expect(h.editor.edits).toHaveLength(2);
+    expect(h.editor.edits[1].text).toBe("SELECT\n  1");
+  });
+
+  it("Format is not offered on MongoDB, and its shortcut declines there", () => {
+    useConnections.setState({ profiles: [profile("m1", "mongodb")] });
+    seed("db.a.find({})", "m1");
+    renderTab("m1");
+    expect(screen.queryByLabelText("query.format")).toBeNull();
+    const action = h.shortcuts.find((a) => a.id === "formatQuery")!;
+    expect(action.run()).toBe(false);
+  });
+
+  it("Explain is offered only where the AI is on for the connection, and asks about the statement", async () => {
+    seed("SELECT 1;\nSELECT 2");
+    const { unmount } = renderTab();
+    expect(screen.queryByLabelText("query.explain")).toBeNull();
+    unmount();
+
+    usePreferences.setState((s) => ({
+      prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: true } },
+    }));
+    useConnections.setState({
+      profiles: [{ ...profile(CONN, "postgres"), ai_enabled: true }],
+    });
+    renderTab();
+    h.editor.line = 2;
+    act(() => fireEvent.click(screen.getByLabelText("query.explain")));
+    expect(h.aiTask).toHaveBeenCalledWith({
+      task: "explainQuery",
+      connection: CONN,
+      statement: "SELECT 2",
+    });
+    usePreferences.setState((s) => ({
+      prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: false } },
+    }));
+  });
+
+  it("the editor's AI context-menu entries come and go with the connection's AI", () => {
+    h.contextActions.clear();
+    seed("SELECT 1");
+    renderTab();
+    expect([...h.contextActions]).toEqual([]);
+
+    act(() => {
+      usePreferences.setState((s) => ({
+        prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: true } },
+      }));
+      useConnections.setState({
+        profiles: [{ ...profile(CONN, "postgres"), ai_enabled: true }],
+      });
+    });
+    expect([...h.contextActions].sort()).toEqual([
+      "huginndb.ai.explainQuery",
+      "huginndb.ai.explainSlow",
+    ]);
+
+    act(() => {
+      usePreferences.setState((s) => ({
+        prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: false } },
+      }));
+    });
+    expect([...h.contextActions]).toEqual([]);
+  });
+
+  it("History is a toggle that says whether it is open", () => {
+    seed("");
+    renderTab();
+    const button = screen.getByLabelText("query.history");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    act(() => fireEvent.click(button));
+    expect(screen.getByLabelText("query.history").getAttribute("aria-pressed")).toBe("true");
   });
 });
 
@@ -1077,7 +1198,7 @@ describe("MongoDB", () => {
     await clickRun();
     expect(h.api.executeQuery).toHaveBeenCalledWith("m1", "db.users.find({})");
     expect(lastGrid().driver).toBe("mongodb");
-    expect(screen.getByText("mongodb · utf-8")).toBeTruthy();
+    expect(screen.getByText("mongodb")).toBeTruthy();
   });
 
   it("runAll splits two lines into a batch with its own dialect (no `;` needed)", async () => {
@@ -1098,7 +1219,7 @@ describe("save dialog", () => {
     seed("SELECT 1", `${CONN}::db::sales`);
     renderTab(`${CONN}::db::sales`);
     expect(lastSave().open).toBe(false);
-    act(() => fireEvent.click(screen.getByTitle("query.saveQuery")));
+    act(() => fireEvent.click(screen.getByLabelText("query.saveQuery")));
     expect(lastSave()).toMatchObject({
       open: true,
       sql: "SELECT 1",
@@ -1109,7 +1230,7 @@ describe("save dialog", () => {
   it("is not offered on an empty buffer", () => {
     seed("");
     renderTab();
-    expect((screen.getByTitle("query.saveQuery") as HTMLButtonElement).disabled).toBe(
+    expect((screen.getByLabelText("query.saveQuery") as HTMLButtonElement).disabled).toBe(
       true,
     );
   });

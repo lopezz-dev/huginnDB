@@ -55,6 +55,7 @@ export type ActionId =
   // query
   | "runQuery"
   | "runAll"
+  | "formatQuery"
   // grid
   | "refreshData"
   | "expandSelectedCell"
@@ -170,6 +171,16 @@ export const ACTIONS: ActionSpec[] = [
     scope: "editor",
     defaults: ["Mod+Shift+Enter"],
     labelKey: "settings.shortcuts.runAll",
+  },
+  // Formats the selection, else the buffer, through `lib/sql/formatSql`. SQL
+  // only: a MongoDB tab declines it (ADR #136 — what the tab can never do is
+  // not offered), so the key falls through to Monaco.
+  {
+    id: "formatQuery",
+    category: "query",
+    scope: "editor",
+    defaults: ["Shift+Alt+F"],
+    labelKey: "settings.shortcuts.formatQuery",
   },
 
   // ── The schema tree's search ─────────────────────────────────────────────
