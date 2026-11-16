@@ -65,6 +65,7 @@ and every one of them can be rebound like any other action.
 | --- | --- | --- |
 | Run the selection, or the statement under the cursor | `Mod+Enter` | What is selected; with nothing selected, the statement the cursor is in. A caret on the blank line after the last statement still counts as in it. A selection that spans several statements runs them as a batch. |
 | Run every statement in the editor | `Mod+Shift+Enter` | The whole buffer, statement by statement on one connection. |
+| Stop the running query | `Mod+.` | Stops the run in flight on the server, not just the wait. With nothing running, the key goes to the editor. `Escape` is not used: the editor keeps it for suggestions and find. |
 | Format the SQL in the editor | `Shift+Alt+F` | Formats the selection, or the whole editor, as one step you can undo. SQL only: a MongoDB tab does not offer it, and the key goes to the editor. |
 
 The Run button does what `Mod+Enter` does. Its ▾ offers the three scopes by

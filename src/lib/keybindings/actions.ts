@@ -55,6 +55,7 @@ export type ActionId =
   // query
   | "runQuery"
   | "runAll"
+  | "stopQuery"
   | "formatQuery"
   // grid
   | "refreshData"
@@ -172,6 +173,16 @@ export const ACTIONS: ActionSpec[] = [
     scope: "editor",
     defaults: ["Mod+Shift+Enter"],
     labelKey: "settings.shortcuts.runAll",
+  },
+  // Stops the run in flight on the server (ADR #137). Not Escape: Monaco owns
+  // it for suggestions and find. With nothing running the handler declines,
+  // so the key falls through to Monaco (whose Mod+. is the quick-fix menu).
+  {
+    id: "stopQuery",
+    category: "query",
+    scope: "editor",
+    defaults: ["Mod+."],
+    labelKey: "settings.shortcuts.stopQuery",
   },
   // Formats the selection, else the buffer, through `lib/sql/formatSql`. SQL
   // only: a MongoDB tab declines it (ADR #136 — what the tab can never do is

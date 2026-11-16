@@ -6,7 +6,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { Check, X } from "lucide-react";
+import { Check, CircleStop, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn, formatDuration } from "@/lib/utils";
 import type { SummaryTab } from "@/lib/query/statementTabs";
@@ -20,7 +20,7 @@ export function SummaryView({
   onSelect: (key: string) => void;
 }) {
   const { t } = useTranslation();
-  const ok = tab.failedAt === null;
+  const ok = tab.failedAt === null && tab.stoppedAt === null;
   return (
     <div className="min-h-0 flex-1 overflow-auto">
       <div
@@ -30,12 +30,14 @@ export function SummaryView({
         )}
       >
         <span>
-          {ok
-            ? t("query.batchOk", {
-                count: tab.statements.length,
-                affected: t("query.affectedRows", { count: tab.totalAffected }),
-              })
-            : t("query.batchFailed", { index: tab.failedAt, total: tab.statements.length })}
+          {tab.stoppedAt !== null
+            ? t("query.batchStopped", { index: tab.stoppedAt, total: tab.statements.length })
+            : ok
+              ? t("query.batchOk", {
+                  count: tab.statements.length,
+                  affected: t("query.affectedRows", { count: tab.totalAffected }),
+                })
+              : t("query.batchFailed", { index: tab.failedAt, total: tab.statements.length })}
         </span>
         <span className="ml-auto tabular-nums text-muted-foreground">
           {formatDuration(tab.totalElapsedMs)}
@@ -49,7 +51,9 @@ export function SummaryView({
           onClick={() => onSelect(s.tabKey)}
           className="flex h-auto w-full items-center justify-start gap-2 rounded-none px-3 py-0.5 text-2xs font-normal"
         >
-          {s.status === "failed" ? (
+          {s.status === "stopped" ? (
+            <CircleStop className="h-3 w-3 shrink-0 text-warning" />
+          ) : s.status === "failed" ? (
             <X className="h-3 w-3 shrink-0 text-destructive" />
           ) : (
             <Check className="h-3 w-3 shrink-0 text-primary" />
@@ -63,10 +67,16 @@ export function SummaryView({
           <span
             className={cn(
               "shrink-0 tabular-nums",
-              s.error ? "text-destructive" : "text-muted-foreground/70",
+              s.status === "failed"
+                ? "text-destructive"
+                : s.status === "stopped"
+                  ? "text-warning"
+                  : "text-muted-foreground/70",
             )}
           >
-            {s.error
+            {s.status === "stopped"
+              ? t("query.summaryStopped")
+              : s.error
               ? s.error
               : s.isRead
                 ? t("query.summaryRows", { count: s.rows })

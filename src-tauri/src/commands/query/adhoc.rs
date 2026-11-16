@@ -475,8 +475,9 @@ pub(crate) fn stop_at(
         rows_affected: 0,
         is_select,
         error: Some(msg),
-        results: Vec::new(),
+        // The stopped statement's time up to the stop (ADR #137).
         elapsed_ms: start.elapsed().as_millis() as u64,
+        results: Vec::new(),
     });
     BatchStop { index, outcome }
 }

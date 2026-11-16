@@ -17,7 +17,7 @@
  */
 
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, ListChecks, X } from "lucide-react";
+import { AlertTriangle, CircleStop, ListChecks, X } from "lucide-react";
 import { Segmented } from "@/components/ui/segmented";
 import { sqlPreview, type StatementTab } from "@/lib/query/statementTabs";
 import { cutBy } from "@/lib/query/resultCap";
@@ -49,6 +49,8 @@ function labelOf(tab: StatementTab, t: T): string {
       return t("query.writeTab", { label: nameOf(tab), count: tab.rowsAffected });
     case "error":
       return t("query.errorTab", { label: nameOf(tab) });
+    case "stopped":
+      return t("query.stoppedTab", { label: nameOf(tab) });
   }
 }
 
@@ -70,6 +72,7 @@ function titleOf(tab: StatementTab, t: T): string {
       break;
     case "write":
     case "error":
+    case "stopped":
       return tab.sql;
   }
 }
@@ -90,6 +93,12 @@ export function ResultTabs({
     icon:
       tab.kind === "error" ? (
         <X className="h-3 w-3 text-destructive" />
+      ) : tab.kind === "stopped" ? (
+        <CircleStop
+          className={
+            tab.outcome === "may_have_applied" ? "h-3 w-3 text-warning" : "h-3 w-3"
+          }
+        />
       ) : tab.kind === "summary" ? (
         <ListChecks className="h-3 w-3" />
       ) : tab.kind === "rows" && cutBy(tab.result) !== null ? (

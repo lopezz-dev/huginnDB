@@ -14,7 +14,11 @@ import { AlertTriangle } from "lucide-react";
 import { cutBy } from "@/lib/query/resultCap";
 import { QueryResultGrid } from "@/components/query/QueryResultGrid";
 import { ResultTabs } from "@/components/query/results/ResultTabs";
-import { ErrorCard, WriteCard } from "@/components/query/results/StatementCards";
+import {
+  ErrorCard,
+  StoppedCard,
+  WriteCard,
+} from "@/components/query/results/StatementCards";
 import { SummaryView } from "@/components/query/results/SummaryView";
 import type { LineRange, StatementTab } from "@/lib/query/statementTabs";
 import type { QueryRun } from "@/lib/query/useQueryRun";
@@ -63,6 +67,8 @@ export function QueryResultsArea({
         <ErrorCard tab={active} onGoTo={onGoTo} />
       ) : active.kind === "write" ? (
         <WriteCard tab={active} onGoTo={onGoTo} />
+      ) : active.kind === "stopped" ? (
+        <StoppedCard tab={active} onGoTo={onGoTo} />
       ) : (
         <>
           <CutStrip tab={active} />
