@@ -14,6 +14,7 @@ pub mod credentials;
 pub mod dump;
 pub mod feedback;
 pub mod guard;
+pub mod import;
 pub mod insert;
 pub mod json_schemas;
 pub mod mcp;

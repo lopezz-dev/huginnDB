@@ -74,6 +74,7 @@ import { GoToRowInput } from "@/components/grid/GoToRowInput";
 import { BulkUpdateDialog } from "@/components/grid/dialogs/BulkUpdateDialog";
 import { InsertDocumentDialog } from "@/components/grid/dialogs/InsertDocumentDialog";
 import { InsertRowsDialog } from "@/components/grid/dialogs/InsertRowsDialog";
+import { ImportFileDialog } from "@/components/grid/dialogs/ImportFileDialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -100,7 +101,7 @@ import { collectNestedFieldPaths } from "@/lib/grid/fieldPaths";
 import { nextSort } from "@/lib/grid/sortSpec";
 import { isNarrowing, wireProjection } from "@/lib/grid/projection";
 import { SortByMenuItems, type SortField } from "@/components/grid/SortControls";
-import { pickJsonFile } from "@/lib/dialogs";
+import { pickImportFile, pickJsonFile } from "@/lib/dialogs";
 import { cn } from "@/lib/utils";
 import { PolicyLockHint, PolicyVerbNotice } from "@/components/common/PolicyLock";
 import { useRelationPolicy } from "@/lib/policy/useRelationPolicy";
@@ -637,6 +638,14 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
   /** Bulk row insert from pasted JSON (the SQL drivers). Tab-scoped for the
    *  same reason as its Mongo twin above. */
   const [insertRowsOpen, setInsertRowsOpen] = useState(false);
+  /** The file being imported into this table (ADR #139); the dialog is open
+   *  while there is one. Picked before the dialog opens, so a cancelled
+   *  picker opens nothing. */
+  const [importPath, setImportPath] = useState<string | null>(null);
+  const importFileForTab = useCallback(async () => {
+    const picked = await pickImportFile(t("dataGrid.importFile.pickTitle"));
+    if (picked) setImportPath(picked);
+  }, [t]);
 
   const importCollectionJsonForTab = useCallback(async () => {
     const picked = await pickJsonFile(t("schema.importCollection.pickTitle"));
@@ -981,17 +990,22 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               icon: Braces,
               onSelect: () => setInsertRowsOpen(true),
             },
+            {
+              id: "import-file",
+              label: t("dataGrid.importFile.action"),
+              icon: Upload,
+              onSelect: () => void importFileForTab(),
+            },
           ],
-    [isMongo, t, importCollectionJsonForTab],
+    [isMongo, t, importCollectionJsonForTab, importFileForTab],
   );
 
   const insertExtraContent: GridToolbarItem[] = useMemo(
     () => [
-      // MongoDB only: additive JSON import into this collection (#65), moved
-      // here from the schema tree's right-click menu so the action lives with
-      // the data it affects instead of the tree. SQL has no table-scoped import
-      // primitive (only a whole-connection `.sql` batch), so it keeps that entry
-      // point in the tree unchanged.
+      // MongoDB's additive JSON import (#65) and SQL's file import (ADR
+      // #139) both live with the data they affect, behind the Insert
+      // button's chevron (`insertAlternatives` above); the schema tree
+      // offers the SQL one on the table's node too.
       {
         id: "export-data",
         bar: (
@@ -1441,6 +1455,18 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
           schema={schema}
           table={table}
           onInserted={() => void reloadAll()}
+        />
+      )}
+
+      {!isMongo && importPath && (
+        <ImportFileDialog
+          open
+          onOpenChange={(open) => !open && setImportPath(null)}
+          connectionId={connectionId}
+          schema={schema}
+          table={table}
+          path={importPath}
+          onImported={() => void reloadAll()}
         />
       )}
     </div>

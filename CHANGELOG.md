@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **Import a CSV, JSON or Excel file into a table.** A SQL table's
+  *Insert* menu (and the table's right-click menu in the schema tree) now
+  offers *Import from file (CSV, JSON, Excel)…*. Each table column takes the
+  file column of the same name, and you can change any of them before
+  importing; a column left out takes its default. Every row goes in as one
+  transaction: if one fails, nothing is imported and the message names the
+  row of the file. What HuginnDB exports imports back, and so does a CSV
+  saved by a Spanish Excel (`;`, Windows-1252 and a decimal comma). Up to
+  200 000 rows per file. Under a managed policy it needs `insert` on the
+  table and on each column it writes.
+
 - **Export every row of a cut result, from the server.** When a query's
   result was cut at 50 000 rows, its *Export data* menu now also offers
   *Everything, from the server…*: it runs the query again on the server and

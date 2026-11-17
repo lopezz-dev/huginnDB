@@ -33,6 +33,26 @@ export async function pickJsonFile(
 }
 
 /**
+ * Ask the user for a file to import into a table (ADR #139): CSV, JSON or
+ * Excel. `null` when they cancel. The extensions are the ones
+ * `ImportFormat::from_path` in `db/import_file.rs` accepts.
+ */
+export async function pickImportFile(title: string): Promise<string | null> {
+  const picked = await openFileDialog({
+    multiple: false,
+    directory: false,
+    title,
+    filters: [
+      {
+        name: "CSV, JSON, Excel",
+        extensions: ["csv", "tsv", "txt", "json", "xlsx", "xlsm"],
+      },
+    ],
+  });
+  return typeof picked === "string" && picked ? picked : null;
+}
+
+/**
  * Ask the user where to create one JSON file. `null` when they cancel.
  *
  * The counterpart of {@link pickJsonFile} for the one flow that needs a

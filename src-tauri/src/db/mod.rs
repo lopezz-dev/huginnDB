@@ -32,6 +32,7 @@ pub mod ddl;
 pub mod dump;
 pub mod endpoint;
 pub mod exec;
+pub mod import_file;
 pub mod mongo;
 pub mod mssql;
 pub mod mysql;

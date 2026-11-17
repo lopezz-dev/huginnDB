@@ -10,6 +10,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Importar un fichero CSV, JSON o Excel a una tabla.** El menú
+  *Insertar* de una tabla SQL (y el menú contextual de la tabla en el árbol
+  de esquema) ofrece ahora *Importar desde fichero (CSV, JSON, Excel)…*.
+  Cada columna de la tabla toma la columna del fichero con el mismo nombre,
+  y puedes cambiar cualquiera antes de importar; una columna que se deja
+  fuera toma su valor por defecto. Todas las filas entran en una sola
+  transacción: si una falla, no se importa nada y el mensaje dice qué fila
+  del fichero fue. Lo que exporta HuginnDB se importa de vuelta, y también
+  un CSV guardado por un Excel en español (`;`, Windows-1252 y coma
+  decimal). Hasta 200 000 filas por fichero. Con una política gestionada
+  necesita `insert` en la tabla y en cada columna que escribe.
+
 - **Exportar todas las filas de un resultado cortado, desde el servidor.**
   Cuando el resultado de una consulta se cortó en 50 000 filas, su menú
   *Exportar datos* ofrece también *Todo, desde el servidor…*: vuelve a

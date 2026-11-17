@@ -17,6 +17,7 @@ import {
   Code2,
   Copy,
   Eraser,
+  Upload,
   ExternalLink,
   Eye,
   KeyRound,
@@ -449,6 +450,12 @@ export const TableRow = memo(function TableRow({
               onSelect={() => actions.onRename(t)}
             />
             <ContextMenuSeparator />
+            <ContextMenuAction
+              icon={Upload}
+              label={ct("dataGrid.importFile.action")}
+              locked={lock("insert")}
+              onSelect={() => actions.onImportFile(t)}
+            />
             <ContextMenuAction
               icon={Eraser}
               label={ct("schema.context.empty")}

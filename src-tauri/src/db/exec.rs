@@ -196,26 +196,76 @@ async fn execute_params_in_tx_checked(
     batches: &[(String, Vec<Option<String>>)],
     check: impl Fn(usize, u64) -> Option<String>,
 ) -> AppResult<Vec<u64>> {
+    run_params_in_tx(pool, batches, check, Ending::Commit)
+        .await
+        .map_err(|f| f.error)
+}
+
+/// Why [`run_params_in_tx`] stopped: the error, and the index of the
+/// statement that raised it — `None` when it was the transaction itself
+/// (`BEGIN`, `COMMIT`, acquiring the session) rather than one statement.
+#[derive(Debug)]
+pub struct TxFailure {
+    pub at: Option<usize>,
+    pub error: AppError,
+}
+
+/// How [`run_params_in_tx`] ends a list that ran without an error.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ending {
+    Commit,
+    /// Roll back even on success: a dry run that only asks *which* statement
+    /// fails (the file import's row locator, ADR #139).
+    Rollback,
+}
+
+/// [`execute_params_in_tx`] for callers that need to know which statement
+/// failed: a file import reports the row, not only the driver's message.
+pub async fn execute_params_in_tx_locating(
+    pool: &DbPool,
+    batches: &[(String, Vec<Option<String>>)],
+    ending: Ending,
+) -> Result<Vec<u64>, TxFailure> {
+    run_params_in_tx(pool, batches, |_, _| None, ending).await
+}
+
+async fn run_params_in_tx(
+    pool: &DbPool,
+    batches: &[(String, Vec<Option<String>>)],
+    check: impl Fn(usize, u64) -> Option<String>,
+    ending: Ending,
+) -> Result<Vec<u64>, TxFailure> {
     if batches.is_empty() {
         return Ok(Vec::new());
     }
+    let whole = |e: AppError| TxFailure { at: None, error: e };
 
     macro_rules! sqlx_tx_all {
         ($p:expr) => {{
-            let mut tx = $p.begin().await?;
+            let mut tx = $p.begin().await.map_err(|e| whole(e.into()))?;
             let mut affected = Vec::with_capacity(batches.len());
             for (i, (sql, binds)) in batches.iter().enumerate() {
                 let n = bind_all!(sql.as_str(), binds, $p)
                     .execute(&mut *tx)
-                    .await?
+                    .await
+                    .map_err(|e| TxFailure {
+                        at: Some(i),
+                        error: e.into(),
+                    })?
                     .rows_affected();
                 if let Some(reason) = check(i, n) {
                     // Dropping `tx` rolls it back.
-                    return Err(AppError::InvalidInput(reason));
+                    return Err(TxFailure {
+                        at: Some(i),
+                        error: AppError::InvalidInput(reason),
+                    });
                 }
                 affected.push(n);
             }
-            tx.commit().await?;
+            match ending {
+                Ending::Commit => tx.commit().await.map_err(|e| whole(e.into()))?,
+                Ending::Rollback => tx.rollback().await.map_err(|e| whole(e.into()))?,
+            }
             Ok(affected)
         }};
     }
@@ -225,8 +275,8 @@ async fn execute_params_in_tx_checked(
         DbPool::Mysql(p) => sqlx_tx_all!(p),
         DbPool::Sqlite(p) => sqlx_tx_all!(p),
         DbPool::MsSql(p) => {
-            let mut c = p.acquire().await?;
-            c.begin_tran().await?;
+            let mut c = p.acquire().await.map_err(whole)?;
+            c.begin_tran().await.map_err(whole)?;
             let mut affected = Vec::with_capacity(batches.len());
             for (i, (sql, binds)) in batches.iter().enumerate() {
                 let refusal = match c.execute(sql, binds).await {
@@ -242,9 +292,15 @@ async fn execute_params_in_tx_checked(
                 // Best-effort unwind: if the rollback also fails, the guard
                 // still holds the transaction open and is closed, not pooled.
                 let _ = c.rollback_tran().await;
-                return Err(refusal);
+                return Err(TxFailure {
+                    at: Some(i),
+                    error: refusal,
+                });
             }
-            c.commit_tran().await?;
+            match ending {
+                Ending::Commit => c.commit_tran().await.map_err(whole)?,
+                Ending::Rollback => c.rollback_tran().await.map_err(whole)?,
+            }
             Ok(affected)
         }
         DbPool::Mongo(_) => unreachable!("MongoDB is dispatched to db::mongo before any SQL"),

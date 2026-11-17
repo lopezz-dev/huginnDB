@@ -311,6 +311,9 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("query::insert_row", "insert"),
     ("query::insert_documents", "insert"),
     ("insert::insert_rows", "insert"),
+    // A file into a table (ADR #139): the relation's `insert`, then the
+    // mapped columns, both in the wrapper.
+    ("import::import_table_file", "insert"),
     // Cells it changes need `update`, rows it adds `insert`: both are guarded
     // in the wrapper, per verb and per column.
     ("paste::apply_paste", "update"),
@@ -398,6 +401,9 @@ pub(crate) const HUMAN_POLICY: &[(&str, &str)] = &[
     ("connection::test_connection", "none"),
     ("dump::read_image_data_url", "none"),
     ("dump::read_text_file", "none"),
+    // Reads only the file the person picked, for the import dialog's mapping;
+    // what may be written is `import_table_file`'s question.
+    ("import::preview_import_file", "none"),
     ("dump::write_text_file", "none"),
     ("feedback::clear_github_pat", "none"),
     ("feedback::get_diagnostics", "none"),

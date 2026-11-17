@@ -389,7 +389,7 @@ pub(crate) fn resolve_columns(
 /// Covers Postgres `bool`/`boolean`, SQL Server and MySQL `bit`, and MySQL's
 /// `tinyint(1)`, which is what its own `BOOLEAN` alias expands to. Reuses
 /// [`mysql::is_bit_type`] rather than repeating the `BIT` prefix test.
-fn is_boolean_column(data_type: Option<&str>) -> bool {
+pub(crate) fn is_boolean_column(data_type: Option<&str>) -> bool {
     let Some(t) = data_type else { return false };
     let lower = t.trim().to_ascii_lowercase();
     lower.starts_with("bool") || lower == "tinyint(1)" || mysql::is_bit_type(t)
@@ -499,7 +499,6 @@ pub(crate) async fn insert_rows_inner(
     source: String,
 ) -> AppResult<InsertRowsSummary> {
     let pool = state.pool_for(&connection_id)?;
-    let driver = pool.driver_name();
 
     if matches!(&pool, DbPool::Mongo(_)) {
         return Err(AppError::UnsupportedDriver(
@@ -539,25 +538,79 @@ pub(crate) async fn insert_rows_inner(
         .collect();
 
     let qt = dialect.qualify_defaulted(schema.as_deref(), &table);
-    let types = exec::bind_types(&pool, &qt).await?;
-    let per = rows_per_statement(dialect, columns.len())?;
-    let batches: Vec<(String, Vec<Option<String>>)> = values
-        .chunks(per)
-        .map(|chunk| {
-            let built = build_insert_statement(
-                dialect,
-                &qt,
-                &columns,
-                chunk,
-                InsertClauses::default(),
-                &types,
-            );
-            (built.sql, built.binds)
-        })
-        .collect();
+    insert_in_tx(
+        sink,
+        &connection_id,
+        &pool,
+        &qt,
+        columns,
+        values,
+        Locate::No,
+    )
+    .await
+    .map_err(|f| f.error)
+}
+
+/// Why [`insert_in_tx`] wrote nothing: the error, and — when it could be found
+/// — the 0-based index into `values` of the row that raised it.
+#[derive(Debug)]
+pub(crate) struct InsertFailure {
+    pub row: Option<usize>,
+    pub error: AppError,
+}
+
+/// Whether [`insert_in_tx`] looks for the row that made it fail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Locate {
+    /// Find it with a dry run (the file import, whose person needs the row).
+    FailingRow,
+    /// Report the driver's error as it is (the paste, which never did more).
+    No,
+}
+
+/// Insert `values` (each row in `columns` order) into `qt` as chunked
+/// multi-row `INSERT`s inside **one** transaction, logging one Console line.
+///
+/// The core both the paste ([`insert_rows`]) and the file import
+/// (`commands::import`, ADR #139) write through, so the statement shape, the
+/// bind ceilings and the atomicity are decided once.
+///
+/// When a statement fails the transaction is rolled back. With
+/// [`Locate::FailingRow`] the row is then found by a **dry run** in
+/// transactions that are always rolled back ([`locate_failing_row`]): a
+/// multi-row `INSERT`'s error names no row, and the person importing a file
+/// needs one. It costs nothing unless the insert already failed, and it
+/// advances a sequence or `AUTO_INCREMENT` counter the failed attempt had
+/// advanced anyway.
+pub(crate) async fn insert_in_tx(
+    sink: &dyn LogSink,
+    connection_id: &str,
+    pool: &DbPool,
+    qt: &str,
+    columns: Vec<InsertColumn>,
+    values: Vec<Vec<Option<String>>>,
+    locate: Locate,
+) -> Result<InsertRowsSummary, InsertFailure> {
+    let whole = |error: AppError| InsertFailure { row: None, error };
+    let driver = pool.driver_name();
+    let dialect = Dialect::try_of(pool).map_err(whole)?;
+    let types = exec::bind_types(pool, qt).await.map_err(whole)?;
+    let per = rows_per_statement(dialect, columns.len()).map_err(whole)?;
+    let build = |chunk: &[Vec<Option<String>>]| {
+        let built = build_insert_statement(
+            dialect,
+            qt,
+            &columns,
+            chunk,
+            InsertClauses::default(),
+            &types,
+        );
+        (built.sql, built.binds)
+    };
+    let batches: Vec<(String, Vec<Option<String>>)> = values.chunks(per).map(build).collect();
 
     let start = Instant::now();
-    let result = exec::execute_params_in_tx(&pool, &batches).await;
+    let result = exec::execute_params_in_tx(pool, &batches).await;
 
     // One Console line, not one per chunk: the transaction is a single unit of
     // work, and N entries would read as N independently-committed statements.
@@ -565,7 +618,8 @@ pub(crate) async fn insert_rows_inner(
         batches[0].0.clone()
     } else {
         format!(
-            "{}\n/* + {} more statements in the same transaction ({} rows total) */",
+            "{}
+/* + {} more statements in the same transaction ({} rows total) */",
             batches[0].0,
             batches.len() - 1,
             values.len()
@@ -574,7 +628,7 @@ pub(crate) async fn insert_rows_inner(
     match &result {
         Ok(affected) => log_sql_sink(
             sink,
-            &connection_id,
+            connection_id,
             driver,
             &logged,
             start,
@@ -583,7 +637,7 @@ pub(crate) async fn insert_rows_inner(
         ),
         Err(e) => log_sql_sink(
             sink,
-            &connection_id,
+            connection_id,
             driver,
             &logged,
             start,
@@ -592,11 +646,73 @@ pub(crate) async fn insert_rows_inner(
         ),
     }
 
-    Ok(InsertRowsSummary {
-        inserted: result?.iter().sum(),
-        statements: batches.len(),
-        columns: columns.into_iter().map(|c| c.name).collect(),
-    })
+    match result {
+        Ok(affected) => Ok(InsertRowsSummary {
+            inserted: affected.iter().sum(),
+            statements: batches.len(),
+            columns: columns.into_iter().map(|c| c.name).collect(),
+        }),
+        Err(error) => {
+            let row = match locate {
+                Locate::FailingRow => {
+                    locate_failing_row(pool, &batches, &values, per, &build).await
+                }
+                Locate::No => None,
+            };
+            Err(InsertFailure { row, error })
+        }
+    }
+}
+
+/// Builds one statement for a slice of rows — [`insert_in_tx`]'s closure,
+/// handed to [`locate_failing_row`]. `Sync` because it is held across an
+/// `await` in a command's future.
+type BuildStatement<'a> =
+    dyn Fn(&[Vec<Option<String>>]) -> (String, Vec<Option<String>>) + Sync + 'a;
+
+/// The dry run behind [`insert_in_tx`]'s row report, every step of it in a
+/// transaction that is rolled back.
+///
+/// First the whole list again, to learn which chunk fails. Then a binary
+/// search for the shortest failing prefix of that chunk, replayed after the
+/// chunks before it: whether a prefix fails only grows with its length (a row
+/// that fails, fails with every row after it too), so the first row past the
+/// longest prefix that succeeds is the one. That is about log2(rows in a
+/// chunk) dry runs — 14 for the 16 000 rows a SQLite chunk can hold — where
+/// replaying the chunk one row per statement would be thousands of round
+/// trips to a remote server.
+///
+/// `None` when no row fails on its own: the failure was the transaction's
+/// (`COMMIT`, the session), or it did not repeat.
+async fn locate_failing_row(
+    pool: &DbPool,
+    batches: &[(String, Vec<Option<String>>)],
+    values: &[Vec<Option<String>>],
+    per: usize,
+    build: &BuildStatement<'_>,
+) -> Option<usize> {
+    use exec::Ending;
+    let failed = exec::execute_params_in_tx_locating(pool, batches, Ending::Rollback)
+        .await
+        .err()?
+        .at?;
+    let chunk = &values[failed * per..((failed + 1) * per).min(values.len())];
+    // `ok` rows of the chunk are known to go in, `bad` rows are known to fail.
+    let (mut ok, mut bad) = (0usize, chunk.len());
+    while bad - ok > 1 {
+        let mid = ok + (bad - ok) / 2;
+        let mut probe: Vec<(String, Vec<Option<String>>)> = batches[..failed].to_vec();
+        probe.push(build(&chunk[..mid]));
+        let fails = exec::execute_params_in_tx_locating(pool, &probe, Ending::Rollback)
+            .await
+            .is_err();
+        if fails {
+            bad = mid;
+        } else {
+            ok = mid;
+        }
+    }
+    Some(failed * per + bad - 1)
 }
 
 #[cfg(test)]

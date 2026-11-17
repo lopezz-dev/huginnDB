@@ -11,6 +11,7 @@
  * bundle is what keeps `TableRow`'s `memo()` worth having.
  */
 
+import { pickImportFile } from "@/lib/dialogs";
 import i18n from "@/lib/i18n";
 import { notify } from "@/lib/notify";
 import {
@@ -39,6 +40,9 @@ export interface TableActions {
   onRename: (table: TableInfo) => void;
   onDrop: (table: TableInfo) => void;
   onEmpty: (table: TableInfo) => void;
+  /** Pick a CSV, JSON or Excel file and open the import dialog for it
+   *  (ADR #139). SQL tables only. */
+  onImportFile: (table: TableInfo) => void;
   onRenameView: (view: TableInfo) => void;
   onDropView: (view: TableInfo) => void;
   driver: Driver | undefined;
@@ -117,6 +121,14 @@ function makeTableActions(
         } catch (e) {
           notify.error(String(e));
         }
+      })();
+    },
+    onImportFile: (target) => {
+      void (async () => {
+        const path = await pickImportFile(
+          i18n.t("dataGrid.importFile.pickTitle"),
+        );
+        if (path) show({ kind: "importFile", connectionId, target, path });
       })();
     },
     onRenameView: (target) =>
