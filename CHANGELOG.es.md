@@ -22,10 +22,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   datos* de una consulta ofrece Excel (`.xlsx`) junto a CSV, JSON y SQL
   INSERT, tanto para las filas mostradas como para *Todo, desde el
   servidor…*. Los números y los booleanos son números y booleanos de Excel;
-  el texto sigue siendo texto, así que un código con un cero delante lo
-  conserva, y un entero de más de las 15 cifras que Excel muestra se escribe
-  como texto para que no se redondee. Un resultado que no cabe en una hoja
-  sigue en la siguiente.
+  un número entero se ve entero (un timestamp en milisegundos se lee
+  `1794645204422`, no `1,79E+12`); el texto sigue siendo texto, así que un
+  código con un cero delante lo conserva, y un entero de más de las 15 cifras
+  que Excel muestra se escribe como texto para que no se redondee. Un
+  resultado que no cabe en una hoja sigue en la siguiente. Un texto de más de
+  los 32 767 caracteres que admite una celda de Excel —un log, un documento
+  JSON— se recorta para que quepa y termina en `[…]`, y la notificación dice
+  cuántas celdas se recortaron; CSV y JSON conservan todos los caracteres.
 
 - **Exportar todas las filas de un resultado cortado, desde el servidor.**
   Cuando el resultado de una consulta se cortó en 50 000 filas, su menú

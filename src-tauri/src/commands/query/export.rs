@@ -31,7 +31,7 @@ use futures_util::TryStreamExt;
 use sqlx::pool::PoolConnection;
 use sqlx::{Column as _, Executor as _, Row as _};
 
-use crate::db::result_export::RowWriter;
+use crate::db::result_export::{RowWriter, Written};
 use crate::db::sql::{is_read_only, StmtClass};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
@@ -57,13 +57,13 @@ pub(crate) fn check_exportable(pool: &DbPool, sql: &str) -> AppResult<()> {
 }
 
 /// Run `sql` on `connection_id` and write every row of it with `writer`.
-/// Returns the output and how many rows were written.
+/// Returns the output and what was written.
 pub(crate) async fn export_rows_inner<W: Write>(
     state: &AppState,
     connection_id: &str,
     sql: &str,
     mut writer: RowWriter<W>,
-) -> AppResult<(W, u64)> {
+) -> AppResult<(W, Written)> {
     let pool = state.pool_for(connection_id)?;
     check_exportable(&pool, sql)?;
     stream_read_only(&pool, sql, &[], &mut writer).await?;
@@ -289,7 +289,7 @@ mod tests {
              SELECT i FROM s"
         );
         let (out, rows) = export_rows_inner(&state, "c", &sql, csv()).await.unwrap();
-        assert_eq!(rows as usize, n);
+        assert_eq!(rows.rows as usize, n);
         let text = String::from_utf8(out).unwrap();
         // The header, then one line per row.
         assert_eq!(text.matches("\r\n").count(), n + 1);
@@ -308,7 +308,7 @@ mod tests {
             .await
             .unwrap();
         let (out, rows) = w.finish().unwrap();
-        assert_eq!(rows, 1);
+        assert_eq!(rows.rows, 1);
         assert_eq!(
             String::from_utf8(out).unwrap(),
             "\u{FEFF}id,name\r\n2,b\r\n"
@@ -319,7 +319,7 @@ mod tests {
             .await
             .unwrap();
         let (out, rows) = w.finish().unwrap();
-        assert_eq!(rows, 0);
+        assert_eq!(rows.rows, 0);
         assert_eq!(String::from_utf8(out).unwrap(), "\u{FEFF}id,name\r\n");
     }
 
@@ -363,7 +363,7 @@ mod tests {
         let (_, rows) = export_rows_inner(&state, "c", "SELECT id FROM t", csv())
             .await
             .unwrap();
-        assert_eq!(rows, 2);
+        assert_eq!(rows.rows, 2);
         sqlx::query("INSERT INTO t (id, name) VALUES (3, 'c')")
             .execute(&pool)
             .await
@@ -377,7 +377,7 @@ mod tests {
         let (out, rows) = export_rows_inner(&state, "c", "SELECT id, name FROM t WHERE 0", csv())
             .await
             .unwrap();
-        assert_eq!(rows, 0);
+        assert_eq!(rows.rows, 0);
         assert_eq!(String::from_utf8(out).unwrap(), "\u{FEFF}id,name\r\n");
     }
 

@@ -92,7 +92,7 @@ import {
 } from "@/components/ui/dropdown";
 import { PAGE_SIZE_OPTIONS } from "@/lib/constants";
 import { formatNumber } from "@/lib/utils";
-import { runExport } from "@/lib/grid/exportTable";
+import { rowsExportedNotice, runExport } from "@/lib/grid/exportTable";
 import { clampRowHeight } from "@/lib/grid/rowHeight";
 import { useTableBrowse } from "@/lib/grid/useTableBrowse";
 import {
@@ -601,19 +601,21 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       collation,
       hint,
     };
+    const fail = (message: string) => notify.error(message);
+    if (isMongo) {
+      return runExport(
+        () => api.exportCollection(connectionId, table, scan),
+        (path) => notify.file(t("notifications.fileSaved.collection"), { path }),
+        fail,
+      );
+    }
     return runExport(
-      () =>
-        isMongo
-          ? api.exportCollection(connectionId, table, scan)
-          : api.exportTableRows({ connectionId, schema, table, ...scan }, format),
-      (path) =>
-        notify.file(
-          isMongo
-            ? t("notifications.fileSaved.collection")
-            : t("notifications.fileSaved.rows"),
-          { path },
-        ),
-      (message) => notify.error(message),
+      () => api.exportTableRows({ connectionId, schema, table, ...scan }, format),
+      (written) => {
+        const { title, ...opts } = rowsExportedNotice(written, t);
+        notify.file(title, opts);
+      },
+      fail,
     );
   }, [
     isMongo,

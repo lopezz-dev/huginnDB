@@ -18,9 +18,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - **Export query results to Excel.** A query's *Export data* menu offers
   Excel (`.xlsx`) next to CSV, JSON and SQL INSERT, for the rows shown and
   for *Everything, from the server…*. Numbers and booleans are Excel numbers
-  and booleans; text stays text, so a code with a leading zero keeps it, and
-  an integer longer than the 15 digits Excel can show is written as text so
-  it is not rounded. A result longer than one sheet goes on in the next one.
+  and booleans, and a whole number is shown whole (a millisecond timestamp
+  reads `1794645204422`, not `1,79E+12`); text stays text, so a code with a
+  leading zero keeps it, and an integer longer than the 15 digits Excel can
+  show is written as text so it is not rounded. A result longer than one
+  sheet goes on in the next one. A text longer than the 32 767 characters an
+  Excel cell holds — a log, a JSON document — is cut to fit and ends in
+  `[…]`, and the notification says how many cells were cut; CSV and JSON
+  keep every character.
 
 - **Export every row of a cut result, from the server.** When a query's
   result was cut at 50 000 rows, its *Export data* menu now also offers

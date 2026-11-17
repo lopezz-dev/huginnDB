@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { runExport } from "./exportTable";
+import { rowsExportedNotice, runExport } from "./exportTable";
 
 describe("runExport", () => {
   it("announces the written path", async () => {
@@ -35,5 +35,24 @@ describe("runExport", () => {
       fail,
     );
     expect(fail).toHaveBeenCalledWith("Error: permission denied");
+  });
+});
+
+describe("rowsExportedNotice", () => {
+  const t = (key: string, opts?: Record<string, unknown>) =>
+    opts ? `${key}:${JSON.stringify(opts)}` : key;
+
+  it("names the file and says nothing more when no cell was cut", () => {
+    expect(rowsExportedNotice({ path: "/tmp/a.csv", truncatedCells: 0 }, t)).toEqual({
+      title: "notifications.fileSaved.rows",
+      path: "/tmp/a.csv",
+      description: undefined,
+    });
+  });
+
+  it("says how many Excel cells were cut", () => {
+    expect(rowsExportedNotice({ path: "/tmp/a.xlsx", truncatedCells: 3 }, t).description).toBe(
+      'notifications.fileSaved.truncatedCells:{"count":3}',
+    );
   });
 });

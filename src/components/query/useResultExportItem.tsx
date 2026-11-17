@@ -48,7 +48,7 @@ import { ExportFormatItems } from "@/components/grid/ExportFormatItems";
 import type { GridToolbarItem } from "@/components/grid/DataGrid";
 import { notify } from "@/lib/notify";
 import { api } from "@/lib/tauri";
-import { runExport } from "@/lib/grid/exportTable";
+import { rowsExportedNotice, runExport } from "@/lib/grid/exportTable";
 import { reasonOf, type GridSource } from "@/lib/grid/gridSource";
 import { cutBy } from "@/lib/query/resultCap";
 import {
@@ -85,7 +85,10 @@ export function useResultExportItem(
             columns: result.columns,
             target: sqlTarget,
           }),
-        (path) => notify.file(t("notifications.fileSaved.rows"), { path }),
+        (written) => {
+          const { title, ...opts } = rowsExportedNotice(written, t);
+          notify.file(title, opts);
+        },
         (message) => notify.error(message),
       ),
     [connectionId, sqlTarget, result, t],
@@ -98,7 +101,10 @@ export function useResultExportItem(
       const target = serverTarget(format, sqlTarget, result.columns);
       void runExport(
         () => api.exportQueryRows(connectionId, sql, format, target),
-        (path) => notify.file(t("notifications.fileSaved.rows"), { path }),
+        (written) => {
+          const { title, ...opts } = rowsExportedNotice(written, t);
+          notify.file(title, opts);
+        },
         (message) => notify.error(message),
       );
     },

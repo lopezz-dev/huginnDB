@@ -722,6 +722,17 @@ export interface StmtOutcome {
 export type ResultExportFormat = "csv" | "csvSemicolon" | "json" | "sql" | "xlsx";
 
 /**
+ * What a rows export resolves to (`exportTableRows`, `exportQueryResult`,
+ * `exportQueryRows`): the file written, and how many Excel cells had to be cut
+ * to fit Excel's 32 767 characters — always 0 for the other formats. Mirrors
+ * `RowsExported` in `src-tauri/src/db/result_export.rs`.
+ */
+export interface RowsExported {
+  path: string;
+  truncatedCells: number;
+}
+
+/**
  * The table a server-side SQL export (`exportQueryRows`) inserts into: a
  * `SqlTarget` with its `columnOf` evaluated for each result column, **in
  * result order** — `columns[i]` is the table column result column `i` is, or

@@ -39,6 +39,7 @@ import type {
   ColumnFilter,
   QueryPreview,
   ResultExportFormat,
+  RowsExported,
   ServerSqlTarget,
   ColumnInfo,
   IncomingForeignKey,
@@ -1653,7 +1654,7 @@ export const api = {
    * Rejects MongoDB.
    */
   exportTableRows: (query: TableScan, format: ResultExportFormat) =>
-    invoke<string>("export_table_rows", { query, format }),
+    invoke<RowsExported>("export_table_rows", { query, format }),
 
   /**
    * Write the rows a query result's grid holds to a file the person picks, in
@@ -1671,7 +1672,7 @@ export const api = {
     rows: CellValue[][],
     target?: ServerSqlTarget,
   ) =>
-    invoke<string>("export_query_result", {
+    invoke<RowsExported>("export_query_result", {
       connectionId,
       format,
       columns,
@@ -1696,7 +1697,7 @@ export const api = {
     format: ResultExportFormat,
     target?: ServerSqlTarget,
   ) =>
-    invoke<string>("export_query_rows", {
+    invoke<RowsExported>("export_query_rows", {
       connectionId,
       sql,
       format,

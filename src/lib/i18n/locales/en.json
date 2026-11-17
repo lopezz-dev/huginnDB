@@ -2214,6 +2214,7 @@
     "copyError": "Copy error",
     "fileMissing": "The file is no longer at that path.",
     "fileSaved": {
+      "truncatedCells": "{{count}} cells were longer than Excel allows; they were cut and end in […]",
       "table": "Table exported",
       "rows": "Results exported",
       "collection": "Collection exported",

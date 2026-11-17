@@ -333,11 +333,18 @@ fn pick_result_file(
     Ok(path.to_string())
 }
 
-/// `dest` when the export that wrote it succeeded; otherwise the file it had
-/// started is removed, rather than left to read like the whole result.
-fn keep_if_written<T>(dest: String, written: AppResult<T>) -> AppResult<String> {
+/// What the frontend is told when the export that wrote `dest` succeeded;
+/// otherwise the file it had started is removed, rather than left to read
+/// like the whole result.
+fn keep_if_written<W>(
+    dest: String,
+    written: AppResult<(W, crate::db::result_export::Written)>,
+) -> AppResult<crate::db::result_export::RowsExported> {
     match written {
-        Ok(_) => Ok(dest),
+        Ok((_, w)) => Ok(crate::db::result_export::RowsExported {
+            path: dest,
+            truncated_cells: w.truncated_cells,
+        }),
         Err(e) => {
             let _ = std::fs::remove_file(&dest);
             Err(e)
@@ -409,7 +416,7 @@ pub async fn export_query_result(
     columns: Vec<String>,
     rows: Vec<Vec<serde_json::Value>>,
     target: Option<crate::db::result_export::SqlExportTarget>,
-) -> AppResult<String> {
+) -> AppResult<crate::db::result_export::RowsExported> {
     use crate::db::result_export::RowWriter;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::commands::guard::free_export(state.inner(), &connection_id)?;
@@ -459,7 +466,7 @@ pub async fn export_query_rows(
     sql: String,
     format: crate::db::result_export::ResultFormat,
     target: Option<crate::db::result_export::SqlExportTarget>,
-) -> AppResult<String> {
+) -> AppResult<crate::db::result_export::RowsExported> {
     use crate::db::result_export::RowWriter;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::commands::guard::free_export(state.inner(), &connection_id)?;
@@ -587,7 +594,7 @@ pub async fn export_table_rows(
     state: State<'_, AppState>,
     query: TableScan,
     format: crate::db::result_export::ResultFormat,
-) -> AppResult<String> {
+) -> AppResult<crate::db::result_export::RowsExported> {
     use crate::db::result_export::{ResultFormat, RowWriter};
     let TableScan {
         connection_id,
@@ -754,7 +761,10 @@ pub async fn export_table_rows(
         DbPool::Mongo(_) => unreachable!("rejected above"),
     }
     w.flush()?;
-    Ok(dest)
+    Ok(crate::db::result_export::RowsExported {
+        path: dest,
+        truncated_cells: 0,
+    })
 }
 
 // ---------------------------------------------------------------------------

@@ -25,7 +25,13 @@
 
 import { api } from "@/lib/tauri";
 import type { SqlTarget } from "@/lib/grid/copyFormats";
-import type { CellValue, ColumnMeta, ResultExportFormat, ServerSqlTarget } from "@/types";
+import type {
+  CellValue,
+  ColumnMeta,
+  ResultExportFormat,
+  RowsExported,
+  ServerSqlTarget,
+} from "@/types";
 
 export type { ResultExportFormat } from "@/types";
 
@@ -64,14 +70,14 @@ export interface ResultExportInput {
 /**
  * Send the rows the grid holds to the backend, which checks the policy, asks
  * where to save them and writes them in `format`. Resolves to the written
- * path; rejects when the policy refuses, the person cancels the dialog, or a
- * SQL export has no table to insert into.
+ * path and how many Excel cells were cut; rejects when the policy refuses, the
+ * person cancels the dialog, or a SQL export has no table to insert into.
  */
 export function exportResult(
   connectionId: string,
   format: ResultExportFormat,
   { rows, columns, target }: ResultExportInput,
-): Promise<string> {
+): Promise<RowsExported> {
   return api.exportQueryResult(
     connectionId,
     format,

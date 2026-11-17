@@ -96,6 +96,25 @@ pub struct InsertInto {
     pub target: SqlExportTarget,
 }
 
+/// What [`RowWriter::finish`] wrote.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Written {
+    pub rows: u64,
+    /// Excel cells cut to fit its 32 767 characters (always 0 for the other
+    /// formats, which keep every character).
+    pub truncated_cells: u64,
+}
+
+/// What a rows export tells the frontend: where the file went, and how many
+/// cells had to be cut to fit it — the notification says so when it is not
+/// zero. `RowsExported` in `src/types.ts`.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RowsExported {
+    pub path: String,
+    pub truncated_cells: u64,
+}
+
 /// Writes rows to `out` in one [`ResultFormat`], one at a time: nothing but
 /// the current row is held.
 pub struct RowWriter<W: Write> {
@@ -195,7 +214,7 @@ impl<W: Write> RowWriter<W> {
             }
             ResultFormat::Xlsx => {
                 let sheet = self.xlsx.as_mut().expect("set in new");
-                sheet.row(columns, values)?;
+                sheet.row(values)?;
             }
             ResultFormat::Sql => {
                 let InsertInto { dialect, target } = self.insert.as_ref().expect("checked in new");
@@ -225,14 +244,15 @@ impl<W: Write> RowWriter<W> {
         Ok(())
     }
 
-    /// Close the document and hand the output back, with the rows written.
-    pub fn finish(mut self) -> AppResult<(W, u64)> {
+    /// Close the document and hand the output back, with what was written.
+    pub fn finish(mut self) -> AppResult<(W, Written)> {
         if !self.has_begun() {
             // No row and no columns: an empty result whose columns could not
             // be learnt. CSV still gets its byte-order mark and an empty
             // header, as `toCsv` writes for no columns.
             self.begin(Vec::new())?;
         }
+        let mut truncated_cells = 0;
         match self.format {
             ResultFormat::Json => {
                 self.out
@@ -243,12 +263,17 @@ impl<W: Write> RowWriter<W> {
             ResultFormat::Sql if self.rows == 0 => self.out.write_all(b"\n")?,
             ResultFormat::Xlsx => {
                 let sheet = self.xlsx.take().expect("set in new");
+                truncated_cells = sheet.truncated;
                 self.out.write_all(&sheet.finish()?)?;
             }
             _ => {}
         }
         self.out.flush()?;
-        Ok((self.out, self.rows))
+        let written = Written {
+            rows: self.rows,
+            truncated_cells,
+        };
+        Ok((self.out, written))
     }
 
     fn csv_delimiter(&self) -> Option<&'static str> {
@@ -268,6 +293,16 @@ const XLSX_COLUMNS: usize = 16_384;
 /// double and displays 15 significant digits, so a longer one — an 18-digit
 /// id — would come back changed. Such an integer is written as text.
 const XLSX_EXACT_DIGITS: u32 = 15;
+/// The most a cell holds, in UTF-16 code units (Excel's limit).
+const XLSX_CELL_UNITS: usize = 32_767;
+/// A column's starting width, in characters: see `XlsxSheet::new_sheet`.
+const XLSX_MIN_WIDTH: usize = 15;
+const XLSX_MAX_WIDTH: usize = 50;
+/// What ends a cell cut to fit [`XLSX_CELL_UNITS`]. Language-neutral on
+/// purpose: the backend does not know the interface's language, and `[…]`
+/// reads as "something was left out" in Spanish and English alike. How many
+/// cells were cut is told in the person's language, by the notification.
+const XLSX_CUT_MARK: &str = " […]";
 
 /// An Excel workbook being written, one row at a time.
 ///
@@ -277,21 +312,30 @@ const XLSX_EXACT_DIGITS: u32 = 15;
 /// in [`Self::finish`]. A result past one sheet's 1 048 575 data rows goes on
 /// in a new sheet with the header repeated, rather than failing or being cut.
 ///
-/// A cell is what its JSON value is: a number (text when longer than Excel
-/// can show exactly), a boolean, NULL left empty, an object or array its
-/// compact JSON, and a string **always text** — a value the driver returned as
-/// text (a `DECIMAL`, a date, a zip code with a leading zero) is not guessed
-/// into a number or a date.
+/// A cell is what its JSON value is: a number, a boolean, NULL left empty, an
+/// object or array its compact JSON, and a string **always text** — a value
+/// the driver returned as text (a `DECIMAL`, a date, a zip code with a leading
+/// zero) is not guessed into a number or a date. An integer is formatted `0`,
+/// so a millisecond timestamp reads `1794645204422`, not `1,79E+12`; one
+/// longer than Excel can show exactly is text.
+///
+/// **A text longer than a cell holds is cut**, ending in [`XLSX_CUT_MARK`],
+/// and counted in [`Self::truncated`] for the notification to report. A log
+/// or JSON column routinely exceeds 32 767 characters, and refusing the whole
+/// export for it — what this did first — made Excel useless for any table
+/// with one (decided with Alex on 2026-11-17, after Dev | Tencer's
+/// `logRecord`). CSV and JSON keep every character.
 struct XlsxSheet {
     book: Workbook,
     header: Format,
+    integer: Format,
     columns: Vec<String>,
     /// The index of the worksheet being written.
     sheet: usize,
     /// The next row to write on that worksheet.
     next: u32,
-    /// The data rows written so far, across sheets — for error messages.
-    written: u64,
+    /// Cells cut to fit [`XLSX_CELL_UNITS`].
+    truncated: u64,
     /// Rows per worksheet, the header included: [`XLSX_SHEET_ROWS`], lower
     /// only in tests, which cannot afford a million rows to reach it.
     per_sheet: u32,
@@ -302,10 +346,11 @@ impl XlsxSheet {
         Self {
             book: Workbook::new(),
             header: Format::new().set_bold(),
+            integer: Format::new().set_num_format("0"),
             columns: Vec::new(),
             sheet: 0,
             next: 0,
-            written: 0,
+            truncated: 0,
             per_sheet: XLSX_SHEET_ROWS,
         }
     }
@@ -328,9 +373,23 @@ impl XlsxSheet {
             .book
             .add_worksheet_with_constant_memory()
             .map_err(xlsx)?;
+        // Every width before the first cell: in constant-memory mode the
+        // sheet's column list is written with its first cell, so a width set
+        // after it is dropped — and it cannot follow the values either. The
+        // header's width, between a floor wide enough for a 13-digit
+        // millisecond timestamp (a `0` format shows it as `########` in
+        // Excel's default 8.43) and a ceiling that keeps one long header from
+        // pushing the rest off screen.
         for (col, name) in self.columns.iter().enumerate() {
+            let width = (name.chars().count() + 2).clamp(XLSX_MIN_WIDTH, XLSX_MAX_WIDTH);
             sheet
-                .write_string_with_format(0, col as u16, name.as_str(), &self.header)
+                .set_column_width(col as u16, width as f64)
+                .map_err(xlsx)?;
+        }
+        for (col, name) in self.columns.iter().enumerate() {
+            let (name, _) = fit_cell(name);
+            sheet
+                .write_string_with_format(0, col as u16, name.as_ref(), &self.header)
                 .map_err(xlsx)?;
         }
         if !self.columns.is_empty() {
@@ -341,67 +400,89 @@ impl XlsxSheet {
         Ok(())
     }
 
-    fn row(&mut self, columns: &[String], values: &[Value]) -> AppResult<()> {
+    fn row(&mut self, values: &[Value]) -> AppResult<()> {
         if self.next == self.per_sheet {
             self.new_sheet()?;
         }
-        let (row, written) = (self.next, self.written);
+        let row = self.next;
+        let width = self.columns.len();
         let sheet = self.book.worksheet_from_index(self.sheet).map_err(xlsx)?;
-        for (col, name) in columns.iter().enumerate() {
+        for col in 0..width {
             let value = values.get(col).unwrap_or(&Value::Null);
-            Self::cell(sheet, row, col as u16, value).map_err(|e| match e {
-                XlsxError::MaxStringLengthExceeded => AppError::InvalidInput(format!(
-                    "row {}, column \"{name}\" holds more than the 32 767 characters an Excel \
-                     cell can; export it as CSV instead",
-                    written + 1
-                )),
-                other => xlsx(other),
-            })?;
+            let cut = Self::cell(sheet, &self.integer, row, col as u16, value).map_err(xlsx)?;
+            self.truncated += u64::from(cut);
         }
         self.next += 1;
-        self.written += 1;
         Ok(())
     }
 
+    /// Write one cell; `true` when its text had to be cut to fit.
     fn cell(
         sheet: &mut rust_xlsxwriter::Worksheet,
+        integer: &Format,
         row: u32,
         col: u16,
         value: &Value,
-    ) -> Result<(), XlsxError> {
-        match value {
-            Value::Null => {}
+    ) -> Result<bool, XlsxError> {
+        let text = match value {
+            Value::Null => return Ok(false),
             Value::Bool(b) => {
                 sheet.write_boolean(row, col, *b)?;
+                return Ok(false);
             }
             Value::Number(n) => {
-                // An integer is exact in Excel up to 15 digits; a float is a
-                // double already, as Excel's own numbers are.
-                let integer = n.as_i64().map(i64::unsigned_abs).or_else(|| n.as_u64());
-                let exact = integer.is_none_or(|i| i < 10u64.pow(XLSX_EXACT_DIGITS));
-                match n.as_f64() {
-                    Some(f) if exact && f.is_finite() => {
+                let whole = n.as_i64().map(i64::unsigned_abs).or_else(|| n.as_u64());
+                match (whole, n.as_f64()) {
+                    // An integer Excel shows exactly: a number, shown whole.
+                    (Some(i), Some(f)) if i < 10u64.pow(XLSX_EXACT_DIGITS) => {
+                        sheet.write_number_with_format(row, col, f, integer)?;
+                        return Ok(false);
+                    }
+                    // A fraction: a double already, as Excel's own numbers are.
+                    (None, Some(f)) if f.is_finite() => {
                         sheet.write_number(row, col, f)?;
+                        return Ok(false);
                     }
-                    _ => {
-                        sheet.write_string(row, col, js_number(n))?;
-                    }
+                    // Longer than Excel shows exactly: text, every digit kept.
+                    _ => js_number(n),
                 }
             }
-            Value::String(s) => {
-                sheet.write_string(row, col, s.as_str())?;
-            }
-            Value::Object(_) | Value::Array(_) => {
-                sheet.write_string(row, col, js_json(value, None))?;
-            }
-        }
-        Ok(())
+            Value::String(s) => s.clone(),
+            Value::Object(_) | Value::Array(_) => js_json(value, None),
+        };
+        let (fitted, cut) = fit_cell(&text);
+        sheet.write_string(row, col, fitted.as_ref())?;
+        Ok(cut)
     }
 
     /// The workbook's bytes.
     fn finish(mut self) -> AppResult<Vec<u8>> {
         self.book.save_to_buffer().map_err(xlsx)
     }
+}
+
+/// `text` as it fits in one Excel cell: whole when it does, otherwise cut on a
+/// character boundary and ended with [`XLSX_CUT_MARK`] — the whole within
+/// [`XLSX_CELL_UNITS`] UTF-16 units, which is how Excel counts. `true` when
+/// it was cut.
+fn fit_cell(text: &str) -> (std::borrow::Cow<'_, str>, bool) {
+    if text.len() <= XLSX_CELL_UNITS || text.encode_utf16().count() <= XLSX_CELL_UNITS {
+        return (std::borrow::Cow::Borrowed(text), false);
+    }
+    let budget = XLSX_CELL_UNITS - XLSX_CUT_MARK.encode_utf16().count();
+    let mut units = 0;
+    let mut end = 0;
+    for (i, c) in text.char_indices() {
+        if units + c.len_utf16() > budget {
+            break;
+        }
+        units += c.len_utf16();
+        end = i + c.len_utf8();
+    }
+    (
+        std::borrow::Cow::Owned(format!("{}{XLSX_CUT_MARK}", &text[..end])),
+        true,
+    )
 }
 
 fn xlsx(e: XlsxError) -> AppError {
@@ -741,7 +822,7 @@ mod tests {
             w.row(row).unwrap();
         }
         let (bytes, written) = w.finish().unwrap();
-        assert_eq!(written, rows.len() as u64);
+        assert_eq!(written.rows, rows.len() as u64);
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let mut all = String::new();
         for i in 0..zip.len() {
@@ -793,7 +874,7 @@ mod tests {
             w.row(&[json!(n)]).unwrap();
         }
         let (bytes, written) = w.finish().unwrap();
-        assert_eq!(written, 5, "no row is cut");
+        assert_eq!(written.rows, 5, "no row is cut");
         let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let mut sheet = |name: &str| {
             let mut text = String::new();
@@ -820,14 +901,67 @@ mod tests {
     }
 
     #[test]
-    fn a_cell_too_long_for_excel_is_refused_by_name() {
+    fn a_cell_too_long_for_excel_is_cut_and_counted() {
+        use std::io::Read as _;
         let mut w = RowWriter::new(Vec::new(), ResultFormat::Xlsx, None).unwrap();
-        w.begin(vec!["body".into()]).unwrap();
-        let err = w
-            .row(&[Value::String("x".repeat(40_000))])
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("body") && err.contains("CSV"), "{err}");
+        w.begin(vec!["body".into(), "doc".into()]).unwrap();
+        // A string, and a JSON value whose text is too long, both cut.
+        w.row(&[
+            json!("x".repeat(40_000)),
+            json!({ "k": "y".repeat(40_000) }),
+        ])
+        .unwrap();
+        w.row(&[json!("short"), Value::Null]).unwrap();
+        let (bytes, written) = w.finish().unwrap();
+        assert_eq!(written.rows, 2, "the export goes through");
+        assert_eq!(written.truncated_cells, 2);
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut sheet = String::new();
+        zip.by_name("xl/worksheets/sheet1.xml")
+            .unwrap()
+            .read_to_string(&mut sheet)
+            .unwrap();
+        let kept = format!("{}{XLSX_CUT_MARK}", "x".repeat(XLSX_CELL_UNITS - 4));
+        assert!(sheet.contains(&kept), "cut to the limit, mark included");
+        assert!(!sheet.contains(&"x".repeat(XLSX_CELL_UNITS - 3)));
+        assert!(sheet.contains("short"));
+    }
+
+    #[test]
+    fn a_cut_never_splits_a_character_and_fits_in_utf16_units() {
+        // "€" is one UTF-16 unit and three UTF-8 bytes; "𝄞" is two units.
+        for text in ["€".repeat(40_000), "𝄞".repeat(20_000)] {
+            let (fitted, cut) = fit_cell(&text);
+            assert!(cut);
+            assert!(fitted.encode_utf16().count() <= XLSX_CELL_UNITS);
+            assert!(fitted.ends_with(XLSX_CUT_MARK));
+        }
+        let fits = "€".repeat(XLSX_CELL_UNITS);
+        assert_eq!(
+            fit_cell(&fits),
+            (std::borrow::Cow::Borrowed(fits.as_str()), false)
+        );
+    }
+
+    #[test]
+    fn an_integer_is_shown_whole_not_in_scientific_notation() {
+        let xml = xlsx_text(
+            &["ts", "ratio"],
+            &[vec![json!(1_794_645_204_422_i64), json!(0.25)]],
+        );
+        assert!(xml.contains("<v>1794645204422</v>"), "{xml}");
+        // Wide enough to show it: Excel draws `########` in a 8.43 column.
+        // Both columns take the floor, so they share one `<col>`; the library
+        // rounds 15 characters through pixels to 15.71….
+        assert!(
+            xml.contains(r#"<col min="1" max="2" width="15."#),
+            "the columns keep Excel's default width"
+        );
+        // Formatted `0`: Excel's built-in format 1, or the same code declared.
+        assert!(
+            xml.contains(r#"numFmtId="1""#) || xml.contains(r#"formatCode="0""#),
+            "no `0` number format in the styles"
+        );
     }
 
     #[test]
