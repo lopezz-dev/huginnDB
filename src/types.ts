@@ -715,10 +715,11 @@ export interface StmtOutcome {
 }
 
 /**
- * The formats a query result can be exported as. Mirrors `ResultFormat` in
+ * The formats a grid's rows can be exported as — a query's result and a
+ * table's rows alike (ADR #138). Mirrors `ResultFormat` in
  * `src-tauri/src/db/result_export.rs`; `lib/query/exportResult` re-exports it.
  */
-export type ResultExportFormat = "csv" | "csvSemicolon" | "json" | "sql";
+export type ResultExportFormat = "csv" | "csvSemicolon" | "json" | "sql" | "xlsx";
 
 /**
  * The table a server-side SQL export (`exportQueryRows`) inserts into: a

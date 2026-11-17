@@ -459,18 +459,30 @@ impl PooledClient {
     /// closed with this guard instead ([`Overflow::Close`]'s reasoning, ADR
     /// #127). So is it when `each` fails — a file that cannot be written —
     /// since the stream is then mid-response.
-    pub async fn simple_query_each(
+    ///
+    /// With `params`, `sql` runs as a parameterised statement (a table's rows
+    /// through its query panel, `export_table_rows`); without, as a plain
+    /// batch, the text the person typed.
+    pub async fn query_each(
         &mut self,
         sql: &str,
+        params: &[Option<String>],
         mut each: impl FnMut(&Row) -> AppResult<()>,
     ) -> AppResult<Vec<String>> {
+        let borrowed: Vec<Option<&str>> = params.iter().map(|p| p.as_deref()).collect();
+        let bound: Vec<&dyn tiberius::ToSql> =
+            borrowed.iter().map(|p| p as &dyn tiberius::ToSql).collect();
         let client = self.client_mut()?;
         let mut names: Vec<String> = Vec::new();
         let mut streamed = false;
         let mut cut = false;
         let mut failed: Option<AppError> = None;
         let result = async {
-            let mut stream = client.simple_query(sql).await?;
+            let mut stream = if bound.is_empty() {
+                client.simple_query(sql).await?
+            } else {
+                client.query(sql, &bound).await?
+            };
             while let Some(item) = stream.try_next().await? {
                 match item {
                     tiberius::QueryItem::Metadata(meta) => {

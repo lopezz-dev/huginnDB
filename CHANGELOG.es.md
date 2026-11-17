@@ -10,6 +10,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **Exportar las filas de una tabla a CSV, Excel o JSON.** El menú
+  *Exportar datos* de una tabla ofrece, además de la tabla completa en
+  `.sql`, las filas que selecciona su panel de consulta —filtros, búsqueda,
+  orden y columnas visibles, todas las páginas— en CSV (con coma, o con punto
+  y coma para un Excel que usa la coma decimal), Excel (`.xlsx`), JSON o
+  SQL INSERT: los mismos formatos que los resultados de una consulta, y el
+  mismo fichero para las mismas filas.
+
+- **Exportar los resultados de una consulta a Excel.** El menú *Exportar
+  datos* de una consulta ofrece Excel (`.xlsx`) junto a CSV, JSON y SQL
+  INSERT, tanto para las filas mostradas como para *Todo, desde el
+  servidor…*. Los números y los booleanos son números y booleanos de Excel;
+  el texto sigue siendo texto, así que un código con un cero delante lo
+  conserva, y un entero de más de las 15 cifras que Excel muestra se escribe
+  como texto para que no se redondee. Un resultado que no cabe en una hoja
+  sigue en la siguiente.
+
 - **Exportar todas las filas de un resultado cortado, desde el servidor.**
   Cuando el resultado de una consulta se cortó en 50 000 filas, su menú
   *Exportar datos* ofrece también *Todo, desde el servidor…*: vuelve a

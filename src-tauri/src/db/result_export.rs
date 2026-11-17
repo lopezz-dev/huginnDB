@@ -1,6 +1,12 @@
-//! A query's rows written to a file, row by row, in the formats the query
-//! tab's export offers: CSV (`,` or `;`), JSON and SQL `INSERT` (ADR #137,
-//! "Everything, from the server…").
+//! A result's rows written to a file, row by row, in every format a grid's
+//! export offers: CSV (`,` or `;`), JSON, SQL `INSERT` and Excel (`.xlsx`).
+//!
+//! **This is the one place an exported file's bytes are decided** (ADR #138):
+//! the query tab's rows shown (`export_query_result`), its "Everything, from
+//! the server…" (`export_query_rows`, ADR #137) and a table's rows through its
+//! query panel (`export_table_rows`) all write through [`RowWriter`]. Only a
+//! table's SQL dump keeps its own writer in `commands::dump`, because it is a
+//! dump of a table (batched, `IDENTITY_INSERT` on SQL Server), not of a result.
 //!
 //! **These must write the bytes `src/lib/grid/copyFormats.ts` writes**
 //! (`toCsv`, `toBulk`, through `lib/query/exportResult.ts`): the same result
@@ -21,11 +27,16 @@
 //!
 //! The one place they are allowed to differ: an integer past 2^53 is written
 //! exactly here, where the grid has already rounded it to a double.
+//!
+//! Excel has no counterpart in the clipboard, so it has no golden file: its
+//! cells are a number, a boolean or text, as `XlsxSheet::cell` decides.
 
 use std::io::Write;
 
 use serde::Deserialize;
 use serde_json::Value;
+
+use rust_xlsxwriter::{Format, Workbook, XlsxError};
 
 use crate::db::sql::Dialect;
 use crate::error::{AppError, AppResult};
@@ -39,15 +50,17 @@ pub enum ResultFormat {
     CsvSemicolon,
     Json,
     Sql,
+    Xlsx,
 }
 
 impl ResultFormat {
-    /// The file extension each format is saved with — `fileExtension` there.
+    /// The file extension each format is saved with.
     pub fn extension(self) -> &'static str {
         match self {
             Self::Csv | Self::CsvSemicolon => "csv",
             Self::Json => "json",
             Self::Sql => "sql",
+            Self::Xlsx => "xlsx",
         }
     }
 
@@ -57,6 +70,7 @@ impl ResultFormat {
             Self::Csv | Self::CsvSemicolon => "CSV",
             Self::Json => "JSON",
             Self::Sql => "SQL",
+            Self::Xlsx => "Excel",
         }
     }
 }
@@ -72,28 +86,35 @@ pub struct SqlExportTarget {
     pub columns: Vec<Option<String>>,
 }
 
+/// What a SQL export needs and no other format does: the table to insert
+/// into and the dialect that quotes it. One value, so a writer cannot be
+/// given one without the other — and a MongoDB result, which has no dialect,
+/// is never asked for one to export as CSV.
+#[derive(Debug, Clone)]
+pub struct InsertInto {
+    pub dialect: Dialect,
+    pub target: SqlExportTarget,
+}
+
 /// Writes rows to `out` in one [`ResultFormat`], one at a time: nothing but
 /// the current row is held.
 pub struct RowWriter<W: Write> {
     out: W,
     format: ResultFormat,
-    dialect: Dialect,
-    target: Option<SqlExportTarget>,
+    /// `Some` exactly when `format` is [`ResultFormat::Sql`].
+    insert: Option<InsertInto>,
+    /// `Some` exactly when `format` is [`ResultFormat::Xlsx`].
+    xlsx: Option<XlsxSheet>,
     /// The result's column names, once [`Self::begin`] has them.
     columns: Option<Vec<String>>,
     rows: u64,
 }
 
 impl<W: Write> RowWriter<W> {
-    /// A writer for `format`. `dialect` quotes identifiers and literals for a
-    /// SQL export; `target` is required for one, and refused otherwise.
-    pub fn new(
-        out: W,
-        format: ResultFormat,
-        dialect: Dialect,
-        target: Option<SqlExportTarget>,
-    ) -> AppResult<Self> {
-        if format == ResultFormat::Sql && target.is_none() {
+    /// A writer for `format`. `insert` is required for a SQL export and
+    /// ignored by every other format.
+    pub fn new(out: W, format: ResultFormat, insert: Option<InsertInto>) -> AppResult<Self> {
+        if format == ResultFormat::Sql && insert.is_none() {
             return Err(AppError::InvalidInput(
                 "a SQL export needs the table to insert into; a result over several tables \
                  has none"
@@ -103,12 +124,8 @@ impl<W: Write> RowWriter<W> {
         Ok(Self {
             out,
             format,
-            dialect,
-            target: if format == ResultFormat::Sql {
-                target
-            } else {
-                None
-            },
+            insert: insert.filter(|_| format == ResultFormat::Sql),
+            xlsx: (format == ResultFormat::Xlsx).then(XlsxSheet::new),
             columns: None,
             rows: 0,
         })
@@ -124,7 +141,7 @@ impl<W: Write> RowWriter<W> {
     /// has: a different count means the statement now returns other columns
     /// than the grid showed, and their mapping cannot be trusted.
     pub fn begin(&mut self, columns: Vec<String>) -> AppResult<()> {
-        if let Some(target) = &self.target {
+        if let Some(InsertInto { target, .. }) = &self.insert {
             if target.columns.len() != columns.len() {
                 return Err(AppError::InvalidInput(format!(
                     "the query now returns {} columns where the grid showed {}; run it again \
@@ -139,6 +156,9 @@ impl<W: Write> RowWriter<W> {
             let header: Vec<String> = columns.iter().map(|c| csv_text(c, delimiter)).collect();
             self.out.write_all(header.join(delimiter).as_bytes())?;
             self.out.write_all(b"\r\n")?;
+        }
+        if let Some(sheet) = &mut self.xlsx {
+            sheet.begin(&columns)?;
         }
         self.columns = Some(columns);
         Ok(())
@@ -173,9 +193,13 @@ impl<W: Write> RowWriter<W> {
                 write_object(&mut text, &entries, Some(1));
                 self.out.write_all(text.as_bytes())?;
             }
+            ResultFormat::Xlsx => {
+                let sheet = self.xlsx.as_mut().expect("set in new");
+                sheet.row(columns, values)?;
+            }
             ResultFormat::Sql => {
-                let target = self.target.as_ref().expect("checked in new");
-                let dialect = self.dialect;
+                let InsertInto { dialect, target } = self.insert.as_ref().expect("checked in new");
+                let dialect = *dialect;
                 let picked: Vec<(&String, &Value)> = target
                     .columns
                     .iter()
@@ -217,6 +241,10 @@ impl<W: Write> RowWriter<W> {
             // `toBulk(…).join("\n")` plus the trailing newline
             // `serializeResult` adds: one `\n` for no rows at all.
             ResultFormat::Sql if self.rows == 0 => self.out.write_all(b"\n")?,
+            ResultFormat::Xlsx => {
+                let sheet = self.xlsx.take().expect("set in new");
+                self.out.write_all(&sheet.finish()?)?;
+            }
             _ => {}
         }
         self.out.flush()?;
@@ -230,6 +258,154 @@ impl<W: Write> RowWriter<W> {
             _ => None,
         }
     }
+}
+
+/// The most rows one worksheet holds, its header included (Excel's limit).
+const XLSX_SHEET_ROWS: u32 = 1_048_576;
+/// The most columns one worksheet holds (Excel's limit).
+const XLSX_COLUMNS: usize = 16_384;
+/// The longest integer Excel shows exactly: it stores every number as a
+/// double and displays 15 significant digits, so a longer one — an 18-digit
+/// id — would come back changed. Such an integer is written as text.
+const XLSX_EXACT_DIGITS: u32 = 15;
+
+/// An Excel workbook being written, one row at a time.
+///
+/// Rows go through `rust_xlsxwriter`'s constant-memory mode: each finished
+/// row is spilled to a temp file, so the sheet is never held — the format
+/// streams like the others, and the workbook is assembled (compressed) only
+/// in [`Self::finish`]. A result past one sheet's 1 048 575 data rows goes on
+/// in a new sheet with the header repeated, rather than failing or being cut.
+///
+/// A cell is what its JSON value is: a number (text when longer than Excel
+/// can show exactly), a boolean, NULL left empty, an object or array its
+/// compact JSON, and a string **always text** — a value the driver returned as
+/// text (a `DECIMAL`, a date, a zip code with a leading zero) is not guessed
+/// into a number or a date.
+struct XlsxSheet {
+    book: Workbook,
+    header: Format,
+    columns: Vec<String>,
+    /// The index of the worksheet being written.
+    sheet: usize,
+    /// The next row to write on that worksheet.
+    next: u32,
+    /// The data rows written so far, across sheets — for error messages.
+    written: u64,
+    /// Rows per worksheet, the header included: [`XLSX_SHEET_ROWS`], lower
+    /// only in tests, which cannot afford a million rows to reach it.
+    per_sheet: u32,
+}
+
+impl XlsxSheet {
+    fn new() -> Self {
+        Self {
+            book: Workbook::new(),
+            header: Format::new().set_bold(),
+            columns: Vec::new(),
+            sheet: 0,
+            next: 0,
+            written: 0,
+            per_sheet: XLSX_SHEET_ROWS,
+        }
+    }
+
+    fn begin(&mut self, columns: &[String]) -> AppResult<()> {
+        if columns.len() > XLSX_COLUMNS {
+            return Err(AppError::InvalidInput(format!(
+                "Excel holds at most {XLSX_COLUMNS} columns and this result has {}; export it \
+                 as CSV instead",
+                columns.len()
+            )));
+        }
+        self.columns = columns.to_vec();
+        self.new_sheet()
+    }
+
+    /// A new worksheet, its header row written and frozen.
+    fn new_sheet(&mut self) -> AppResult<()> {
+        let sheet = self
+            .book
+            .add_worksheet_with_constant_memory()
+            .map_err(xlsx)?;
+        for (col, name) in self.columns.iter().enumerate() {
+            sheet
+                .write_string_with_format(0, col as u16, name.as_str(), &self.header)
+                .map_err(xlsx)?;
+        }
+        if !self.columns.is_empty() {
+            sheet.set_freeze_panes(1, 0).map_err(xlsx)?;
+        }
+        self.sheet = self.book.worksheets().len() - 1;
+        self.next = 1;
+        Ok(())
+    }
+
+    fn row(&mut self, columns: &[String], values: &[Value]) -> AppResult<()> {
+        if self.next == self.per_sheet {
+            self.new_sheet()?;
+        }
+        let (row, written) = (self.next, self.written);
+        let sheet = self.book.worksheet_from_index(self.sheet).map_err(xlsx)?;
+        for (col, name) in columns.iter().enumerate() {
+            let value = values.get(col).unwrap_or(&Value::Null);
+            Self::cell(sheet, row, col as u16, value).map_err(|e| match e {
+                XlsxError::MaxStringLengthExceeded => AppError::InvalidInput(format!(
+                    "row {}, column \"{name}\" holds more than the 32 767 characters an Excel \
+                     cell can; export it as CSV instead",
+                    written + 1
+                )),
+                other => xlsx(other),
+            })?;
+        }
+        self.next += 1;
+        self.written += 1;
+        Ok(())
+    }
+
+    fn cell(
+        sheet: &mut rust_xlsxwriter::Worksheet,
+        row: u32,
+        col: u16,
+        value: &Value,
+    ) -> Result<(), XlsxError> {
+        match value {
+            Value::Null => {}
+            Value::Bool(b) => {
+                sheet.write_boolean(row, col, *b)?;
+            }
+            Value::Number(n) => {
+                // An integer is exact in Excel up to 15 digits; a float is a
+                // double already, as Excel's own numbers are.
+                let integer = n.as_i64().map(i64::unsigned_abs).or_else(|| n.as_u64());
+                let exact = integer.is_none_or(|i| i < 10u64.pow(XLSX_EXACT_DIGITS));
+                match n.as_f64() {
+                    Some(f) if exact && f.is_finite() => {
+                        sheet.write_number(row, col, f)?;
+                    }
+                    _ => {
+                        sheet.write_string(row, col, js_number(n))?;
+                    }
+                }
+            }
+            Value::String(s) => {
+                sheet.write_string(row, col, s.as_str())?;
+            }
+            Value::Object(_) | Value::Array(_) => {
+                sheet.write_string(row, col, js_json(value, None))?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The workbook's bytes.
+    fn finish(mut self) -> AppResult<Vec<u8>> {
+        self.book.save_to_buffer().map_err(xlsx)
+    }
+}
+
+fn xlsx(e: XlsxError) -> AppError {
+    AppError::Transfer(format!("could not write the Excel file: {e}"))
 }
 
 /// `toCsv`'s field: NULL empty, a JSON value its compact JSON, anything else
@@ -438,7 +614,11 @@ mod tests {
 
     fn write(format: ResultFormat, dialect: Dialect) -> String {
         let fixture: Fixture = serde_json::from_str(FIXTURE).unwrap();
-        let mut w = RowWriter::new(Vec::new(), format, dialect, Some(fixture.target)).unwrap();
+        let insert = InsertInto {
+            dialect,
+            target: fixture.target,
+        };
+        let mut w = RowWriter::new(Vec::new(), format, Some(insert)).unwrap();
         w.begin(fixture.columns).unwrap();
         for row in &fixture.rows {
             w.row(row).unwrap();
@@ -537,8 +717,11 @@ mod tests {
                 table: "t".into(),
                 columns: vec![Some("a".into())],
             };
-            let mut w =
-                RowWriter::new(Vec::new(), format, Dialect::Postgres, Some(target)).unwrap();
+            let insert = InsertInto {
+                dialect: Dialect::Postgres,
+                target,
+            };
+            let mut w = RowWriter::new(Vec::new(), format, Some(insert)).unwrap();
             w.begin(vec!["a".into()]).unwrap();
             String::from_utf8(w.finish().unwrap().0).unwrap()
         };
@@ -547,20 +730,117 @@ mod tests {
         assert_eq!(empty(ResultFormat::Sql), "\n");
     }
 
+    /// Every XML part of a written workbook, concatenated: whether a string
+    /// is inline or shared is the library's business, not this test's.
+    fn xlsx_text(columns: &[&str], rows: &[Vec<Value>]) -> String {
+        use std::io::Read as _;
+        let mut w = RowWriter::new(Vec::new(), ResultFormat::Xlsx, None).unwrap();
+        w.begin(columns.iter().map(|c| c.to_string()).collect())
+            .unwrap();
+        for row in rows {
+            w.row(row).unwrap();
+        }
+        let (bytes, written) = w.finish().unwrap();
+        assert_eq!(written, rows.len() as u64);
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut all = String::new();
+        for i in 0..zip.len() {
+            let mut part = zip.by_index(i).unwrap();
+            if part.name().ends_with(".xml") {
+                part.read_to_string(&mut all).unwrap();
+            }
+        }
+        all
+    }
+
+    #[test]
+    fn an_excel_cell_is_what_its_value_is() {
+        let xml = xlsx_text(
+            &["id", "name", "price", "ok", "doc", "big", "none"],
+            &[vec![
+                json!(42),
+                json!("00123"),
+                json!(9.5),
+                json!(true),
+                json!({"a": [1, 2]}),
+                json!(123_456_789_012_345_678_i64),
+                Value::Null,
+            ]],
+        );
+        // Numbers and booleans are cells of their type…
+        assert!(xml.contains("<v>42</v>"), "{xml}");
+        assert!(xml.contains("<v>9.5</v>"), "{xml}");
+        assert!(xml.contains(r#"t="b""#), "{xml}");
+        // …text stays text, a leading zero included…
+        assert!(xml.contains("00123"), "{xml}");
+        assert!(xml.contains(r#"{&quot;a&quot;:[1,2]}"#) || xml.contains(r#"{"a":[1,2]}"#));
+        // …and an integer longer than Excel shows exactly is text, not a
+        // double that would read back as 123456789012345000.
+        assert!(xml.contains("123456789012345678"), "{xml}");
+        assert!(!xml.contains("<v>1.23456789012346E+17</v>"));
+        // The header is there, bold and frozen.
+        assert!(xml.contains("price"));
+        assert!(xml.contains("<pane"), "{xml}");
+    }
+
+    #[test]
+    fn a_result_past_one_sheet_goes_on_in_the_next() {
+        use std::io::Read as _;
+        let mut w = RowWriter::new(Vec::new(), ResultFormat::Xlsx, None).unwrap();
+        w.xlsx.as_mut().unwrap().per_sheet = 3;
+        w.begin(vec!["n".into()]).unwrap();
+        for n in 1..=5 {
+            w.row(&[json!(n)]).unwrap();
+        }
+        let (bytes, written) = w.finish().unwrap();
+        assert_eq!(written, 5, "no row is cut");
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut sheet = |name: &str| {
+            let mut text = String::new();
+            zip.by_name(name)
+                .unwrap()
+                .read_to_string(&mut text)
+                .unwrap();
+            text
+        };
+        let (first, second, third) = (
+            sheet("xl/worksheets/sheet1.xml"),
+            sheet("xl/worksheets/sheet2.xml"),
+            sheet("xl/worksheets/sheet3.xml"),
+        );
+        assert!(first.contains("<v>2</v>") && !first.contains("<v>3</v>"));
+        assert!(second.contains("<v>3</v>") && second.contains("<v>4</v>"));
+        assert!(third.contains("<v>5</v>"));
+    }
+
+    #[test]
+    fn an_empty_excel_result_still_has_its_header() {
+        let xml = xlsx_text(&["only"], &[]);
+        assert!(xml.contains("only"));
+    }
+
+    #[test]
+    fn a_cell_too_long_for_excel_is_refused_by_name() {
+        let mut w = RowWriter::new(Vec::new(), ResultFormat::Xlsx, None).unwrap();
+        w.begin(vec!["body".into()]).unwrap();
+        let err = w
+            .row(&[Value::String("x".repeat(40_000))])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("body") && err.contains("CSV"), "{err}");
+    }
+
     #[test]
     fn a_sql_export_needs_a_target_whose_columns_still_fit() {
-        assert!(RowWriter::new(Vec::new(), ResultFormat::Sql, Dialect::Postgres, None).is_err());
-        let target = SqlExportTarget {
-            table: "t".into(),
-            columns: vec![Some("a".into())],
+        assert!(RowWriter::new(Vec::new(), ResultFormat::Sql, None).is_err());
+        let insert = InsertInto {
+            dialect: Dialect::Postgres,
+            target: SqlExportTarget {
+                table: "t".into(),
+                columns: vec![Some("a".into())],
+            },
         };
-        let mut w = RowWriter::new(
-            Vec::new(),
-            ResultFormat::Sql,
-            Dialect::Postgres,
-            Some(target),
-        )
-        .unwrap();
+        let mut w = RowWriter::new(Vec::new(), ResultFormat::Sql, Some(insert)).unwrap();
         assert!(w.begin(vec!["a".into(), "b".into()]).is_err());
     }
 }

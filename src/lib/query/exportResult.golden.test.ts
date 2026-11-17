@@ -1,12 +1,13 @@
 /**
- * The golden test the server export shares with the grid's (ADR #137).
+ * The golden test the exported files share with the clipboard (ADR #137,
+ * ADR #138).
  *
- * "Everything, from the server…" writes a cut result's rows from Rust
- * (`src-tauri/src/db/result_export.rs`); "The rows shown" writes them from
- * here (`serializeResult`, over `lib/grid/copyFormats`). Both must produce
- * the same bytes, so one fixture is serialised by each language and compared
- * with the same committed files in `testdata/result-export/`. The Rust half
- * is `db::result_export::tests::the_golden_files_match`.
+ * Every exported file is written in Rust (`src-tauri/src/db/result_export.rs`);
+ * "Copy as ▸ CSV / JSON / INSERT" writes the same rows from here
+ * (`lib/grid/copyFormats`). Both must produce the same bytes, so one fixture
+ * is serialised by each language and compared with the same committed files
+ * in `testdata/result-export/`. The Rust half is
+ * `db::result_export::tests::the_golden_files_match`.
  *
  * When a format changes on purpose, regenerate the expected files from here
  * (`UPDATE_GOLDEN=1 pnpm vitest run src/lib/query/exportResult.golden.test.ts`)
@@ -17,8 +18,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { serializeResult, type ResultExportFormat } from "@/lib/query/exportResult";
-import type { SqlTarget } from "@/lib/grid/copyFormats";
+import { toBulk, toCsv, type SqlTarget } from "@/lib/grid/copyFormats";
 import type { CellValue, ColumnMeta, Driver } from "@/types";
 
 const dir = (name: string) =>
@@ -39,7 +39,24 @@ const target: SqlTarget = {
   pkColumns: [],
 };
 
-const GOLDEN: [ResultExportFormat, Driver, string][] = [
+type TextFormat = "csv" | "csvSemicolon" | "json" | "sql";
+
+/** What a file of `format` holds for these rows, written the clipboard's way. */
+function serialize(format: TextFormat, rows: CellValue[][], driver: Driver): string {
+  switch (format) {
+    case "csv":
+      return toCsv(rows, columns, ",");
+    case "csvSemicolon":
+      return toCsv(rows, columns, ";");
+    case "json":
+      return toBulk(rows, "json", { columns, driver });
+    case "sql":
+      return `${toBulk(rows, "insert", { columns, driver, target })}
+`;
+  }
+}
+
+const GOLDEN: [TextFormat, Driver, string][] = [
   ["csv", "postgres", "expected.csv"],
   ["csvSemicolon", "postgres", "expected-semicolon.csv"],
   ["json", "postgres", "expected.json"],
@@ -50,7 +67,7 @@ const GOLDEN: [ResultExportFormat, Driver, string][] = [
 
 describe("result export golden files", () => {
   it.each(GOLDEN)("%s (%s) matches %s", (format, driver, file) => {
-    const text = serializeResult(format, { rows: fixture.rows, columns, driver, target });
+    const text = serialize(format, fixture.rows, driver);
     if (process.env.UPDATE_GOLDEN) writeFileSync(dir(file), text, "utf8");
     expect(text).toBe(readFileSync(dir(file), "utf8"));
   });

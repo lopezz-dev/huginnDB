@@ -312,50 +312,122 @@ pub fn write_text_file(file_path: String, contents: String) -> AppResult<()> {
     Ok(std::fs::write(&file_path, contents)?)
 }
 
-/// The formats a query's results can be exported as, by file extension.
-const QUERY_RESULT_FORMATS: &[(&str, &str)] = &[("csv", "CSV"), ("json", "JSON"), ("sql", "SQL")];
+/// The save dialog every result export opens, for one [`ResultFormat`]:
+/// `stem` plus the format's extension, filtered to that format. Rejects with
+/// [`crate::error::EXPORT_CANCELLED`] when the person dismisses it.
+fn pick_result_file(
+    app: &AppHandle,
+    title: &str,
+    stem: &str,
+    format: crate::db::result_export::ResultFormat,
+) -> AppResult<String> {
+    use tauri_plugin_dialog::DialogExt;
+    let path = app
+        .dialog()
+        .file()
+        .set_title(title)
+        .set_file_name(format!("{stem}.{}", format.extension()))
+        .add_filter(format.label(), &[format.extension()])
+        .blocking_save_file()
+        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
+    Ok(path.to_string())
+}
 
-/// Write a query tab's result set to a file the person picks — the query
-/// results' "Export results" (ADR #135).
+/// `dest` when the export that wrote it succeeded; otherwise the file it had
+/// started is removed, rather than left to read like the whole result.
+fn keep_if_written<T>(dest: String, written: AppResult<T>) -> AppResult<String> {
+    match written {
+        Ok(_) => Ok(dest),
+        Err(e) => {
+            let _ = std::fs::remove_file(&dest);
+            Err(e)
+        }
+    }
+}
+
+/// What a SQL export of a result needs: its table, and the dialect of the
+/// connection it came from. `None` for every other format — so a MongoDB
+/// result, which has no dialect, still exports as CSV, JSON or Excel. Refused
+/// before any dialog opens when a SQL export has no table to name.
+fn result_insert_into(
+    pool: &DbPool,
+    format: crate::db::result_export::ResultFormat,
+    target: Option<crate::db::result_export::SqlExportTarget>,
+) -> AppResult<Option<crate::db::result_export::InsertInto>> {
+    use crate::db::result_export::{InsertInto, ResultFormat};
+    if format != ResultFormat::Sql {
+        return Ok(None);
+    }
+    let target = target.ok_or_else(|| {
+        AppError::InvalidInput(
+            "a SQL export needs the table to insert into; a result over several tables has none"
+                .into(),
+        )
+    })?;
+    Ok(Some(InsertInto {
+        dialect: Dialect::try_of(pool)?,
+        target,
+    }))
+}
+
+/// `suggestedName` in `lib/query/exportResult.ts`: the table a result reads,
+/// when it reads one.
+fn result_file_stem(target: Option<&crate::db::result_export::SqlExportTarget>) -> String {
+    match target {
+        Some(t) => format!("{}_results", t.table),
+        None => "query_results".to_string(),
+    }
+}
+
+/// Write the rows a query tab's grid holds to a file the person picks — the
+/// query results' "Export data ▾" (ADR #135).
 ///
 /// The rows are already in the frontend, whole: a query the person ran
-/// returns every row (it is not paged), so the frontend serialises what the
-/// grid holds (`lib/query/exportResult.ts`) and this writes it. What this adds
-/// over [`write_text_file`] is the policy: the rows may come from any relation
-/// the statement read, so it asks [`crate::policy::Need::FreeExport`] — refused
-/// under a scoped rule, and needing `select` + `export` on an unscoped one —
-/// before the save dialog opens (ADR #96: the interface's lock is advisory).
-/// The save dialog runs here, like the table exports, so the path never
-/// comes from the webview.
+/// returns every row up to the cap (it is not paged), so the frontend sends
+/// what the grid holds and this writes it through the one
+/// [`crate::db::result_export::RowWriter`] every exported file goes through
+/// (ADR #138) — the same bytes "Everything, from the server…" writes for the
+/// same rows, and the only way to an Excel file, which the frontend cannot
+/// build. `columns` are the result's names, `rows` its values in that order;
+/// `target` is the table a `sql` export inserts into (see
+/// [`export_query_rows`]).
+///
+/// What this adds over a plain write is the policy: the rows may come from any
+/// relation the statement read, so it asks [`crate::policy::Need::FreeExport`]
+/// — refused under a scoped rule, and needing `select` + `export` on an
+/// unscoped one — before the save dialog opens (ADR #96: the interface's lock
+/// is advisory). The save dialog runs here, like the table exports, so the
+/// path never comes from the webview.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn export_query_result(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
     connection_id: String,
-    file_name: String,
-    extension: String,
-    contents: String,
+    format: crate::db::result_export::ResultFormat,
+    columns: Vec<String>,
+    rows: Vec<Vec<serde_json::Value>>,
+    target: Option<crate::db::result_export::SqlExportTarget>,
 ) -> AppResult<String> {
+    use crate::db::result_export::RowWriter;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::commands::guard::free_export(state.inner(), &connection_id)?;
-    let (ext, label) = QUERY_RESULT_FORMATS
-        .iter()
-        .find(|(e, _)| *e == extension)
-        .ok_or_else(|| AppError::InvalidInput(format!("unknown export format: {extension}")))?;
+    let pool = state.pool_for(&connection_id)?;
+    let stem = result_file_stem(target.as_ref());
+    let insert = result_insert_into(&pool, format, target)?;
 
-    use tauri_plugin_dialog::DialogExt;
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Export query results")
-        .set_file_name(format!("{file_name}.{ext}"))
-        .add_filter(*label, &[*ext])
-        .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
-    let dest = path.to_string();
-    std::fs::write(&dest, contents)?;
-    Ok(dest)
+    let dest = pick_result_file(&app, "Export query results", &stem, format)?;
+    let written = (|| {
+        let file = std::io::BufWriter::new(std::fs::File::create(&dest)?);
+        let mut writer = RowWriter::new(file, format, insert)?;
+        writer.begin(columns)?;
+        for row in &rows {
+            writer.row(row)?;
+        }
+        writer.finish()
+    })();
+    keep_if_written(dest, written)
 }
 
 /// Run a read the person ran again and write **every** row of it to a file
@@ -364,9 +436,9 @@ pub async fn export_query_result(
 /// the rows the grid holds; this one reads them from the server, without the
 /// cap, streaming each row to the file (`commands::query::export`).
 ///
-/// `format` is the export menu's (`csv`, `csvSemicolon`, `json`, `sql`), and
-/// the bytes are the ones the grid's export writes for the same rows
-/// (`db::result_export`, pinned by a golden test shared with
+/// `format` is the export menu's (`csv`, `csvSemicolon`, `json`, `sql`,
+/// `xlsx`), and the bytes are the ones the grid's export writes for the same
+/// rows (`db::result_export`, pinned by a golden test shared with
 /// `lib/grid/copyFormats`). `target` is the table a `sql` export inserts
 /// into, with the table column each result column is, in result order.
 ///
@@ -388,51 +460,27 @@ pub async fn export_query_rows(
     format: crate::db::result_export::ResultFormat,
     target: Option<crate::db::result_export::SqlExportTarget>,
 ) -> AppResult<String> {
-    use crate::db::result_export::{ResultFormat, RowWriter};
+    use crate::db::result_export::RowWriter;
     crate::commands::ensure_view(&app, &window, state.inner(), &connection_id).await;
     crate::commands::guard::free_export(state.inner(), &connection_id)?;
     crate::commands::guard::free_sql(state.inner(), &connection_id, &sql)?;
     let pool = state.pool_for(&connection_id)?;
     crate::commands::query::check_exportable(&pool, &sql)?;
-    let dialect = Dialect::try_of(&pool)?;
-    if format == ResultFormat::Sql && target.is_none() {
-        return Err(AppError::InvalidInput(
-            "a SQL export needs the table to insert into; a result over several tables has none"
-                .into(),
-        ));
-    }
+    let stem = result_file_stem(target.as_ref());
+    let insert = result_insert_into(&pool, format, target)?;
 
-    // `suggestedName` in `lib/query/exportResult.ts`.
-    let file_name = match &target {
-        Some(t) => format!("{}_results", t.table),
-        None => "query_results".to_string(),
-    };
-    use tauri_plugin_dialog::DialogExt;
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Export query results")
-        .set_file_name(format!("{file_name}.{}", format.extension()))
-        .add_filter(format.label(), &[format.extension()])
-        .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
-    let dest = path.to_string();
-
-    let file = std::io::BufWriter::new(std::fs::File::create(&dest)?);
-    let written = match RowWriter::new(file, format, dialect, target) {
+    let dest = pick_result_file(&app, "Export query results", &stem, format)?;
+    let written = match std::fs::File::create(&dest)
+        .map_err(AppError::from)
+        .and_then(|file| RowWriter::new(std::io::BufWriter::new(file), format, insert))
+    {
         Ok(writer) => {
             crate::commands::query::export_rows_inner(state.inner(), &connection_id, &sql, writer)
                 .await
         }
         Err(e) => Err(e),
     };
-    match written {
-        Ok(_) => Ok(dest),
-        Err(e) => {
-            let _ = std::fs::remove_file(&dest);
-            Err(e)
-        }
-    }
+    keep_if_written(dest, written)
 }
 
 /// Export a single table (schema + data) to a user-chosen `.sql` file — the
@@ -523,13 +571,24 @@ pub async fn export_table(
 /// `SELECT` list (so each `INSERT` names only those columns, and a column left
 /// out takes its default on the way back in) and its sort becomes the
 /// `ORDER BY`, so the file reads in the order the grid did.
+///
+/// `format` is the export menu's. **`sql`** is this table's own dump — batched
+/// `INSERT`s, `IDENTITY_INSERT` and no `rowversion` on SQL Server — written
+/// here, since it inserts back into a table rather than describing a result.
+/// **Every other format** (CSV, JSON, Excel) is a result's file, written by the
+/// one [`crate::db::result_export::RowWriter`] the query tab's exports use, so
+/// a table and a query of it export the same bytes (ADR #138). Those rows are
+/// streamed, never held, inside ADR #93's read-only barrier — which also holds
+/// the query panel's hand-written expression to a read.
 #[tauri::command]
 pub async fn export_table_rows(
     app: AppHandle,
     window: tauri::Window,
     state: State<'_, AppState>,
     query: TableScan,
+    format: crate::db::result_export::ResultFormat,
 ) -> AppResult<String> {
+    use crate::db::result_export::{ResultFormat, RowWriter};
     let TableScan {
         connection_id,
         schema,
@@ -560,17 +619,18 @@ pub async fn export_table_rows(
     let from = from_clause(dialect, &qt, nonblank(&hint))?;
     let select_sql = format!("SELECT {select} FROM {from}{where_clause}{order_clause}");
 
-    use tauri_plugin_dialog::DialogExt;
-    let suggested = format!("{table}_rows.sql");
-    let path = app
-        .dialog()
-        .file()
-        .set_title("Export query results")
-        .set_file_name(&suggested)
-        .add_filter("SQL", &["sql"])
-        .blocking_save_file()
-        .ok_or_else(|| AppError::Transfer(crate::error::EXPORT_CANCELLED.into()))?;
-    let dest = path.to_string();
+    let dest = pick_result_file(&app, "Export rows", &format!("{table}_rows"), format)?;
+    if format != ResultFormat::Sql {
+        let written = async {
+            let file = std::io::BufWriter::new(std::fs::File::create(&dest)?);
+            let mut writer = RowWriter::new(file, format, None)?;
+            crate::commands::query::stream_read_only(&pool, &select_sql, &binds, &mut writer)
+                .await?;
+            writer.finish()
+        }
+        .await;
+        return keep_if_written(dest, written);
+    }
 
     let mut w = std::io::BufWriter::new(std::fs::File::create(&dest)?);
     writeln!(

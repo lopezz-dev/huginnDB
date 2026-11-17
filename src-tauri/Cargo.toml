@@ -183,6 +183,13 @@ reqwest = { version = "0.12", default-features = false, features = [
 # Tauri updater — declaring it directly adds a line here and nothing at all to
 # the dependency tree or the build time.
 zip = { version = "4", default-features = false, features = ["deflate"] }
+# Writing a result as an Excel workbook (`db::result_export`, format `xlsx`).
+# Unlike the two above this one is NEW to the tree: it brings `zip` 9 next to
+# the updater's `zip` 4, plus `typed-path`, `constant_time_eq` and (Unix only)
+# `nix`. `constant_memory` spills each finished row to a temp file instead of
+# holding the sheet, so a million-row export costs one row of memory plus the
+# compressed workbook — the reason the format can stream like CSV does.
+rust_xlsxwriter ={ version = "0.102", default-features = false, features = ["constant_memory"] }
 # Unpacking the `mongosh` the Terminal panel can download on demand
 # (`terminal::download`): the Linux build is a `.tgz`, Windows and macOS ship a
 # zip. Both crates are ALREADY in the lock file — `tar` and `flate2` through the

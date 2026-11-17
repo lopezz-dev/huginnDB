@@ -949,7 +949,8 @@
     },
     "exportData": {
       "label": "Export data",
-      "table": "Export the full table",
+      "table": "Export the full table (.sql)",
+      "rows": "The rows the query selects",
       "queryResults": "Export query results"
     },
     "bulkUpdate": {

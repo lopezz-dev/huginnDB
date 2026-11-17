@@ -1,6 +1,7 @@
 /**
- * The query results' "Export data ▾" toolbar entry (ADR #135): CSV, JSON and —
- * when the result reads one table — SQL INSERT, of every row the grid holds
+ * The query results' "Export data ▾" toolbar entry (ADR #135): CSV, Excel,
+ * JSON and — when the result reads one table — SQL INSERT, of every row the
+ * grid holds
  * (a query is not paged; the toolbar's client-side search does not narrow the
  * file).
  *
@@ -21,8 +22,10 @@
  *
  * Chrome only: the source says whether exporting is allowed (`export`, the
  * policy's lock as its reason) and which table an INSERT names (`sqlTarget`);
- * `lib/query/exportResult.ts` builds the file; the backend checks the policy
- * again and writes it (`export_query_result`). Shown disabled with its reason
+ * `lib/query/exportResult.ts` sends the rows; the backend checks the policy
+ * again and writes the file (`export_query_result`, the one writer of ADR
+ * #138). The format items are the ones the table's menu shows too
+ * (`ExportFormatItems`). Shown disabled with its reason
  * when the policy refuses it, like the table's own Export menu (ADR #96).
  */
 
@@ -33,7 +36,6 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuSub,
@@ -42,6 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown";
 import { PolicyLockHint } from "@/components/common/PolicyLock";
+import { ExportFormatItems } from "@/components/grid/ExportFormatItems";
 import type { GridToolbarItem } from "@/components/grid/DataGrid";
 import { notify } from "@/lib/notify";
 import { api } from "@/lib/tauri";
@@ -51,26 +54,10 @@ import { cutBy } from "@/lib/query/resultCap";
 import {
   exportFormats,
   exportResult,
+  serverTarget,
   type ResultExportFormat,
 } from "@/lib/query/exportResult";
-import type { Driver, QueryResult, ServerSqlTarget } from "@/types";
-
-/** Each format's menu label: the two CSVs say which delimiter they use. */
-function formatLabel(
-  format: ResultExportFormat,
-  t: (key: string) => string,
-): string {
-  switch (format) {
-    case "csv":
-      return t("query.export.csvComma");
-    case "csvSemicolon":
-      return t("query.export.csvSemicolon");
-    case "json":
-      return "JSON";
-    case "sql":
-      return "SQL INSERT";
-  }
-}
+import type { Driver, QueryResult } from "@/types";
 
 export function useResultExportItem(
   source: GridSource,
@@ -96,28 +83,19 @@ export function useResultExportItem(
           exportResult(connectionId, format, {
             rows: result.rows,
             columns: result.columns,
-            driver,
             target: sqlTarget,
           }),
         (path) => notify.file(t("notifications.fileSaved.rows"), { path }),
         (message) => notify.error(message),
       ),
-    [connectionId, sqlTarget, result, driver, t],
+    [connectionId, sqlTarget, result, t],
   );
 
   /** "Everything, from the server…": the statement again, every row. */
   const runFromServer = useCallback(
     (format: ResultExportFormat) => {
       if (!sql) return;
-      // A function cannot cross IPC: the target travels with `columnOf`
-      // evaluated for each result column, in result order.
-      const target: ServerSqlTarget | undefined =
-        format === "sql" && sqlTarget
-          ? {
-              table: sqlTarget.table,
-              columns: result.columns.map((c) => sqlTarget.columnOf(c.name)),
-            }
-          : undefined;
+      const target = serverTarget(format, sqlTarget, result.columns);
       void runExport(
         () => api.exportQueryRows(connectionId, sql, format, target),
         (path) => notify.file(t("notifications.fileSaved.rows"), { path }),
@@ -137,27 +115,27 @@ export function useResultExportItem(
             </DropdownMenuLabel>,
           ]
         : []),
-      ...formats.map((f) => (
-        <DropdownMenuItem key={f} className={className} onSelect={() => run(f)}>
-          {formatLabel(f, t)}
-        </DropdownMenuItem>
-      )),
+      <ExportFormatItems
+        key="shown-formats"
+        formats={formats}
+        className={className}
+        onSelect={run}
+      />,
       ...(fromServer
         ? [
             <DropdownMenuSeparator key="server-sep" />,
             <DropdownMenuLabel key="server" className="text-2xs">
               {t("query.export.fromServer")}
             </DropdownMenuLabel>,
-            ...formats.map((f) => (
-              <DropdownMenuItem
-                key={`server-${f}`}
-                className={className}
-                title={t("query.export.fromServerHint")}
-                onSelect={() => runFromServer(f)}
-              >
-                {formatLabel(f, t)}…
-              </DropdownMenuItem>
-            )),
+            <ExportFormatItems
+              key="server-formats"
+              keyPrefix="server-"
+              formats={formats}
+              className={className}
+              title={t("query.export.fromServerHint")}
+              ellipsis
+              onSelect={runFromServer}
+            />,
           ]
         : []),
     ];

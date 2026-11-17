@@ -58,8 +58,11 @@ import { confirmDestructive } from "@/lib/confirmDestructive";
 import type {
   ColumnFilter,
   Projection,
+  ResultExportFormat,
   SortSpec,
 } from "@/types";
+import { EXPORT_FORMATS } from "@/lib/query/exportResult";
+import { ExportFormatItems } from "@/components/grid/ExportFormatItems";
 import {
   DataGrid,
   type GridToolbarItem,
@@ -80,6 +83,8 @@ import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -581,8 +586,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
    * "Export query results" — what the grid shows, without its paging: the
    * query panel's conditions (`serverFilters`), the committed search, the
    * sort and the projection. Identical to `exportFull` when none is active.
+   *
+   * SQL tables export it in the `format` picked from the menu (ADR #138);
+   * a collection's export is always its JSON, the one format it offers.
    */
-  const exportFiltered = useCallback(() => {
+  const exportFiltered = useCallback((format: ResultExportFormat) => {
     const scan = {
       filters: serverFilters,
       search: appliedFilter || undefined,
@@ -597,7 +605,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
       () =>
         isMongo
           ? api.exportCollection(connectionId, table, scan)
-          : api.exportTableRows({ connectionId, schema, table, ...scan }),
+          : api.exportTableRows({ connectionId, schema, table, ...scan }, format),
       (path) =>
         notify.file(
           isMongo
@@ -985,8 +993,51 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
     [isMongo, t, importCollectionJsonForTab],
   );
 
-  const insertExtraContent: GridToolbarItem[] = useMemo(
-    () => [
+  const insertExtraContent: GridToolbarItem[] = useMemo(() => {
+    /**
+     * The export menu's items, for the bar and for the overflow submenu.
+     * A SQL table offers its full dump, then the rows its query panel
+     * selects in every format a result offers (ADR #138, the same items as
+     * the query results' menu); a collection keeps its two JSON exports.
+     */
+    const exportItems = (className?: string) =>
+      isMongo
+        ? [
+            <DropdownMenuItem
+              key="full"
+              className={className}
+              onSelect={() => void exportFull()}
+            >
+              {t("schema.exportCollection.title")}
+            </DropdownMenuItem>,
+            <DropdownMenuItem
+              key="rows"
+              className={className}
+              onSelect={() => void exportFiltered("json")}
+            >
+              {t("tableData.exportData.queryResults")}
+            </DropdownMenuItem>,
+          ]
+        : [
+            <DropdownMenuItem
+              key="full"
+              className={className}
+              onSelect={() => void exportFull()}
+            >
+              {t("tableData.exportData.table")}
+            </DropdownMenuItem>,
+            <DropdownMenuSeparator key="rows-sep" />,
+            <DropdownMenuLabel key="rows" className="text-2xs">
+              {t("tableData.exportData.rows")}
+            </DropdownMenuLabel>,
+            <ExportFormatItems
+              key="rows-formats"
+              formats={EXPORT_FORMATS}
+              className={className}
+              onSelect={(f) => void exportFiltered(f)}
+            />,
+          ];
+    return [
       // MongoDB only: additive JSON import into this collection (#65), moved
       // here from the schema tree's right-click menu so the action lives with
       // the data it affects instead of the tree. SQL has no table-scoped import
@@ -1010,21 +1061,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
                 </Button>
               </DropdownMenuTrigger>
             </PolicyLockHint>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onSelect={() => void exportFull()}>
-                {isMongo
-                  ? t("schema.exportCollection.title")
-                  : t("tableData.exportData.table")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => void exportFiltered()}>
-                {t("tableData.exportData.queryResults")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
+            <DropdownMenuContent align="start">{exportItems()}</DropdownMenuContent>
           </DropdownMenu>
         ),
         // A dropdown can't collapse into a menu as a nested dropdown (it would
         // portal outside the parent's content and dismiss it), so it becomes a
-        // submenu with the very same two choices.
+        // submenu with the very same choices.
         menu: (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="text-xs" disabled={!!exportLock}>
@@ -1032,22 +1074,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               {t("tableData.exportData.label")}
               {exportLock && <Lock className="ml-2 h-3 w-3 opacity-70" />}
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
-              <DropdownMenuItem
-                className="text-xs"
-                onSelect={() => void exportFull()}
-              >
-                {isMongo
-                  ? t("schema.exportCollection.title")
-                  : t("tableData.exportData.table")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-xs"
-                onSelect={() => void exportFiltered()}
-              >
-                {t("tableData.exportData.queryResults")}
-              </DropdownMenuItem>
-            </DropdownMenuSubContent>
+            <DropdownMenuSubContent>{exportItems("text-xs")}</DropdownMenuSubContent>
           </DropdownMenuSub>
         ),
       },
@@ -1079,17 +1106,16 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             },
           ]
         : []),
-    ],
-    [
-      isMongo,
-      canBulkUpdate,
-      exportLock,
-      t,
-      importCollectionJsonForTab,
-      exportFull,
-      exportFiltered,
-    ],
-  );
+    ];
+  }, [
+    isMongo,
+    canBulkUpdate,
+    exportLock,
+    t,
+    importCollectionJsonForTab,
+    exportFull,
+    exportFiltered,
+  ]);
 
   // Trailing (right-aligned) HEADER content, rendered after `insertExtra` —
   // just the table/list view toggle, a *display* control rather than a data
