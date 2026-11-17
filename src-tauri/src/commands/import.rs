@@ -89,7 +89,8 @@ pub async fn preview_import_file(path: String, options: ReadOptions) -> AppResul
 /// filled as `mapping` says, in one transaction.
 ///
 /// `empty_as_null`: an empty CSV field or Excel text cell is SQL `NULL` —
-/// how the export writes one — rather than an empty string.
+/// how the export writes one — rather than an empty string. Ignored for
+/// JSON, which writes `null` and `""` apart.
 // Flat argument list is the IPC surface — same note as `insert_rows`.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -187,12 +188,15 @@ pub(crate) async fn import_table_file_inner(
     )
     .await?;
     let plan = resolve_mapping(&catalog, &req.mapping, sheet.columns.len())?;
+    // JSON writes `null` and `""` apart, so an empty string there is one;
+    // only CSV and Excel, where the two look alike, read it as `NULL`.
+    let empty_as_null = req.empty_as_null && sheet.format != ImportFormat::Json;
     let values: Vec<Vec<Option<String>>> = sheet
         .rows
         .iter()
         .map(|row| {
             plan.iter()
-                .map(|(col, src)| cell_bind(&row[*src], col, req.empty_as_null))
+                .map(|(col, src)| cell_bind(&row[*src], col, empty_as_null))
                 .collect()
         })
         .collect();
@@ -567,13 +571,14 @@ mod tests {
     async fn an_unmapped_column_takes_its_default() {
         let (state, dir) = sqlite_state("default").await;
         let file = dir.join("items.json");
-        std::fs::write(&file, r#"[{"name": "a", "id": 7, "extra": "ignored"}]"#).unwrap();
+        std::fs::write(&file, r#"[{"name": "", "id": 7, "extra": "ignored"}]"#).unwrap();
         // JSON columns are alphabetical: extra, id, name.
         let req = request(&file, vec![map("id", 1), map("name", 2)]);
         import_table_file_inner(&Quiet, &state, req).await.unwrap();
         assert_eq!(
             items(&state).await,
-            vec![(7, "a".into(), None, None, Some("none".into()))]
+            // `""` stays an empty string in JSON, even with "empty is NULL".
+            vec![(7, "".into(), None, None, Some("none".into()))]
         );
     }
 

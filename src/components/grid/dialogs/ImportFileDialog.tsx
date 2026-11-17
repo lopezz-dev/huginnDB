@@ -296,11 +296,15 @@ export function ImportFileDialog({
                 label={t("dataGrid.importFile.hasHeader")}
               />
             )}
-            <Checkbox
-              checked={emptyAsNull}
-              onChange={(e) => setEmptyAsNull(e.target.checked)}
-              label={t("dataGrid.importFile.emptyAsNull")}
-            />
+            {/* JSON writes `null` and `""` apart, so the backend ignores
+                this for it (`commands::import`). */}
+            {(isCsv || isXlsx) && (
+              <Checkbox
+                checked={emptyAsNull}
+                onChange={(e) => setEmptyAsNull(e.target.checked)}
+                label={t("dataGrid.importFile.emptyAsNull")}
+              />
+            )}
           </div>
 
           {loading && (
