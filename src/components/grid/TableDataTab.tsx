@@ -1002,10 +1002,11 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
 
   const insertExtraContent: GridToolbarItem[] = useMemo(
     () => [
-      // MongoDB's additive JSON import (#65) and SQL's file import (ADR
-      // #139) both live with the data they affect, behind the Insert
-      // button's chevron (`insertAlternatives` above); the schema tree
-      // offers the SQL one on the table's node too.
+      // MongoDB only: additive JSON import into this collection (#65), moved
+      // here from the schema tree's right-click menu so the action lives with
+      // the data it affects instead of the tree. SQL has no table-scoped import
+      // primitive (only a whole-connection `.sql` batch), so it keeps that entry
+      // point in the tree unchanged.
       {
         id: "export-data",
         bar: (
