@@ -39,6 +39,7 @@ import type {
   ColumnFilter,
   QueryPreview,
   ResultExportFormat,
+  RowsExported,
   ServerSqlTarget,
   ColumnInfo,
   IncomingForeignKey,
@@ -1666,31 +1667,37 @@ export const api = {
   ) => invoke<string>("export_table", { connectionId, schema, table }),
 
   /**
-   * Export the rows of a SQL table matching `filters`/`search` as `INSERT`
-   * statements, without any DDL — "export query results" against the
-   * DataGrid's current advanced-filter state, not the whole table. No
-   * pagination limit. Rejects MongoDB.
+   * Export the rows of a SQL table that its query panel selects — filters,
+   * search, sort and projection, with no paging — in `format` (ADR #138):
+   * `sql` as this table's `INSERT`s without DDL, anything else as the same
+   * file a query result exports (CSV, JSON, Excel), streamed by the backend.
+   * Rejects MongoDB.
    */
-  exportTableRows: (query: TableScan) =>
-    invoke<string>("export_table_rows", { query }),
+  exportTableRows: (query: TableScan, format: ResultExportFormat) =>
+    invoke<RowsExported>("export_table_rows", { query, format }),
 
   /**
-   * Write a query's result set, already serialised (`lib/query/exportResult`),
-   * to a file the person picks. The backend checks the managed policy first —
-   * the rows may come from any relation the query read — and opens the save
-   * dialog itself. Returns the written path; rejects if the user cancels.
+   * Write the rows a query result's grid holds to a file the person picks, in
+   * `format` (`lib/query/exportResult`, ADR #138): the backend writes it with
+   * the one writer every export uses. `columns` are the result's names, `rows`
+   * its values in that order, `target` the table a `sql` export inserts into.
+   * The backend checks the managed policy first — the rows may come from any
+   * relation the query read — and opens the save dialog itself. Returns the
+   * written path; rejects if the user cancels.
    */
   exportQueryResult: (
     connectionId: string,
-    fileName: string,
-    extension: "csv" | "json" | "sql",
-    contents: string,
+    format: ResultExportFormat,
+    columns: string[],
+    rows: CellValue[][],
+    target?: ServerSqlTarget,
   ) =>
-    invoke<string>("export_query_result", {
+    invoke<RowsExported>("export_query_result", {
       connectionId,
-      fileName,
-      extension,
-      contents,
+      format,
+      columns,
+      rows,
+      target: target ?? null,
     }),
 
   /**
@@ -1710,7 +1717,7 @@ export const api = {
     format: ResultExportFormat,
     target?: ServerSqlTarget,
   ) =>
-    invoke<string>("export_query_rows", {
+    invoke<RowsExported>("export_query_rows", {
       connectionId,
       sql,
       format,

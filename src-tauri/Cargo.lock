@@ -2855,6 +2855,7 @@ dependencies = [
  "reqwest 0.12.28",
  "rmcp",
  "russh",
+ "rust_xlsxwriter",
  "schemars 1.2.3",
  "serde",
  "serde_json",
@@ -5646,6 +5647,16 @@ dependencies = [
  "serde",
  "serde_json",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "rust_xlsxwriter"
+version = "0.102.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ca3d0e879a578c1313c2800ab0c6c029d38eed18098675e50341a30d32372ed"
+dependencies = [
+ "tempfile",
+ "zip 9.6.1",
 ]
 
 [[package]]

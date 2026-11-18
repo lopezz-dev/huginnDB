@@ -973,7 +973,8 @@
     },
     "exportData": {
       "label": "Exportar datos",
-      "table": "Exportar la tabla completa",
+      "table": "Exportar la tabla completa (.sql)",
+      "rows": "Las filas que selecciona la consulta",
       "queryResults": "Exportar resultado de la consulta"
     },
     "bulkUpdate": {
@@ -2237,6 +2238,7 @@
     "copyError": "Copiar error",
     "fileMissing": "El archivo ya no está en esa ruta.",
     "fileSaved": {
+      "truncatedCells": "{{count}} celdas superaban el límite de Excel; se recortaron y terminan en […]",
       "table": "Tabla exportada",
       "rows": "Resultados exportados",
       "collection": "Colección exportada",

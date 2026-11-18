@@ -1,6 +1,7 @@
 /**
- * Export of a query's results (ADR #135): which formats are offered, what
- * each writes, and what reaches the backend.
+ * Export of a query's results (ADR #135, ADR #138): which formats are offered
+ * and what reaches the backend, which writes every file. What the files hold
+ * is pinned on the Rust side and by `exportResult.golden.test.ts`.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SqlTarget } from "@/lib/grid/copyFormats";
@@ -10,7 +11,7 @@ vi.mock("@/lib/tauri", () => ({
   api: { exportQueryResult: (...a: unknown[]) => exportQueryResult(...a) },
 }));
 
-import { exportFormats, exportResult, serializeResult } from "./exportResult";
+import { EXPORT_FORMATS, exportFormats, exportResult, serverTarget } from "./exportResult";
 
 const columns = [
   { name: "id", data_type: "int" },
@@ -27,70 +28,48 @@ const target: SqlTarget = { table: "items", columnOf: (c) => as[c] ?? null, pkCo
 beforeEach(() => exportQueryResult.mockReset().mockResolvedValue("/tmp/x"));
 
 describe("exportFormats", () => {
-  it("offers SQL only when the result names one table", () => {
-    expect(exportFormats(target)).toEqual(["csv", "csvSemicolon", "json", "sql"]);
-    expect(exportFormats(undefined)).toEqual(["csv", "csvSemicolon", "json"]);
+  it("offers SQL only when the result names one table, Excel always", () => {
+    expect(exportFormats(target)).toEqual(["csv", "csvSemicolon", "xlsx", "json", "sql"]);
+    expect(exportFormats(undefined)).toEqual(["csv", "csvSemicolon", "xlsx", "json"]);
+  });
+
+  it("a table offers every format, in the same order", () => {
+    expect(EXPORT_FORMATS).toEqual(exportFormats(target));
   });
 });
 
-describe("serializeResult", () => {
-  const input = { rows, columns, driver: "postgres" as const, target };
-
-  it("CSV keeps the names the query gave, aliases and expressions included", () => {
-    expect(serializeResult("csv", input)).toBe(
-      "﻿id,p,doubled\r\n7,9.50,19.00\r\n8,,\r\n",
-    );
+describe("serverTarget", () => {
+  it("evaluates the table column of each result column, in result order", () => {
+    expect(serverTarget("sql", target, columns)).toEqual({
+      table: "items",
+      columns: ["id", "price", null],
+    });
   });
 
-  it("CSV for Excel separates with semicolons, quoting a value that holds one", () => {
-    const withSemi = { ...input, rows: [[7, "a;b", null]] };
-    expect(serializeResult("csvSemicolon", withSemi)).toBe(
-      '\uFEFFid;p;doubled\r\n7;"a;b";\r\n',
-    );
-    // A comma no longer needs quoting there — it is just text.
-    expect(serializeResult("csvSemicolon", { ...input, rows: [[7, "9,50", null]] })).toBe(
-      "\uFEFFid;p;doubled\r\n7;9,50;\r\n",
-    );
-  });
-
-  it("JSON keeps them too", () => {
-    expect(JSON.parse(serializeResult("json", input))).toEqual([
-      { id: 7, p: "9.50", doubled: "19.00" },
-      { id: 8, p: null, doubled: null },
-    ]);
-  });
-
-  it("SQL addresses the table through its aliases, leaving expressions out", () => {
-    expect(serializeResult("sql", input)).toBe(
-      'INSERT INTO "items" ("id", "price") VALUES (7, \'9.50\');\n' +
-        'INSERT INTO "items" ("id", "price") VALUES (8, NULL);\n',
-    );
-  });
-
-  it("refuses SQL without a table to insert into", () => {
-    expect(() => serializeResult("sql", { ...input, target: undefined })).toThrow();
+  it("is absent for every other format, and without a table", () => {
+    expect(serverTarget("csv", target, columns)).toBeUndefined();
+    expect(serverTarget("xlsx", target, columns)).toBeUndefined();
+    expect(serverTarget("sql", undefined, columns)).toBeUndefined();
   });
 });
 
 describe("exportResult", () => {
-  it("hands the backend the serialised rows with a name from the table", async () => {
-    await exportResult("c1", "csv", { rows, columns, driver: "postgres", target });
+  it("hands the backend the rows as they are, under the result's own names", async () => {
+    await exportResult("c1", "xlsx", { rows, columns, target });
     expect(exportQueryResult).toHaveBeenCalledWith(
       "c1",
-      "items_results",
-      "csv",
-      "﻿id,p,doubled\r\n7,9.50,19.00\r\n8,,\r\n",
+      "xlsx",
+      ["id", "p", "doubled"],
+      rows,
+      undefined,
     );
   });
 
-  it("saves the semicolon CSV as a .csv file too", async () => {
-    await exportResult("c1", "csvSemicolon", { rows, columns, driver: "postgres", target });
-    expect(exportQueryResult.mock.calls[0][2]).toBe("csv");
-    expect(exportQueryResult.mock.calls[0][3]).toContain("id;p;doubled");
-  });
-
-  it("names the file generically over several tables", async () => {
-    await exportResult("c1", "json", { rows, columns, driver: "postgres", target: undefined });
-    expect(exportQueryResult.mock.calls[0][1]).toBe("query_results");
+  it("sends the table an INSERT names with a SQL export", async () => {
+    await exportResult("c1", "sql", { rows, columns, target });
+    expect(exportQueryResult.mock.calls[0][4]).toEqual({
+      table: "items",
+      columns: ["id", "price", null],
+    });
   });
 });

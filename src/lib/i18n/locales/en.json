@@ -973,7 +973,8 @@
     },
     "exportData": {
       "label": "Export data",
-      "table": "Export the full table",
+      "table": "Export the full table (.sql)",
+      "rows": "The rows the query selects",
       "queryResults": "Export query results"
     },
     "bulkUpdate": {
@@ -2237,6 +2238,7 @@
     "copyError": "Copy error",
     "fileMissing": "The file is no longer at that path.",
     "fileSaved": {
+      "truncatedCells": "{{count}} cells were longer than Excel allows; they were cut and end in […]",
       "table": "Table exported",
       "rows": "Results exported",
       "collection": "Collection exported",
