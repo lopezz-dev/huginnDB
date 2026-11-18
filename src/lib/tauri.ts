@@ -67,6 +67,9 @@ import type {
   McpConnectorInfo,
   ImportResult,
   IndexInfo,
+  ImportColumnSource,
+  ImportPreview,
+  ImportReadOptions,
   InsertRowsSummary,
   CreatedPolicy,
   PolicyAccess,
@@ -1016,6 +1019,23 @@ export const api = {
     table: string;
     source: string;
   }) => invoke<InsertRowsSummary>("insert_rows", args),
+
+  /** Read an import file for the dialog's mapping (ADR #139). Touches no
+   *  database. */
+  previewImportFile: (path: string, options: ImportReadOptions) =>
+    invoke<ImportPreview>("preview_import_file", { path, options }),
+
+  /** Insert every row of an import file into a table, its columns filled as
+   *  `mapping` says, in one transaction (ADR #139). */
+  importTableFile: (args: {
+    connectionId: string;
+    schema?: string;
+    table: string;
+    path: string;
+    options: ImportReadOptions;
+    mapping: ImportColumnSource[];
+    emptyAsNull: boolean;
+  }) => invoke<InsertRowsSummary>("import_table_file", args),
 
   /**
    * Fetch a page of valid values for a foreign-key column. When

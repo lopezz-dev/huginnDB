@@ -1091,6 +1091,42 @@ export interface InsertRowsSummary {
   columns: string[];
 }
 
+/** A file format `import_table_file` reads. Mirrors `ImportFormat` in
+ *  `src-tauri/src/db/import_file.rs` (ADR #139). */
+export type ImportFormat = "csv" | "json" | "xlsx";
+
+/** How to read an import file — `ReadOptions` there. Each field means
+ *  something for one format only. */
+export interface ImportReadOptions {
+  /** CSV: the field delimiter; omitted, it is detected. */
+  delimiter?: string;
+  /** Excel: the sheet to read; omitted, the first. */
+  sheet?: string;
+  /** CSV and Excel: whether the first row names the columns. */
+  hasHeader: boolean;
+}
+
+/** What `preview_import_file` returns — `ImportPreview` in
+ *  `src-tauri/src/commands/import.rs`. Every sample row has one cell per
+ *  column. */
+export interface ImportPreview {
+  format: ImportFormat;
+  columns: string[];
+  sample: unknown[][];
+  totalRows: number;
+  delimiter: string | null;
+  encoding: string | null;
+  sheets: string[];
+  sheet: string | null;
+}
+
+/** One table column and the file column (by index) that fills it —
+ *  `ColumnSource` there. A table column with no entry is not written. */
+export interface ImportColumnSource {
+  column: string;
+  source: number;
+}
+
 /**
  * User preferences. Mirrors `Preferences` in `src-tauri/src/prefs.rs`.
  *

@@ -10,6 +10,7 @@
 
 import { useTranslation } from "react-i18next";
 
+import { ImportFileDialog } from "@/components/grid/dialogs/ImportFileDialog";
 import { CreateDatabaseDialog } from "@/components/schema/dialogs/CreateDatabaseDialog";
 import { DatabaseVisibilityDialog } from "@/components/schema/dialogs/DatabaseVisibilityDialog";
 import { DropObjectDialog } from "@/components/schema/dialogs/DropObjectDialog";
@@ -81,6 +82,20 @@ export function SchemaTreeDialogs() {
             close();
             refresh(open.connectionId);
           }}
+        />
+      );
+    case "importFile":
+      return (
+        <ImportFileDialog
+          open
+          onOpenChange={(o) => !o && close()}
+          connectionId={open.connectionId}
+          schema={open.target.schema || undefined}
+          table={open.target.name}
+          path={open.path}
+          // Row counts in the tree, and the table's grid if it is open: a
+          // grid refreshes itself when its tab is next shown.
+          onImported={() => refresh(open.connectionId)}
         />
       );
     case "renameView":

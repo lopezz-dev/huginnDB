@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-138 entries: 111 ADRs, 18 gotchas, 9 conventions.
+139 entries: 112 ADRs, 18 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -178,4 +178,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 136 | ADR | [a gesture the relation can never perform is not offered; one this person cannot perform now is shown disabled with why](adr/adr-136-a-gesture-the-relation-can-never-perform-is-not-offered.md) | accepted | 2026-11-13 |
 | 137 | ADR | [a query tab shows one tab per statement, runs what the cursor names, and can be stopped on the server](adr/adr-137-a-query-tab-shows-one-tab-per-statement-and-runs-what-the-cursor-names.md) | accepted | 2026-11-14 |
 | 138 | ADR | [every exported file of rows is written by one Rust writer, in the same formats from both grids](adr/adr-138-every-exported-rows-file-is-written-by-one-rust-writer.md) | accepted | 2026-11-17 |
+| 139 | ADR | [a CSV, JSON or Excel file is imported into a SQL table by Rust, through the paste's multi-row insert, all or nothing](adr/adr-139-a-file-is-imported-into-a-table-by-rust-through-the-paste-insert.md) | accepted | 2026-11-17 |
 <!-- index:end -->

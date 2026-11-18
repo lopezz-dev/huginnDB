@@ -23,6 +23,14 @@ export type SchemaTreeDialog =
       connectionId: string;
       target: TableInfo;
     }
+  | {
+      /** A CSV, JSON or Excel file into a table (ADR #139). */
+      kind: "importFile";
+      connectionId: string;
+      target: TableInfo;
+      /** The file, picked before the dialog opens. */
+      path: string;
+    }
   | { kind: "createDatabase"; parentId: string }
   | { kind: "databaseVisibility"; parentId: string };
 

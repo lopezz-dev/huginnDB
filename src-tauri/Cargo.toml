@@ -205,6 +205,16 @@ aes-gcm = "0.10"
 # `rayon`, and one lane costs the defender what it costs an attacker.
 argon2 = { version = "0.6", default-features = false, features = ["alloc"] }
 zeroize = "1.8"
+# Importing a file into a table (`db::import_file`, ADR #139). `calamine` is
+# NEW to the tree and reads `.xlsx` (no default features: no dates through
+# chrono, no pictures — a date cell is converted by hand). It brings `zip` 9
+# (with `typed-path`, `constant_time_eq` and, on Unix, `nix`) — the same set
+# `rust_xlsxwriter` brings for the export (ADR #138) — plus its own
+# `codepage`, `atoi_simd`, `fast-float2` and `debug_unsafe`. `encoding_rs` is
+# ALREADY in it through `tiberius`; it decodes a CSV that Excel saved in
+# Windows-1252 rather than UTF-8.
+calamine = { version = "0.38", default-features = false }
+encoding_rs = "0.8"
 pbkdf2 = { version = "0.12", features = ["simple"] }
 sha2 = "0.10"
 rand = "0.8"
