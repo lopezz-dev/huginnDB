@@ -142,6 +142,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **MCP: un `.explain()` de MongoDB se redirige a `pulse_explain`, que
+  ahora da estadísticas de ejecución.** Una IA que mandaba
+  `db.c.explain('executionStats').aggregate([...])` a `run_query` recibía
+  que la sentencia *escribe* y que usara `run_write`: `.explain()` no está
+  en la gramática de mongosh, y lo que la gramática no sabe leer se trata
+  como el nivel más estricto. Ahí se sigue rechazando, pero el mensaje
+  nombra ahora `pulse_explain` y cómo llamarlo. `pulse_explain` acepta un
+  `verbosity` opcional: `"queryPlanner"` (por defecto, como antes) devuelve
+  el plan sin ejecutar la sentencia, y `"executionStats"` (solo MongoDB) la
+  ejecuta e informa de lo que examinó cada etapa y cuánto tardó — el mismo
+  coste que ejecutarla, acotado por el tiempo límite de operación de la
+  conexión, y solo para una lectura (`$out`/`$merge` se rechazan). Su
+  descripción ya no parece la de una herramienta exclusiva de Pulse. Los
+  explain de la propia app (Pulse, el panel de consulta, el panel de IA)
+  siguen pidiendo solo el plan. El protocolo del puente del conector pasa a
+  la versión 7, así que un conector y una app de versiones distintas
+  vuelven a la conexión propia del conector en vez de que uno de los dos
+  ignore el campo nuevo.
+
 - **Volver a ejecutar un lote desde el historial funciona.** Una entrada
   del historial con varias sentencias se enviaba como un solo texto por la
   vía de una sentencia, que PostgreSQL y MySQL rechazan. Ahora se abre en

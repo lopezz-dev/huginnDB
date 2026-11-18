@@ -445,7 +445,7 @@ connector — leaving only the connections you opened yourself.
 | `pulse_health` | Live vital signs — queries/s, connection pressure, cache hit rate — normalised to one metric catalogue regardless of engine. MySQL and MongoDB only. |
 | `pulse_metrics` | One metric's stored history from Pulse's on-disk sampler, oldest first. Empty unless the connection has Pulse's history sampler turned on in Settings. |
 | `pulse_top_queries` | Statements the server has spent the most time on, each carrying a runnable `sample` when one is available. |
-| `pulse_explain` | The plan the server would use for one statement — typically a `pulse_top_queries` row's own `sample` — without running it. Refuses anything that isn't read-only, single-statement, and not itself `EXPLAIN`/`ANALYZE`. |
+| `pulse_explain` | How the server executes one read-only statement — your own, or a `pulse_top_queries` row's `sample`. By default the plan, without running it. On MongoDB, pass the statement without `.explain()` (`run_query` refuses that form and points here); `verbosity: "executionStats"` runs it and reports what each stage examined and how long it took, bounded by the connection's operation timeout. MySQL returns the plan only. Refuses anything that isn't read-only, single-statement, and not itself `EXPLAIN`/`ANALYZE`. |
 | `pulse_storage` | The connection's biggest relations, largest first, split into data / index / free space. |
 | `pulse_sessions` | Every session or operation currently open on the server, with a best-effort blocking chain on MySQL. |
 | `pulse_index_usage` | Index usage across the biggest relations, least-read first — the fastest way to spot an index nobody reads. |

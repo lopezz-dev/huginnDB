@@ -329,6 +329,7 @@ pub async fn gather(
                     BridgeRequest::PulseExplain {
                         connection_id: connection_id.clone(),
                         sample: statement,
+                        mode: crate::pulse::ExplainMode::Plan,
                     },
                 )
                 .await?,

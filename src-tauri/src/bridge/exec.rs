@@ -205,12 +205,13 @@ pub async fn execute(
         PulseExplain {
             connection_id,
             sample,
+            mode,
         } => serde_json::to_value(
             crate::error::with_timeout_for(
                 state,
                 connection_id,
                 "pulse_explain",
-                crate::commands::pulse::pulse_explain_inner(state, connection_id, sample),
+                crate::commands::pulse::pulse_explain_inner(state, connection_id, sample, *mode),
             )
             .await?,
         )?,

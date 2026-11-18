@@ -9,8 +9,8 @@ use crate::db::mongo::shell::{self, MongoOp};
 use crate::db::mongo::values::bson_to_shell_text;
 use crate::error::{AppError, AppResult};
 use crate::pulse::{
-    truncate, ExplainPlan, IndexUsage, MetricSample, PulseHealth, PulseNote, SessionRow,
-    StorageItem, TopQuery,
+    truncate, ExplainMode, ExplainPlan, IndexUsage, MetricSample, PulseHealth, PulseNote,
+    SessionRow, StorageItem, TopQuery,
 };
 use crate::state::MongoConn;
 
@@ -415,11 +415,13 @@ pub async fn top_queries(conn: &MongoConn, limit: usize) -> AppResult<Vec<TopQue
 ///
 /// Only the read-shaped operations carry enough of a query for `explain` to
 /// mean anything; anything else is refused rather than silently no-op'd.
-/// `verbosity` is hardcoded to `"queryPlanner"` — never taken from `sample` —
-/// which is what keeps this safe to call on arbitrary shell text: MongoDB's
-/// higher verbosities (`executionStats`, `allPlansExecution`) actually *run*
-/// the statement, and nothing here ever asks for those.
-pub async fn explain(conn: &MongoConn, sample: &str) -> AppResult<ExplainPlan> {
+/// `verbosity` comes from `mode` — never from `sample`, which has no
+/// `.explain(…)` in its grammar to take it from — so whether the statement is
+/// *run* is always the caller's explicit choice: `queryPlanner` does not run
+/// it, `executionStats` does (bounded by the operation timeout the bridge
+/// wraps every Pulse read in). Only a statement `validate_explain_target`
+/// already accepted as a read gets here, so `$out`/`$merge` never do.
+pub async fn explain(conn: &MongoConn, sample: &str, mode: ExplainMode) -> AppResult<ExplainPlan> {
     let parsed = shell::parse(sample)?;
     let db = crate::db::mongo::schema::resolve_db(conn)?;
 
@@ -476,11 +478,19 @@ pub async fn explain(conn: &MongoConn, sample: &str) -> AppResult<ExplainPlan> {
     };
 
     let reply = db
-        .run_command(doc! {"explain": target, "verbosity": "queryPlanner"})
+        .run_command(doc! {"explain": target, "verbosity": verbosity(mode)})
         .await?;
     Ok(ExplainPlan {
         raw: crate::db::mongo::values::bson_to_json(&Bson::Document(reply)),
     })
+}
+
+/// MongoDB's own name for each [`ExplainMode`].
+fn verbosity(mode: ExplainMode) -> &'static str {
+    match mode {
+        ExplainMode::Plan => "queryPlanner",
+        ExplainMode::Execution => "executionStats",
+    }
 }
 /// Operations MongoDB is actively running or lock-waiting on right now, from
 /// the aggregation-pipeline form of `currentOp` (3.6+, the documented
