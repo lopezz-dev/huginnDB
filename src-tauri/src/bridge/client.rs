@@ -251,14 +251,45 @@ impl BridgeClient {
         self.call_within(request, reply_wait(request)).await
     }
 
+    /// [`Self::call`] for a request that is only built once it is this
+    /// client's turn to send: `build` runs after the connection is free, and
+    /// may decline (`Err`), in which case nothing is sent.
+    ///
+    /// For a read with a time budget (ADR #140). This connection carries one
+    /// call at a time, and rmcp runs a model's parallel tool calls at once, so
+    /// they queue here — for minutes, behind a slow read. Built before the
+    /// wait, a read would ask the app for time it had already spent in the
+    /// queue, and be sent after its client had given up.
+    ///
+    /// The outer `Err` is `build`'s refusal, which is not a bridge failure: it
+    /// must not trigger the caller's local fallback either.
+    pub async fn call_on_turn<E>(
+        &self,
+        build: impl FnOnce() -> Result<BridgeRequest, E>,
+    ) -> Result<Result<Value, BridgeError>, E> {
+        let guard = self.stream.lock().await;
+        let request = build()?;
+        let wait = reply_wait(&request);
+        Ok(self.send_locked(guard, &request, wait).await)
+    }
+
     /// [`Self::call`], waiting `wait` for the reply.
     async fn call_within(
         &self,
         request: &BridgeRequest,
         wait: Duration,
     ) -> Result<Value, BridgeError> {
-        let mut guard = self.stream.lock().await;
+        let guard = self.stream.lock().await;
+        self.send_locked(guard, request, wait).await
+    }
 
+    /// Send `request` on the connection `guard` holds, and await its reply.
+    async fn send_locked(
+        &self,
+        mut guard: tokio::sync::MutexGuard<'_, Connection>,
+        request: &BridgeRequest,
+        wait: Duration,
+    ) -> Result<Value, BridgeError> {
         let payload = serde_json::to_vec(request)
             .map_err(|e| BridgeError::Unreachable(format!("could not encode request: {e}")))?;
 
@@ -773,6 +804,86 @@ mod tests {
         assert_eq!(reply_wait(&read(None)), Duration::from_secs(330));
         assert_eq!(reply_wait(&read(Some(180))), Duration::from_secs(210));
         assert_eq!(reply_wait(&read(Some(7200))), Duration::from_secs(330));
+    }
+
+    /// A model's parallel calls queue on this one connection. A read built
+    /// before its turn would ask the app for time it spent in the queue
+    /// (ADR #140), so `call_on_turn` builds it only once the connection is
+    /// free — and a build that declines sends nothing at all.
+    #[tokio::test]
+    async fn a_request_is_built_only_when_its_turn_comes() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (got, mut seen) = tokio::sync::mpsc::unbounded_channel::<String>();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read_half, mut writer) = stream.into_split();
+            let mut lines = BufReader::new(read_half).lines();
+            lines.next_line().await.unwrap(); // hello
+            write_line(
+                &mut writer,
+                &HelloAck {
+                    protocol_version: PROTOCOL_VERSION,
+                    error: None,
+                },
+            )
+            .await
+            .unwrap();
+            // Answer each request 300 ms after it arrives.
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = got.send(line);
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                write_line(
+                    &mut writer,
+                    &crate::bridge::protocol::BridgeResponse::ok(serde_json::json!(true)),
+                )
+                .await
+                .unwrap();
+            }
+        });
+        let client = std::sync::Arc::new(BridgeClient::connect_to_for_test(port, "t").await);
+        let request = BridgeRequest::IsMongo {
+            connection_id: "c".into(),
+        };
+
+        let first = {
+            let client = client.clone();
+            let request = request.clone();
+            tokio::spawn(async move { client.call(&request).await })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let asked = std::time::Instant::now();
+        let built_after = std::sync::Mutex::new(None);
+        let second = client
+            .call_on_turn(|| {
+                *built_after.lock().unwrap() = Some(asked.elapsed());
+                Ok::<_, ()>(request.clone())
+            })
+            .await
+            .expect("built");
+        assert!(second.is_ok(), "{second:?}");
+        assert!(first.await.unwrap().is_ok());
+        let waited = built_after.lock().unwrap().unwrap();
+        assert!(
+            waited >= Duration::from_millis(200),
+            "built after the first call's reply, not before: {waited:?}"
+        );
+
+        // A build that declines sends nothing.
+        let declined = client
+            .call_on_turn(|| Err::<BridgeRequest, _>("spent"))
+            .await;
+        assert_eq!(declined.unwrap_err(), "spent");
+        assert!(seen.recv().await.is_some());
+        assert!(seen.recv().await.is_some());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), seen.recv())
+                .await
+                .is_err(),
+            "the declined call never reached the app"
+        );
     }
 
     #[tokio::test]

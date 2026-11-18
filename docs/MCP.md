@@ -684,6 +684,13 @@ left, and once it is spent the rest come back as `{"skipped": "not run: …"}`
 without being sent. Before, each statement had the full limit, so a list of
 four slow reads could hold the client four times longer than it would wait.
 
+**Parallel calls queue.** A model's parallel calls to one MCP server reach
+the app one at a time, over a single connection, so a heavy read makes the
+others wait. A read's time is measured from when the call arrived, and only
+what is left is asked for once its turn comes. A read whose time ran out
+while it waited is never sent: it comes back `not_started`. A read that
+waited says so with `queued_ms`. Send heavy reads one by one.
+
 Every read is named. `run_query` and each `run_queries` slot carry a
 `query_id`, and when the time runs out the error's `data` (or the slot's
 `timeout`) says how it ended:

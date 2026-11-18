@@ -1130,6 +1130,15 @@ fn summarize_names(exposed: &[&crate::state::ConnectionProfile]) -> String {
     }
 }
 
+/// Say on stderr (stdout is the JSON-RPC channel) that the app stopped
+/// serving the bridge and this process falls back to its own pools.
+fn note_bridge_gone(why: &str) {
+    eprintln!(
+        "[huginndb-mcp] the HuginnDB app is no longer serving the bridge \
+         ({why}); falling back to this process's own connection pools"
+    );
+}
+
 /// Map a backend error onto an MCP error, keeping its structured half (a
 /// read's timeout: its id, state and limit — ADR #140) as the error's `data`.
 fn to_err(e: crate::error::AppError) -> ErrorData {
@@ -1310,10 +1319,7 @@ impl Huginn {
                     // footprint just changed shape, and silently growing a
                     // second budget is the thing this whole bridge exists to
                     // avoid doing invisibly.
-                    eprintln!(
-                        "[huginndb-mcp] the HuginnDB app is no longer serving the bridge \
-                         ({why}); falling back to this process's own connection pools"
-                    );
+                    note_bridge_gone(&why);
                 }
             }
         }
@@ -1746,14 +1752,11 @@ impl Huginn {
         let cap = self.row_cap(&a.connection_id);
         if class == StmtClass::Read {
             let budget = ReadBudget::start(self.config.read_timeout_secs);
-            let (query_id, result) = self
+            let read = self
                 .send_read(&target, &a.connection_id, &a.sql, budget)
                 .await
                 .map_err(to_err)?;
-            return ok_json(&Identified {
-                query_id,
-                inner: Capped::cut(result, cap.rows as usize, cap),
-            });
+            return ok_json(&read.map(|r| Capped::cut(r, cap.rows as usize, cap)));
         }
 
         // Writes append to mcp-audit.log; reads are not audited.
@@ -1782,27 +1785,81 @@ impl Huginn {
     /// when no reply ever comes back. The app holds the time asked for under
     /// the connection's own MCP timeout and stops the read on the server when
     /// it runs out (ADR #134).
+    ///
+    /// The time is read off the budget only once it is this read's turn on
+    /// the bridge ([`Self::call_on_turn`]): a model's parallel calls queue
+    /// there, and a read must not ask for time it spent waiting. One whose
+    /// budget ran out in the queue is never sent, and says so.
     async fn send_read(
         &self,
         target: &str,
         policy_id: &str,
         sql: &str,
         budget: ReadBudget,
-    ) -> AppResult<(String, crate::commands::query::QueryResult)> {
+    ) -> AppResult<Identified<crate::commands::query::QueryResult>> {
         let query_id = crate::commands::query::mint_read_id();
-        let value = self
-            .call(
-                BridgeRequest::RunStatement {
-                    connection_id: target.to_string(),
-                    policy_id: policy_id.to_string(),
-                    sql: sql.to_string(),
-                    timeout_secs: Some(budget.remaining_secs().unwrap_or(1)),
-                    query_id: Some(query_id.clone()),
-                },
-                false,
-            )
-            .await?;
-        Ok((query_id, serde_json::from_value(value)?))
+        let entered = std::time::Instant::now();
+        let queued = std::sync::atomic::AtomicU64::new(0);
+        let build = || {
+            queued.store(
+                entered.elapsed().as_millis() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            let Some(secs) = budget.remaining_secs() else {
+                return Err(crate::error::AppError::ReadTimedOut(Box::new(
+                    crate::error::ReadTimeout {
+                        query_id: query_id.clone(),
+                        connection_id: target.to_string(),
+                        sql_head: crate::error::ReadTimeout::head_of(sql),
+                        elapsed_ms: queued.load(std::sync::atomic::Ordering::Relaxed),
+                        limit_secs: budget.secs,
+                        state: crate::error::ReadStopState::NotStarted,
+                        verdict: format!(
+                            "It waited {} s behind this MCP server's other calls to the \
+                             HuginnDB app, which run one at a time, and was never sent. Send \
+                             heavy reads one by one rather than as parallel calls.",
+                            queued.load(std::sync::atomic::Ordering::Relaxed) / 1000
+                        ),
+                    },
+                )));
+            };
+            Ok(BridgeRequest::RunStatement {
+                connection_id: target.to_string(),
+                policy_id: policy_id.to_string(),
+                sql: sql.to_string(),
+                timeout_secs: Some(secs),
+                query_id: Some(query_id.clone()),
+            })
+        };
+        let value = self.call_on_turn(build).await?;
+        Ok(Identified {
+            query_id: query_id.clone(),
+            queued_ms: queued.load(std::sync::atomic::Ordering::Relaxed),
+            inner: serde_json::from_value(value)?,
+        })
+    }
+
+    /// [`Self::call`] for a read built only once it is its turn on the bridge
+    /// (`BridgeClient::call_on_turn`, ADR #140). `build` may decline, and then
+    /// nothing is sent anywhere. Reads are not audited.
+    async fn call_on_turn(
+        &self,
+        build: impl Fn() -> AppResult<BridgeRequest>,
+    ) -> AppResult<serde_json::Value> {
+        use crate::bridge::client::BridgeError;
+        if let Some(bridge) = self.bridge.get().await {
+            match bridge.call_on_turn(&build).await? {
+                Ok(value) => return Ok(value),
+                Err(BridgeError::Remote { message, detail }) => {
+                    return Err(crate::error::AppError::Bridged { message, detail });
+                }
+                Err(BridgeError::Unreachable(why)) => note_bridge_gone(&why),
+            }
+        }
+        if crate::vault::is_locked() {
+            return Err(crate::error::AppError::Locked);
+        }
+        crate::bridge::exec::execute(&self.state, &NoopSink, &build()?).await
     }
 
     /// The timeout for a `run_script` / `run_writes` on `connection_id`: the
@@ -2142,13 +2199,10 @@ impl Huginn {
                 continue;
             }
             out.push(match self.read_one(target, policy_id, sql, budget).await {
-                Ok((query_id, result)) => {
-                    let result = Capped::cut(result, left, cap);
-                    left -= result.result.rows.len();
-                    ReadOutcome::Rows(Identified {
-                        query_id,
-                        inner: result,
-                    })
+                Ok(read) => {
+                    let read = read.map(|r| Capped::cut(r, left, cap));
+                    left -= read.inner.result.rows.len();
+                    ReadOutcome::Rows(read)
                 }
                 Err(e) => ReadOutcome::Failed {
                     timeout: e.detail(),
@@ -2168,7 +2222,7 @@ impl Huginn {
         policy_id: &str,
         sql: &str,
         budget: ReadBudget,
-    ) -> AppResult<(String, crate::commands::query::QueryResult)> {
+    ) -> AppResult<Identified<crate::commands::query::QueryResult>> {
         use crate::error::AppError;
         let verbs = crate::db::classify::verbs_of(sql);
         if verbs.class() != StmtClass::Read && is_mongo_explain(sql) {
@@ -3252,8 +3306,27 @@ enum ReadOutcome {
 #[derive(serde::Serialize)]
 struct Identified<T: serde::Serialize> {
     query_id: String,
+    /// How long the read waited for its turn on the bridge before it was
+    /// sent — a model's parallel calls to one MCP server queue there. Absent
+    /// when it did not wait.
+    #[serde(skip_serializing_if = "is_zero")]
+    queued_ms: u64,
     #[serde(flatten)]
     inner: T,
+}
+
+impl<T: serde::Serialize> Identified<T> {
+    fn map<U: serde::Serialize>(self, f: impl FnOnce(T) -> U) -> Identified<U> {
+        Identified {
+            query_id: self.query_id,
+            queued_ms: self.queued_ms,
+            inner: f(self.inner),
+        }
+    }
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// The time one MCP call has for its reads, from the moment it arrived

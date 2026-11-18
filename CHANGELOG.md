@@ -145,6 +145,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
     error's `data` (or the slot's `timeout` in `run_queries`) gives the id,
     connection, start of the SQL, elapsed time, limit and `state`:
     `not_started`, `cancelled`, `still_running` or `unknown`.
+  - **Parallel calls are no longer sent after their client gave up.** A
+    model's parallel calls to one MCP server go to the app one at a time, so
+    they used to queue behind a slow read, run down the client's wait there,
+    and then run in full anyway. A read now asks only for the time it has
+    left once its turn comes. One that ran out of time in the queue is never
+    sent, and comes back `not_started` with how long it waited; a read that
+    waited reports `queued_ms`.
   - The tool descriptions now tell the model never to re-run a read that may
     still be running, and to send heavy reads one at a time.
   - The bridge protocol moves to 8, so the app and its MCP server must be

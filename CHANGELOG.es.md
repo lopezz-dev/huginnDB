@@ -158,6 +158,14 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
     `data` del error (o el `timeout` del hueco en `run_queries`) da el id, la
     conexión, el inicio del SQL, el tiempo transcurrido, el límite y el
     `state`: `not_started`, `cancelled`, `still_running` o `unknown`.
+  - **Las llamadas en paralelo ya no se envían cuando su cliente se ha
+    rendido.** Las llamadas en paralelo de un modelo a un mismo servidor MCP
+    llegan a la app de una en una. Antes se quedaban en cola detrás de una
+    lectura lenta, consumían allí la espera del cliente y luego se ejecutaban
+    enteras igualmente. Ahora una lectura pide solo el tiempo que le queda
+    cuando le llega el turno. Si se le acaba en la cola, no se envía y vuelve
+    como `not_started`, con lo que esperó; una lectura que haya esperado
+    informa de su `queued_ms`.
   - Las descripciones de las herramientas piden ahora al modelo que no repita
     nunca una lectura que pueda seguir corriendo y que mande las lecturas
     pesadas de una en una.
