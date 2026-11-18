@@ -129,6 +129,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **MCP: an AI's reads now finish before the client gives up, and a timeout
+  says whether the read is still running.** A read used to get the
+  connection's 300 s, but a client can abandon a call sooner, without
+  cancelling it (one did at 240 s). The read then loaded the server for a
+  minute with nobody waiting, and the model, told nothing, ran it again on
+  top. `run_queries` was worse: each statement had the full 300 s, so four
+  slow ones could hold the call for twenty minutes.
+  - **The read time is now the call's.** It is 180 s by default, set with the
+    MCP server's new `--read-timeout-secs` flag and still held under the
+    connection's MCP timeout. `run_queries` shares it across its whole list,
+    and statements left when it is spent come back as `skipped` without being
+    sent.
+  - **Every read carries a `query_id`.** When one runs out of time, the
+    error's `data` (or the slot's `timeout` in `run_queries`) gives the id,
+    connection, start of the SQL, elapsed time, limit and `state`:
+    `not_started`, `cancelled`, `still_running` or `unknown`.
+  - The tool descriptions now tell the model never to re-run a read that may
+    still be running, and to send heavy reads one at a time.
+  - The bridge protocol moves to 8, so the app and its MCP server must be
+    updated together. See ADR #140.
 - **MCP: a MongoDB `.explain()` is pointed at `pulse_explain`, which now
   reports execution statistics.** An AI that sent
   `db.c.explain('executionStats').aggregate([...])` to `run_query` was told

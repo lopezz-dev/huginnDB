@@ -251,20 +251,29 @@ pub async fn execute(
         // on the server when it passes or when this future is dropped — the
         // bridge drops it when the sidecar hangs up (ADR #134). A person's
         // read from the editor stays unbounded; this is the AI's.
+        //
+        // How long is the caller's to ask — the sidecar asks for what is left
+        // of its MCP call's budget — and this side's to cap (ADR #140).
         RunStatement {
             connection_id,
             policy_id,
             sql,
+            timeout_secs,
+            query_id,
         } => {
             let is_read =
                 crate::db::classify::classify_statement(sql) == crate::db::sql::StmtClass::Read;
             serde_json::to_value(if is_read {
+                let query_id = query_id
+                    .clone()
+                    .unwrap_or_else(crate::commands::query::mint_read_id);
                 crate::commands::query::execute_read_bounded(
                     sink,
                     state,
                     connection_id,
                     sql,
-                    timeout_for(state, policy_id, None),
+                    timeout_for(state, policy_id, *timeout_secs),
+                    &query_id,
                 )
                 .await?
             } else {

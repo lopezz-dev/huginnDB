@@ -354,6 +354,7 @@ Codex.
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(ninguna)* | Fija este cliente exactamente a estos IDs de perfil, ignorando las casillas de Ajustes → MCP. Sin el flag, el servidor se remite a esas casillas y las relee en cada llamada, que es el montaje normal. `--connections ""` fija un conjunto vacío — un "no expongas nada" explícito. |
 | `--max-rows <n>` | *(ninguno)* | Sustituye el límite de filas **por defecto** (Ajustes → MCP → *Filas por llamada*, 200) solo para este cliente. Una conexión con límite propio lo conserva. Véase [Límite de filas](#límite-de-filas). |
+| `--read-timeout-secs <n>` | `180` | Tiempo que pueden tardar en total las lecturas de una llamada, bajo el timeout MCP de la conexión. Ponlo por debajo del límite de tu cliente; no puede pasar de 300. Véase [Lecturas](#lecturas-el-mismo-timeout-y-un-cliente-que-se-rinde-las-para). |
 | `--read-only[=true\|false]` | `false` | Kill-switch global: fuerza **todas** las conexiones a solo lectura sin importar su nivel de escritura guardado. Una forma rápida de exponer el conector en modo garantizado-seguro sin tocar ningún perfil. |
 | `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
@@ -691,10 +692,44 @@ lanzar el script, recibir un id y consultar su estado. Todavía no existe.
 
 ### Lecturas: el mismo timeout, y un cliente que se rinde las para
 
-Una lectura de `run_query` o `run_queries` también tiene el timeout MCP de la
-conexión: 300 segundos, o menos si el techo de la conexión es más bajo. Una
-lectura no acepta `timeout_seconds`. Una lectura que tarda tanto suele tener un
-mal plan, y lo que toca es abaratarla, no darle más tiempo.
+Una lectura tiene **180 segundos** por defecto: el `--read-timeout-secs` del
+servidor MCP, dentro del timeout MCP de la conexión (300 segundos, o menos si el
+techo de la conexión es más bajo). Los 180 están para terminar antes de que el
+cliente se rinda. Un cliente probado en la práctica abandona la llamada a los
+240 segundos sin cancelarla, y una lectura que seguía hasta los 300 cargaba el
+servidor un minuto para nadie. Bájalo si tu cliente espera menos; no puede
+pasar de 300. Una lectura no acepta `timeout_seconds`. Una lectura que tarda
+tanto suele tener un mal plan, y lo que toca es abaratarla, no darle más tiempo.
+
+El tiempo es de la **llamada**, no de cada sentencia. `run_queries` da a toda
+su lista un único tiempo de lectura: cada sentencia recibe lo que dejaron las
+anteriores, y cuando se agota, las que quedan vuelven como
+`{"skipped": "not run: …"}` sin llegar a enviarse. Antes cada sentencia tenía
+el límite entero, así que cuatro lecturas lentas podían retener al cliente
+cuatro veces más de lo que estaba dispuesto a esperar.
+
+Cada lectura lleva nombre. `run_query` y cada hueco de `run_queries` traen un
+`query_id`. Cuando se acaba el tiempo, el `data` del error (o el `timeout` del
+hueco) dice cómo terminó:
+
+```json
+{
+  "query_id": "q-3f9c0a1b2c4d",
+  "connection_id": "tiles-bc13",
+  "sql_head": "SELECT o.[Object ID] FROM [Object Metadata] o WHERE …",
+  "elapsed_ms": 180012,
+  "limit_secs": 180,
+  "state": "cancelled",
+  "verdict": "The session was closed, and SQL Server stops the request …"
+}
+```
+
+| `state` | Significado |
+| --- | --- |
+| `not_started` | No quedó libre ninguna sesión a tiempo; la sentencia no llegó a enviarse. Se puede repetir más tarde. |
+| `cancelled` | El servidor la paró (véase la tabla de abajo). |
+| `still_running` | Sigue corriendo (SQLite esperando un bloqueo). No la repitas todavía. |
+| `unknown` | Se mandó la parada pero sin confirmación; el servidor puede seguir con ella hasta que vuelva a escribir al cliente. No la repitas todavía. |
 
 Cuando se acaba el tiempo, HuginnDB **para la sentencia en el servidor** y
 cierra su sesión, que nunca vuelve al pool:

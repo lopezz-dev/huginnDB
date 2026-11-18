@@ -64,7 +64,13 @@ use serde_json::Value;
 /// not safely additive: a `6` app would ignore the field and answer an
 /// `Execution` request with the bare plan, a *different* answer reported as
 /// the one asked for. The mismatch has to surface at the handshake instead.
-pub const PROTOCOL_VERSION: u32 = 7;
+///
+/// `8`: `RunStatement` gained `timeout_secs` and `query_id`, and a reply's
+/// error gained `err_detail` (ADR #140). The sidecar now asks for less than
+/// the 300 s a `7` app applies to a read, and waits only a little past what it
+/// asked for: against a `7` app it would stop waiting while the read still
+/// ran, which is the very gap this version closes.
+pub const PROTOCOL_VERSION: u32 = 8;
 
 /// Opening frame. Sent once, before any request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -223,6 +229,17 @@ pub enum BridgeRequest {
         /// per-database view differs from `connection_id`.
         policy_id: String,
         sql: String,
+        /// For a read: the seconds it may run, which the app holds under the
+        /// connection's ceiling ([`crate::state::mcp_timeout`]). The sidecar
+        /// asks for what is left of its call's budget, because only it knows
+        /// how long its MCP client waits (ADR #140). `None` takes the default.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        timeout_secs: Option<u32>,
+        /// For a read: its id, minted by the caller so a sidecar that never
+        /// gets the reply still knows which read it was (ADR #140). The app
+        /// mints one when absent (the AI panel's reads).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        query_id: Option<String>,
     },
     /// Run several row writes as one transaction — the `run_writes` tool.
     ///
@@ -486,6 +503,10 @@ pub struct BridgeResponse {
     pub ok: Option<OkWrapper>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub err: Option<String>,
+    /// The structured half of `err`, when the error has one
+    /// ([`crate::error::AppError::detail`]) — a read's timeout, today.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub err_detail: Option<Value>,
 }
 
 impl BridgeResponse {
@@ -493,6 +514,7 @@ impl BridgeResponse {
         Self {
             ok: Some(OkWrapper { value }),
             err: None,
+            err_detail: None,
         }
     }
 
@@ -500,6 +522,16 @@ impl BridgeResponse {
         Self {
             ok: None,
             err: Some(message.into()),
+            err_detail: None,
+        }
+    }
+
+    /// An error reply that keeps `e`'s structured half.
+    pub fn from_error(e: &crate::error::AppError) -> Self {
+        Self {
+            ok: None,
+            err: Some(e.to_string()),
+            err_detail: e.detail(),
         }
     }
 }
@@ -614,6 +646,8 @@ mod tests {
                 connection_id: "c".into(),
                 policy_id: "c".into(),
                 sql: "SELECT 1".into(),
+                timeout_secs: None,
+                query_id: None,
             },
             BridgeRequest::InsertRow {
                 connection_id: "c".into(),

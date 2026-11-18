@@ -131,7 +131,7 @@ async fn start(
     let state = state_with(pool);
     let slow = slow.to_string();
     let read = tokio::spawn(async move {
-        execute_read_bounded(&Quiet, &state, "c", &slow, seconds(secs)).await
+        execute_read_bounded(&Quiet, &state, "c", &slow, seconds(secs), "q-live").await
     });
     for _ in 0..20 {
         if watch.probe_is_running().await {
@@ -153,6 +153,12 @@ async fn deadline_stops_it(pool: DbPool, watch: Watch, slow: &str) {
     let message = err.to_string();
     eprintln!("deadline: {message}");
     assert!(message.contains("ran out of time after 3 s"), "{message}");
+    // What the model is told must match what the server then shows: a read
+    // reported `cancelled` that is still in the activity view would send it
+    // to run the next heavy read on top of this one (ADR #140).
+    let detail = err.detail().expect("a read's timeout carries its detail");
+    assert_eq!(detail["state"], "cancelled", "{detail}");
+    assert_eq!(detail["query_id"], "q-live");
     watch.assert_probe_stops("after the deadline").await;
 }
 
