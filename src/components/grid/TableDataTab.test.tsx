@@ -26,7 +26,7 @@
  * which has its own tests.
  */
 
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ColumnInfo, CellValue, QueryResult } from "@/types";
 
@@ -773,6 +773,49 @@ describe("TableDataTab — managed policy locks", () => {
     mount();
     expect(grid().columnLock).toBeUndefined();
     expect(grid().draftColumnLock).toBeUndefined();
+  });
+});
+
+describe("TableDataTab — export (ADR #138)", () => {
+  /** Render the export entry's bar control and open its menu. */
+  async function openExportMenu() {
+    const item = (grid().insertExtra as { id: string; bar: React.ReactElement }[]).find(
+      (i) => i.id === "export-data",
+    )!;
+    const view = render(item.bar);
+    const trigger = view.getByText("tableData.exportData.label").closest("button")!;
+    await act(async () => {
+      trigger.focus();
+      fireEvent.keyDown(trigger, { key: "Enter" });
+    });
+    return view;
+  }
+
+  it("offers the full dump, then the selected rows in every format", async () => {
+    mount();
+    const view = await openExportMenu();
+    const items = view.getAllByRole("menuitem").map((i) => i.textContent);
+    expect(items).toEqual([
+      "tableData.exportData.table",
+      "query.export.csvComma",
+      "query.export.csvSemicolon",
+      "Excel (.xlsx)",
+      "JSON",
+      "SQL INSERT",
+    ]);
+  });
+
+  it("sends the format picked with the rows the query panel selects", async () => {
+    h.api.exportTableRows.mockResolvedValue("/tmp/orders_rows.xlsx");
+    mount();
+    const view = await openExportMenu();
+    await act(async () => {
+      fireEvent.click(view.getByText("Excel (.xlsx)"));
+    });
+    expect(h.api.exportTableRows).toHaveBeenCalledWith(
+      expect.objectContaining({ connectionId: "c1" }),
+      "xlsx",
+    );
   });
 });
 

@@ -13,10 +13,11 @@
  */
 
 import { isExportCancelled } from "@/lib/db/driver";
+import type { RowsExported } from "@/types";
 
-export async function runExport(
-  save: () => Promise<string>,
-  announce: (path: string) => void,
+export async function runExport<R>(
+  save: () => Promise<R>,
+  announce: (written: R) => void,
   fail: (message: string) => void,
 ): Promise<void> {
   try {
@@ -25,4 +26,27 @@ export async function runExport(
     const message = String(e);
     if (!isExportCancelled(message)) fail(message);
   }
+}
+
+/**
+ * The notification a rows export ends with (ADR #138), shared by the table's
+ * export and both of the query results' — so a cut Excel cell is reported the
+ * same way wherever the file came from. Pure: the caller hands it to
+ * `notify.file`.
+ *
+ * The cells cut to fit Excel's limit are the one thing the file itself does
+ * not announce loudly (each ends in `[…]`), so the count is the description.
+ */
+export function rowsExportedNotice(
+  written: RowsExported,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): { title: string; path: string; description?: string } {
+  return {
+    title: t("notifications.fileSaved.rows"),
+    path: written.path,
+    description:
+      written.truncatedCells > 0
+        ? t("notifications.fileSaved.truncatedCells", { count: written.truncatedCells })
+        : undefined,
+  };
 }

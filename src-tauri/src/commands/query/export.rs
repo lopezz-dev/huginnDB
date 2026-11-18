@@ -19,6 +19,11 @@
 //!
 //! The command, its policy checks and the save dialog are
 //! `commands::dump::export_query_rows`.
+//!
+//! [`stream_read_only`] is shared with a table's export through its query
+//! panel (`commands::dump::export_table_rows`, ADR #138): that one builds its
+//! own `SELECT` — the browse's — with bound parameters, and the barrier also
+//! covers the panel's hand-written `WHERE` expression.
 
 use std::io::Write;
 
@@ -26,7 +31,7 @@ use futures_util::TryStreamExt;
 use sqlx::pool::PoolConnection;
 use sqlx::{Column as _, Executor as _, Row as _};
 
-use crate::db::result_export::RowWriter;
+use crate::db::result_export::{RowWriter, Written};
 use crate::db::sql::{is_read_only, StmtClass};
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, DbPool};
@@ -52,23 +57,27 @@ pub(crate) fn check_exportable(pool: &DbPool, sql: &str) -> AppResult<()> {
 }
 
 /// Run `sql` on `connection_id` and write every row of it with `writer`.
-/// Returns the output and how many rows were written.
+/// Returns the output and what was written.
 pub(crate) async fn export_rows_inner<W: Write>(
     state: &AppState,
     connection_id: &str,
     sql: &str,
     mut writer: RowWriter<W>,
-) -> AppResult<(W, u64)> {
+) -> AppResult<(W, Written)> {
     let pool = state.pool_for(connection_id)?;
     check_exportable(&pool, sql)?;
-    stream_read_only(&pool, sql, &mut writer).await?;
+    stream_read_only(&pool, sql, &[], &mut writer).await?;
     writer.finish()
 }
 
-/// The barrier and the stream, per driver.
-async fn stream_read_only<W: Write>(
+/// Every row of `sql`, `binds` bound to its parameters in order, handed to
+/// `writer` one at a time inside the read-only barrier, per driver. Checks
+/// nothing about `sql`: a caller running text it did not build checks it
+/// first ([`check_exportable`]).
+pub(crate) async fn stream_read_only<W: Write>(
     pool: &DbPool,
     sql: &str,
+    binds: &[Option<String>],
     writer: &mut RowWriter<W>,
 ) -> AppResult<()> {
     use crate::db::values::{
@@ -82,6 +91,7 @@ async fn stream_read_only<W: Write>(
                 "BEGIN READ ONLY",
                 "ROLLBACK",
                 sql,
+                binds,
                 writer,
                 pg_columns,
                 pg_value,
@@ -95,6 +105,7 @@ async fn stream_read_only<W: Write>(
                 "START TRANSACTION READ ONLY",
                 "ROLLBACK",
                 sql,
+                binds,
                 writer,
                 mysql_columns,
                 mysql_value,
@@ -108,6 +119,7 @@ async fn stream_read_only<W: Write>(
                 "PRAGMA query_only = ON",
                 "PRAGMA query_only = OFF",
                 sql,
+                binds,
                 writer,
                 sqlite_columns,
                 sqlite_value,
@@ -117,7 +129,7 @@ async fn stream_read_only<W: Write>(
         DbPool::MsSql(p) => {
             let mut client = p.acquire().await?;
             let names = client
-                .simple_query_each(sql, |row| {
+                .query_each(sql, binds, |row| {
                     if !writer.has_begun() {
                         writer.begin(
                             crate::db::mssql::values::mssql_columns(row)
@@ -145,11 +157,13 @@ async fn stream_read_only<W: Write>(
 /// session goes back to the pool only once it has left the barrier: a failed
 /// `leave` closes it, and a stream that failed mid-way (the file, the server)
 /// detaches it, since it may still be mid-response.
+#[allow(clippy::too_many_arguments)] // the barrier pair, the statement and its decoders
 async fn barrier<DB, W: Write>(
     mut conn: PoolConnection<DB>,
     enter: &str,
     leave: &str,
     sql: &str,
+    binds: &[Option<String>],
     writer: &mut RowWriter<W>,
     columns: fn(&DB::Row) -> Vec<(String, String)>,
     value: fn(&DB::Row, usize) -> serde_json::Value,
@@ -158,9 +172,10 @@ where
     DB: sqlx::Database,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+    Option<String>: for<'q> sqlx::Encode<'q, DB> + sqlx::Type<DB>,
 {
     (&mut *conn).execute(enter).await?;
-    let streamed = stream(&mut conn, sql, writer, columns, value).await;
+    let streamed = stream(&mut conn, sql, binds, writer, columns, value).await;
     if streamed.is_err() {
         drop(conn.detach());
         return streamed;
@@ -176,6 +191,7 @@ where
 async fn stream<DB, W: Write>(
     conn: &mut DB::Connection,
     sql: &str,
+    binds: &[Option<String>],
     writer: &mut RowWriter<W>,
     columns: fn(&DB::Row) -> Vec<(String, String)>,
     value: fn(&DB::Row, usize) -> serde_json::Value,
@@ -184,9 +200,14 @@ where
     DB: sqlx::Database,
     for<'c> &'c mut DB::Connection: sqlx::Executor<'c, Database = DB>,
     for<'a> <DB as sqlx::Database>::Arguments<'a>: sqlx::IntoArguments<'a, DB>,
+    Option<String>: for<'q> sqlx::Encode<'q, DB> + sqlx::Type<DB>,
 {
     {
-        let mut rows = sqlx::query(sql).fetch(&mut *conn);
+        let mut query = sqlx::query(sql);
+        for b in binds {
+            query = query.bind(b.clone());
+        }
+        let mut rows = query.fetch(&mut *conn);
         while let Some(row) = rows.try_next().await? {
             if !writer.has_begun() {
                 writer.begin(columns(&row).into_iter().map(|(name, _)| name).collect())?;
@@ -211,7 +232,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::result_export::{ResultFormat, SqlExportTarget};
+    use crate::db::result_export::{InsertInto, ResultFormat, SqlExportTarget};
     use crate::db::sql::Dialect;
     use crate::state::ActivePool;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -247,7 +268,7 @@ mod tests {
     }
 
     fn csv() -> RowWriter<Vec<u8>> {
-        RowWriter::new(Vec::new(), ResultFormat::Csv, Dialect::Sqlite, None).unwrap()
+        RowWriter::new(Vec::new(), ResultFormat::Csv, None).unwrap()
     }
 
     async fn rows_in_t(pool: &sqlx::SqlitePool) -> i64 {
@@ -268,11 +289,38 @@ mod tests {
              SELECT i FROM s"
         );
         let (out, rows) = export_rows_inner(&state, "c", &sql, csv()).await.unwrap();
-        assert_eq!(rows as usize, n);
+        assert_eq!(rows.rows as usize, n);
         let text = String::from_utf8(out).unwrap();
         // The header, then one line per row.
         assert_eq!(text.matches("\r\n").count(), n + 1);
         assert!(text.ends_with(&format!("\r\n{n}\r\n")));
+    }
+
+    /// A table's export through its query panel binds the panel's values
+    /// (`export_table_rows`), and an empty match still writes the header.
+    #[tokio::test]
+    async fn a_bound_select_streams_only_what_matches() {
+        let (state, _pool) = state("binds").await;
+        let pool = state.pool_for("c").unwrap();
+        let select = "SELECT id, name FROM t WHERE name = ?";
+        let mut w = csv();
+        stream_read_only(&pool, select, &[Some("b".into())], &mut w)
+            .await
+            .unwrap();
+        let (out, rows) = w.finish().unwrap();
+        assert_eq!(rows.rows, 1);
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "\u{FEFF}id,name\r\n2,b\r\n"
+        );
+
+        let mut w = csv();
+        stream_read_only(&pool, select, &[Some("zz".into())], &mut w)
+            .await
+            .unwrap();
+        let (out, rows) = w.finish().unwrap();
+        assert_eq!(rows.rows, 0);
+        assert_eq!(String::from_utf8(out).unwrap(), "\u{FEFF}id,name\r\n");
     }
 
     #[tokio::test]
@@ -305,6 +353,7 @@ mod tests {
         let err = stream_read_only(
             &state.pool_for("c").unwrap(),
             "DELETE FROM t RETURNING id",
+            &[],
             &mut w,
         )
         .await;
@@ -314,7 +363,7 @@ mod tests {
         let (_, rows) = export_rows_inner(&state, "c", "SELECT id FROM t", csv())
             .await
             .unwrap();
-        assert_eq!(rows, 2);
+        assert_eq!(rows.rows, 2);
         sqlx::query("INSERT INTO t (id, name) VALUES (3, 'c')")
             .execute(&pool)
             .await
@@ -328,7 +377,7 @@ mod tests {
         let (out, rows) = export_rows_inner(&state, "c", "SELECT id, name FROM t WHERE 0", csv())
             .await
             .unwrap();
-        assert_eq!(rows, 0);
+        assert_eq!(rows.rows, 0);
         assert_eq!(String::from_utf8(out).unwrap(), "\u{FEFF}id,name\r\n");
     }
 
@@ -339,8 +388,11 @@ mod tests {
             table: "t".into(),
             columns: vec![Some("id".into()), None],
         };
-        let w =
-            RowWriter::new(Vec::new(), ResultFormat::Sql, Dialect::Sqlite, Some(target)).unwrap();
+        let insert = InsertInto {
+            dialect: Dialect::Sqlite,
+            target,
+        };
+        let w = RowWriter::new(Vec::new(), ResultFormat::Sql, Some(insert)).unwrap();
         let (out, _) = export_rows_inner(&state, "c", "SELECT id, id * 2 AS twice FROM t", w)
             .await
             .unwrap();
