@@ -486,11 +486,12 @@ mod args {
         /// examined, keys examined and time per stage — the same cost as
         /// running it with `run_query`, bounded by the connection's
         /// operation timeout. MySQL accepts only `"queryPlanner"`.
-        ///
-        /// A string rather than an enum so the advertised schema stays flat
-        /// (an enum field makes schemars emit `$ref`/`$defs`, issue #83);
-        /// [`super::explain_mode`] turns it into the typed value the bridge
-        /// carries.
+        //
+        // Plain `//`, not `///`: schemars publishes doc comments as the
+        // parameter's description, and this note is for us, not the model.
+        // A string rather than an enum so the advertised schema stays flat
+        // (an enum field makes schemars emit `$ref`/`$defs`, issue #83);
+        // `explain_mode` turns it into the typed value the bridge carries.
         #[serde(default)]
         pub verbosity: Option<String>,
         /// MongoDB only: the database `sample`'s `db.<collection>...` should
