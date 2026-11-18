@@ -10,8 +10,8 @@ use tauri::State;
 use crate::db::sql::StmtClass;
 use crate::error::{AppError, AppResult};
 use crate::pulse::{
-    ExplainPlan, IndexUsage, PulseHealth, PulseHistoryPoint, PulseHistorySeries, SessionRow,
-    StorageItem, TopQuery,
+    ExplainMode, ExplainPlan, IndexUsage, PulseHealth, PulseHistoryPoint, PulseHistorySeries,
+    SessionRow, StorageItem, TopQuery,
 };
 use crate::state::{AppState, DbPool};
 
@@ -116,15 +116,23 @@ fn validate_explain_target(sql: &str) -> AppResult<()> {
     Ok(())
 }
 
+/// `mode` is decided here, once, for both engines: MySQL's executed form
+/// (`EXPLAIN ANALYZE`) answers in a text tree on MySQL and a different
+/// statement (`ANALYZE FORMAT=JSON`) on MariaDB, so it is refused by name
+/// rather than half-supported — the MCP tool's description says so too.
 pub async fn pulse_explain_inner(
     state: &AppState,
     connection_id: &str,
     sample: &str,
+    mode: ExplainMode,
 ) -> AppResult<ExplainPlan> {
     validate_explain_target(sample)?;
     match state.pool_for(connection_id)? {
+        DbPool::Mysql(_) if mode == ExplainMode::Execution => Err(AppError::InvalidInput(
+            "pulse_explain's execution mode is MongoDB-only; MySQL answers with its plan".into(),
+        )),
         DbPool::Mysql(p) => crate::db::mysql::pulse::explain(&p, sample).await,
-        DbPool::Mongo(conn) => crate::db::mongo::pulse::explain(&conn, sample).await,
+        DbPool::Mongo(conn) => crate::db::mongo::pulse::explain(&conn, sample, mode).await,
         DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
         DbPool::Sqlite(_) => Err(unsupported("SQLite")),
         DbPool::MsSql(_) => Err(unsupported("SQL Server")),
@@ -278,7 +286,9 @@ pub async fn pulse_explain(
         state.inner(),
         &connection_id,
         "pulse_explain",
-        pulse_explain_inner(state.inner(), &connection_id, &sample),
+        // The panel only ever shows the plan; executing a statement to
+        // explain it is something the MCP caller has to ask for by name.
+        pulse_explain_inner(state.inner(), &connection_id, &sample, ExplainMode::Plan),
     )
     .await
 }

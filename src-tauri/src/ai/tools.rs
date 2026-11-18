@@ -304,9 +304,12 @@ pub fn to_request(spec: &ToolSpec, args: &Value, ctx: &ToolCtx) -> AppResult<Bri
             schema: optional_str(args, "schema"),
             view: required_str(args, "view", name)?,
         },
+        // The panel's model only ever gets the plan: running a statement to
+        // explain it is a cost the person did not ask for.
         PULSE_EXPLAIN => BridgeRequest::PulseExplain {
             connection_id,
             sample: required_str(args, "sample", name)?,
+            mode: crate::pulse::ExplainMode::Plan,
         },
         RUN_QUERY => BridgeRequest::RunStatement {
             connection_id,

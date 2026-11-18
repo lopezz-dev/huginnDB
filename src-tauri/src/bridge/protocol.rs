@@ -59,7 +59,12 @@ use serde_json::Value;
 /// the two sides must agree on who times out: a `5` sidecar stops reading at
 /// the same 300 s the app now cancels at, and whichever loses that race leaves
 /// the reply on the connection for the next call to read as its own.
-pub const PROTOCOL_VERSION: u32 = 6;
+///
+/// `7`: `PulseExplain` gained `mode`. Unlike `Hello::defer_exposure` this is
+/// not safely additive: a `6` app would ignore the field and answer an
+/// `Execution` request with the bare plan, a *different* answer reported as
+/// the one asked for. The mismatch has to surface at the handshake instead.
+pub const PROTOCOL_VERSION: u32 = 7;
 
 /// Opening frame. Sent once, before any request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,9 +184,14 @@ pub enum BridgeRequest {
     /// `sample` is validated read-only, single-statement, and not itself an
     /// `EXPLAIN`/`ANALYZE` by `commands::pulse::validate_explain_target`
     /// before either driver ever sees it.
+    ///
+    /// `mode` says whether the server may run `sample` to report what it did
+    /// (see [`crate::pulse::ExplainMode`]); absent means the plan only.
     PulseExplain {
         connection_id: String,
         sample: String,
+        #[serde(default)]
+        mode: crate::pulse::ExplainMode,
     },
     /// The connection's biggest relations, largest first.
     PulseStorage {
@@ -548,6 +558,26 @@ mod tests {
         // Single-line: the framing is newline-delimited, so an embedded newline
         // in the encoding would desynchronise the stream.
         assert!(!line.contains('\n'));
+    }
+
+    /// `PulseExplain.mode` travels as a snake_case string and an absent one
+    /// reads as the plan — the only mode anything sent before it existed.
+    #[test]
+    fn pulse_explain_mode_is_on_the_wire_and_defaults_to_plan() {
+        use crate::pulse::ExplainMode;
+        let req = BridgeRequest::PulseExplain {
+            connection_id: "c".into(),
+            sample: "db.t.find({})".into(),
+            mode: ExplainMode::Execution,
+        };
+        let wire = serde_json::to_string(&req).unwrap();
+        assert!(wire.contains("\"mode\":\"execution\""), "{wire}");
+
+        let bare = r#"{"method":"pulse_explain","connection_id":"c","sample":"db.t.find({})"}"#;
+        match serde_json::from_str::<BridgeRequest>(bare).unwrap() {
+            BridgeRequest::PulseExplain { mode, .. } => assert_eq!(mode, ExplainMode::Plan),
+            other => panic!("expected PulseExplain, got {other:?}"),
+        }
     }
 
     #[test]

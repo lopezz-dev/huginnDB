@@ -475,10 +475,24 @@ mod args {
         /// (matched case-insensitively), or its profile id. Both are reported
         /// by `list_connections`; prefer the name.
         pub connection_id: String,
-        /// One runnable statement to EXPLAIN — a `pulse_top_queries` row's
-        /// own `sample` field in practice. Must be read-only and a single
+        /// One runnable statement to explain, written exactly as you would
+        /// pass it to `run_query` — on MongoDB *without* `.explain(…)`, e.g.
+        /// `db.orders.aggregate([...])`. Must be read-only and a single
         /// statement; rejected otherwise, same as `run_query`.
         pub sample: String,
+        /// MongoDB's explain verbosity: `"queryPlanner"` (default) returns
+        /// the chosen plan without running the statement;
+        /// `"executionStats"` runs it to completion and reports documents
+        /// examined, keys examined and time per stage — the same cost as
+        /// running it with `run_query`, bounded by the connection's
+        /// operation timeout. MySQL accepts only `"queryPlanner"`.
+        ///
+        /// A string rather than an enum so the advertised schema stays flat
+        /// (an enum field makes schemars emit `$ref`/`$defs`, issue #83);
+        /// [`super::explain_mode`] turns it into the typed value the bridge
+        /// carries.
+        #[serde(default)]
+        pub verbosity: Option<String>,
         /// MongoDB only: the database `sample`'s `db.<collection>...` should
         /// target, when the connection has no database bound. Ignored for
         /// SQL drivers. Same field `run_query` takes for the same reason.
@@ -1093,6 +1107,55 @@ fn to_err(e: crate::error::AppError) -> ErrorData {
     ErrorData::internal_error(e.to_string(), None)
 }
 
+/// What `run_query` / `run_queries` say to a MongoDB `.explain(…)`.
+///
+/// The mongosh grammar has no `.explain()`, so the statement lands in the
+/// strictest tier like anything else it cannot parse — correctly, since the
+/// classifier cannot vouch for text it did not understand. What it must not
+/// do is answer with the generic "this one writes, call `run_write`": a model
+/// takes that literally, and the one tool that answers the question
+/// (`pulse_explain`) is a read.
+const MONGO_EXPLAIN_HINT: &str = "MongoDB's .explain() is not supported here. Call \
+     `pulse_explain` with the statement itself, without .explain() (e.g. \
+     `db.c.aggregate([...])`), and verbosity \"executionStats\" if you need what each \
+     stage examined and how long it took; the default \"queryPlanner\" returns the plan \
+     without running the statement.";
+
+/// Whether `sql` is a MongoDB shell statement that calls `.explain(`.
+///
+/// A text test, not a parse: the point is precisely that the parser rejects
+/// it. It only ever chooses which refusal text to send, never whether to
+/// refuse, so a false positive (`.explain(` inside a string literal of a
+/// statement that was refused anyway) costs a less apt message and nothing
+/// more.
+fn is_mongo_explain(sql: &str) -> bool {
+    crate::db::mongo::shell::looks_like_mongo(sql)
+        && sql
+            .match_indices(".explain")
+            .any(|(i, m)| sql[i + m.len()..].trim_start().starts_with('('))
+}
+
+/// `pulse_explain`'s `verbosity` argument as the bridge's typed mode.
+///
+/// MongoDB's own names, since those are what a model writing `.explain(…)`
+/// already reaches for. `allPlansExecution` is refused rather than mapped to
+/// the nearest mode: answering a different question than the one asked is
+/// the failure this whole path exists to stop.
+fn explain_mode(verbosity: Option<&str>) -> Result<crate::pulse::ExplainMode, ErrorData> {
+    use crate::pulse::ExplainMode;
+    match verbosity.map(str::trim) {
+        None | Some("") | Some("queryPlanner") => Ok(ExplainMode::Plan),
+        Some("executionStats") => Ok(ExplainMode::Execution),
+        Some(other) => Err(ErrorData::invalid_params(
+            format!(
+                "unknown verbosity {other:?}: use \"queryPlanner\" (the plan, not run) or \
+                 \"executionStats\" (runs the statement, MongoDB only)"
+            ),
+            None,
+        )),
+    }
+}
+
 /// File name of the append-only audit log for MCP writes.
 const AUDIT_FILE: &str = "mcp-audit.log";
 
@@ -1599,6 +1662,17 @@ impl Huginn {
 
         match (kind, class) {
             (StatementKind::Read, StmtClass::Read) => {}
+            // Checked before the generic refusal because it is the one
+            // statement here that is *not* a write: `.explain()` is outside
+            // the mongosh grammar, so it lands in the strictest tier, and
+            // the generic text would send the caller to `run_write` for what
+            // is a read.
+            (StatementKind::Read, _) if is_mongo_explain(&a.sql) => {
+                return Err(ErrorData::invalid_params(
+                    MONGO_EXPLAIN_HINT.to_string(),
+                    None,
+                ));
+            }
             (StatementKind::Read, _) => {
                 return Err(ErrorData::invalid_params(
                     "run_query only runs read-only statements. This one writes — call \
@@ -1994,6 +2068,9 @@ impl Huginn {
         sql: &str,
     ) -> Result<crate::commands::query::QueryResult, String> {
         let verbs = crate::db::classify::verbs_of(sql);
+        if verbs.class() != StmtClass::Read && is_mongo_explain(sql) {
+            return Err(MONGO_EXPLAIN_HINT.to_string());
+        }
         if verbs.class() != StmtClass::Read {
             return Err("this statement writes; only reads run here — writes go in \
                         `run_writes`"
@@ -2416,12 +2493,18 @@ impl Huginn {
     #[tool(
         title = "Explain a statement",
         annotations(read_only_hint = true, open_world_hint = true),
-        description = "Read the plan the server would use for one \
-                      statement, without running it — a pulse_top_queries \
-                      row's own 'sample' field in practice. Refuses a \
-                      statement that is not read-only, is itself \
-                      EXPLAIN/ANALYZE, or carries more than one \
-                      statement."
+        description = "Explain how the server executes one read-only \
+                      statement (MySQL and MongoDB) — the way to see which \
+                      index a query uses or why it is slow. Use this \
+                      instead of EXPLAIN or MongoDB's .explain() in \
+                      run_query: pass the statement itself (on MongoDB \
+                      without .explain(), e.g. db.c.aggregate([...])). By \
+                      default returns the plan without running it; on \
+                      MongoDB, verbosity \"executionStats\" runs it and \
+                      reports what each stage examined and how long it \
+                      took. Also takes a pulse_top_queries row's 'sample'. \
+                      Refuses a statement that is not read-only, is itself \
+                      EXPLAIN/ANALYZE, or carries more than one statement."
     )]
     async fn pulse_explain(
         &self,
@@ -2432,11 +2515,14 @@ impl Huginn {
             connection_id,
             sample,
             database,
+            verbosity,
         } = a;
+        let mode = explain_mode(verbosity.as_deref())?;
         self.read_tool(&connection_id, database.as_deref(), |connection_id| {
             BridgeRequest::PulseExplain {
                 connection_id,
                 sample,
+                mode,
             }
         })
         .await
@@ -3968,6 +4054,59 @@ mod tests {
         let class = classify_statement("db.users.insertOne({a: 1})");
         assert_eq!(class, StmtClass::DataWrite);
         assert!(data.require_verbs("t-data", needs(class)).is_ok());
+    }
+
+    /// A MongoDB `.explain()` stays refused by `run_query` — the grammar has
+    /// no such method, so it is still the strictest tier — but it is told to
+    /// use `pulse_explain`, not `run_write`. The statement is the one a real
+    /// user's agent sent, which is how this was found.
+    #[test]
+    fn mongo_explain_is_refused_with_a_pointer_to_pulse_explain() {
+        let seen = "db.productionOrderActivity.explain('executionStats').aggregate([\
+                    {$match:{tsStart:{$gt:0}}},{$group:{_id:'$productionOrder'}},\
+                    {$skip:0},{$limit:30}])";
+        assert_ne!(
+            crate::db::classify::classify_statement(seen),
+            StmtClass::Read
+        );
+        for sql in [
+            seen,
+            "db.t.find({a: 1}).explain()",
+            "db.t.explain (\"queryPlanner\").find({})",
+            "// why is this slow?\ndb.t.find({}).explain('executionStats')",
+        ] {
+            assert!(is_mongo_explain(sql), "{sql}");
+        }
+        // Not Mongo, or not a call: the generic message still applies.
+        for sql in [
+            "EXPLAIN SELECT * FROM t",
+            "db.t.updateOne({_id: 1}, {$set: {explain: 1}})",
+            "db.t.find({}).explained",
+            "UPDATE t SET note = 'db.t.explain()'",
+        ] {
+            assert!(!is_mongo_explain(sql), "{sql}");
+        }
+        assert!(MONGO_EXPLAIN_HINT.contains("pulse_explain"));
+        assert!(!MONGO_EXPLAIN_HINT.contains("run_write"));
+    }
+
+    /// `verbosity` maps onto MongoDB's own names and refuses the rest rather
+    /// than quietly answering a different question.
+    #[test]
+    fn pulse_explain_verbosity_maps_to_a_mode() {
+        use crate::pulse::ExplainMode;
+        assert_eq!(explain_mode(None).unwrap(), ExplainMode::Plan);
+        assert_eq!(explain_mode(Some("")).unwrap(), ExplainMode::Plan);
+        assert_eq!(
+            explain_mode(Some("queryPlanner")).unwrap(),
+            ExplainMode::Plan
+        );
+        assert_eq!(
+            explain_mode(Some("executionStats")).unwrap(),
+            ExplainMode::Execution
+        );
+        assert!(explain_mode(Some("allPlansExecution")).is_err());
+        assert!(explain_mode(Some("analyze")).is_err());
     }
 
     /// The availability half: a `read-only` MongoDB connection must be able to

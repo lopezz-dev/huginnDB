@@ -120,7 +120,8 @@ pub async fn explain_table_query(
     let pool = state.pool_for(&query.connection_id)?;
     if let DbPool::Mongo(conn) = &pool {
         let text = crate::db::mongo::query::describe_find_shell(&query)?;
-        return crate::db::mongo::pulse::explain(conn, &text).await;
+        return crate::db::mongo::pulse::explain(conn, &text, crate::pulse::ExplainMode::Plan)
+            .await;
     }
     let dialect = Dialect::try_of(&pool)?;
     let prefix = explain_prefix(dialect)?;

@@ -34,7 +34,7 @@
 pub mod sampler;
 pub mod store;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// Whether a reading accumulates since server start or describes the instant.
 ///
@@ -252,6 +252,31 @@ pub struct TopQuery {
 #[serde(rename_all = "camelCase")]
 pub struct ExplainPlan {
     pub raw: serde_json::Value,
+}
+
+/// How much an EXPLAIN asks of the server.
+///
+/// The distinction is the one that matters for cost, not for shape: `Plan`
+/// never executes the statement, `Execution` runs it to completion so the
+/// reply can say what each stage actually did (MongoDB's `executionStats`).
+/// That is the same work `run_query` would do with the statement, so it opens
+/// nothing a read did not already allow — `validate_explain_target` still
+/// refuses anything that is not a read, `$out`/`$merge` included — but it is
+/// not free, which is why `Plan` is the default and every in-app caller
+/// (Pulse's panel, the AI panel's slow-query task) keeps asking for it.
+///
+/// An enum rather than a `bool` so the wire says which one was meant instead
+/// of what `true` happened to stand for, and so a third MongoDB verbosity
+/// (`allPlansExecution`) is a variant, not a second flag that could disagree
+/// with the first.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExplainMode {
+    /// The plan the optimiser picks; the statement is not run.
+    #[default]
+    Plan,
+    /// Run the statement and report what each stage did.
+    Execution,
 }
 
 /// How much of a normalised statement to keep.

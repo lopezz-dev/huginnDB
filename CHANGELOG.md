@@ -129,6 +129,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **MCP: a MongoDB `.explain()` is pointed at `pulse_explain`, which now
+  reports execution statistics.** An AI that sent
+  `db.c.explain('executionStats').aggregate([...])` to `run_query` was told
+  the statement *writes* and to call `run_write`: `.explain()` is not in the
+  mongosh grammar, and what the grammar cannot read is treated as the
+  strictest tier. It is still refused there, but the message now names
+  `pulse_explain` and how to call it. `pulse_explain` takes an optional
+  `verbosity`: `"queryPlanner"` (the default, as before) returns the plan
+  without running the statement, and `"executionStats"` (MongoDB only) runs
+  it and reports what each stage examined and how long it took — the same
+  cost as running it, bounded by the connection's operation timeout, and
+  still only for a read (`$out`/`$merge` are refused). Its description no
+  longer reads as a Pulse-only tool. The app's own explains (Pulse, the
+  query panel, the AI panel) still only ask for the plan. The connector's
+  bridge protocol goes to version 7, so a connector and an app of different
+  versions fall back to the connector's own connection instead of one of
+  them ignoring the new field.
+
 - **Re-running a batch from the history works.** A history entry holding
   several statements was sent as one text down the single-statement path,
   which PostgreSQL and MySQL refuse. It now opens in a query tab that runs
