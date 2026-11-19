@@ -12,19 +12,15 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useTranslation } from "react-i18next";
-import { Pin, PinOff, X } from "lucide-react";
+import type { TFunction } from "i18next";
+import { Pin, X } from "lucide-react";
 
 import { DriverBadge } from "@/components/common/DriverBadge";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+import { ContextActionMenu } from "@/components/menus/ContextActionMenu";
+import { tabMenu } from "@/components/shell/tabMenu";
 
 import { api } from "@/lib/tauri";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { SimpleTooltipSlot } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import {
   resolveConnectionDriver,
@@ -367,181 +363,180 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps) {
   }
 
   return (
-    <ContextMenu>
-      <SimpleTooltip label={tooltip} side="bottom" delayDuration={300}>
-        <ContextMenuTrigger asChild>
-          <div
-            ref={tabRef}
-            className={cn(
-              // `max-w` is what makes the priority truncation below actually fire:
-              // a `.dv-tab` is a non-shrinking flex item in a scrolling strip, so
-              // without an explicit ceiling the tab just grows and nothing inside
-              // it ever has to give way.
-              "group/tab flex h-full min-w-0 max-w-[19rem] items-center gap-2 px-3 text-xs",
-              // The active tab already carries a bg-background surface + a 2px brand
-              // top cap from index.css (`.inner-dock .dv-active-tab`); here we add the
-              // matching weight so the label reads as the active one too.
-              isActive
-                ? "font-medium text-foreground"
-                : "text-muted-foreground/75",
-            )}
-            style={
-              tabColor
-                ? { boxShadow: accentBoxShadow(tabAccentStyle, tabColor) }
-                : undefined
-            }
-            // Middle-click (wheel button) closes the tab, matching editor
-            // conventions. `mousedown` preventDefault suppresses the browser's
-            // middle-click autoscroll affordance.
-            onMouseDown={(e) => {
-              if (e.button === 1) e.preventDefault();
-            }}
-            onAuxClick={(e) => {
-              if (e.button === 1) {
-                e.preventDefault();
-                requestClose();
-              }
-            }}
-          >
-            {driver && <DriverBadge driver={driver} />}
-            {isPinned && (
-              <Pin className="h-3 w-3 shrink-0 -rotate-45 text-brand" />
-            )}
-            {/*
-             * Two-part label with an explicit space priority: the connection
-             * context is the disposable half (it repeats across every tab of that
-             * connection, and the driver badge already anchors it), the name is
-             * the half that tells two tabs apart, so the context is weighted to
-             * shrink several times faster and both carry a floor so neither
-             * collapses to a bare ellipsis. A hairline divider — not another "·" —
-             * separates them: `schema.table` is full of dots already, and one more
-             * read as part of the name.
-             */}
-            <span className="flex min-w-0 items-center gap-1.5">
-              {context && (
-                <>
-                  <span
-                    ref={contextFade.ref}
-                    className={cn(
-                      "min-w-[2.5rem] max-w-[8.5rem] shrink-[6] overflow-hidden whitespace-nowrap text-2xs text-muted-foreground/70",
-                      contextFade.clipped && "fade-tail",
-                    )}
-                  >
-                    {context}
-                  </span>
-                  <Separator size="sm" />
-                </>
-              )}
-              <span
-                ref={nameFade.ref}
-                className={cn(
-                  "min-w-[4rem] shrink overflow-hidden whitespace-nowrap",
-                  nameFade.clipped && "fade-tail",
-                )}
-              >
-                {leaf}
-              </span>
-            </span>
-            {/*
-             * No explicit action menu here anymore — every action below (split,
-             * float, colour, close variants) lives in the right-click context menu
-             * on this same tab (see `ContextMenuContent` below). Drag-to-split
-             * still works natively.
-             */}
-            {closeButton}
-          </div>
-        </ContextMenuTrigger>
-      </SimpleTooltip>
-      <ContextMenuContent className="text-xs">
-        <ContextMenuItem onSelect={togglePin}>
-          {isPinned ? (
-            <PinOff className="mr-2 h-3.5 w-3.5" />
-          ) : (
-            <Pin className="mr-2 h-3.5 w-3.5" />
+    <ContextActionMenu
+      width="md"
+      menu={() =>
+        tabMenu({
+          t,
+          title: qualified,
+          // Read at the moment of the right-click, not from this render: the
+          // keys of "pin" and "close" act on the active tab (`App.tsx`), so
+          // the menu shows them only when that is this one.
+          isActive: useTabs.getState().activeId === id,
+          isPinned,
+          hasOthers,
+          hasOthersInConnection,
+          renderColor: () => (
+            <TabColorSwatches t={t} value={tabColor} onChange={setColor} />
+          ),
+          actions: {
+            togglePin,
+            splitRight: () =>
+              props.api.moveTo({ group: props.api.group, position: "right" }),
+            splitDown: () =>
+              props.api.moveTo({ group: props.api.group, position: "bottom" }),
+            float: () => void detachToWindow(),
+            close: requestClose,
+            closeOthers,
+            closeToRight,
+            closeOthersInConnection,
+            closeAll,
+          },
+        })
+      }
+    >
+      {/* `SimpleTooltipSlot`, not `SimpleTooltip`: the menu's trigger clones
+          onto this child, and only the slot passes that through to the tab. */}
+      <SimpleTooltipSlot label={tooltip} side="bottom" delayDuration={300}>
+        <div
+          ref={tabRef}
+          className={cn(
+            // `max-w` is what makes the priority truncation below actually fire:
+            // a `.dv-tab` is a non-shrinking flex item in a scrolling strip, so
+            // without an explicit ceiling the tab just grows and nothing inside
+            // it ever has to give way.
+            "group/tab flex h-full min-w-0 max-w-[19rem] items-center gap-2 px-3 text-xs",
+            // The active tab already carries a bg-background surface + a 2px brand
+            // top cap from index.css (`.inner-dock .dv-active-tab`); here we add the
+            // matching weight so the label reads as the active one too.
+            isActive
+              ? "font-medium text-foreground"
+              : "text-muted-foreground/75",
           )}
-          {isPinned ? t("tabs.unpin") : t("tabs.pin")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          onSelect={() =>
-            props.api.moveTo({ group: props.api.group, position: "right" })
+          style={
+            tabColor
+              ? { boxShadow: accentBoxShadow(tabAccentStyle, tabColor) }
+              : undefined
           }
+          // Middle-click (wheel button) closes the tab, matching editor
+          // conventions. `mousedown` preventDefault suppresses the browser's
+          // middle-click autoscroll affordance.
+          onMouseDown={(e) => {
+            if (e.button === 1) e.preventDefault();
+          }}
+          onAuxClick={(e) => {
+            if (e.button === 1) {
+              e.preventDefault();
+              requestClose();
+            }
+          }}
         >
-          {t("tabs.splitRight")}
-        </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() =>
-            props.api.moveTo({ group: props.api.group, position: "bottom" })
-          }
-        >
-          {t("tabs.splitDown")}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={detachToWindow}>
-          {t("tabs.floatPanel")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <div className="px-2 py-1.5">
-          <div className="mb-1 text-3xs uppercase tracking-wider text-muted-foreground">
-            {t("tabs.color")}
-          </div>
-          <div className="flex items-center gap-1">
-            {TAB_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setColor(c)}
-                className={cn(
-                  "h-4 w-4 rounded-full border border-border/50 transition-transform hover:scale-110",
-                  tabColor === c &&
-                    "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
-                )}
-                style={{ backgroundColor: c }}
-                title={c}
-              />
-            ))}
-            <button
-              type="button"
-              onClick={() => setColor(null)}
+          {driver && <DriverBadge driver={driver} />}
+          {isPinned && (
+            <Pin className="h-3 w-3 shrink-0 -rotate-45 text-brand" />
+          )}
+          {/*
+           * Two-part label with an explicit space priority: the connection
+           * context is the disposable half (it repeats across every tab of that
+           * connection, and the driver badge already anchors it), the name is
+           * the half that tells two tabs apart, so the context is weighted to
+           * shrink several times faster and both carry a floor so neither
+           * collapses to a bare ellipsis. A hairline divider — not another "·" —
+           * separates them: `schema.table` is full of dots already, and one more
+           * read as part of the name.
+           */}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {context && (
+              <>
+                <span
+                  ref={contextFade.ref}
+                  className={cn(
+                    "min-w-[2.5rem] max-w-[8.5rem] shrink-[6] overflow-hidden whitespace-nowrap text-2xs text-muted-foreground/70",
+                    contextFade.clipped && "fade-tail",
+                  )}
+                >
+                  {context}
+                </span>
+                <Separator size="sm" />
+              </>
+            )}
+            <span
+              ref={nameFade.ref}
               className={cn(
-                "flex h-4 w-4 items-center justify-center rounded-full border border-border/50 text-muted-foreground hover:bg-accent",
-                !tabColor &&
-                  "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
+                "min-w-[4rem] shrink overflow-hidden whitespace-nowrap",
+                nameFade.clipped && "fade-tail",
               )}
-              title={t("tabs.colorNone")}
             >
-              <X className="h-2.5 w-2.5" />
-            </button>
-            <input
-              type="color"
-              value={tabColor ?? "#888888"}
-              onChange={(e) => setColor(e.target.value)}
-              className="h-4 w-6 cursor-pointer rounded-sm border border-border/50 bg-transparent p-0"
-              title={t("tabs.colorCustom")}
-            />
-          </div>
+              {leaf}
+            </span>
+          </span>
+          {/*
+           * No explicit action menu here anymore — every action (split, float,
+           * colour, close variants) lives in the right-click context menu on
+           * this same tab (`tabMenu`). Drag-to-split still works natively.
+           */}
+          {closeButton}
         </div>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={requestClose}>
-          {t("tabs.closeTab")}
-        </ContextMenuItem>
-        <ContextMenuItem disabled={!hasOthers} onSelect={closeOthers}>
-          {t("tabs.closeOthers")}
-        </ContextMenuItem>
-        <ContextMenuItem disabled={!hasOthers} onSelect={closeToRight}>
-          {t("tabs.closeToRight")}
-        </ContextMenuItem>
-        <ContextMenuItem
-          disabled={!hasOthersInConnection}
-          onSelect={closeOthersInConnection}
-        >
-          {t("tabs.closeOthersInConnection")}
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onSelect={closeAll}>
-          {t("tabs.closeAll")}
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+      </SimpleTooltipSlot>
+    </ContextActionMenu>
+  );
+}
+
+/**
+ * The tab menu's colour row (issue #24): preset swatches, "none" and a custom
+ * picker. A `custom` entry of the menu (`tabMenu`), in its Edit section — the
+ * section heading is the label the row used to draw by hand. Native `title=`s,
+ * not `SimpleTooltip`: inside open menu content a Radix tooltip fights the
+ * menu's own hover handling (`ui/tooltip.tsx`).
+ */
+function TabColorSwatches({
+  t,
+  value,
+  onChange,
+}: {
+  t: TFunction;
+  value: string | undefined;
+  onChange: (color: string | null) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={t("tabs.color")}
+      className="flex items-center gap-1 px-2 py-1.5"
+    >
+      {TAB_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          onClick={() => onChange(c)}
+          className={cn(
+            "h-4 w-4 rounded-full border border-border/50 transition-transform hover:scale-110",
+            value === c &&
+              "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
+          )}
+          style={{ backgroundColor: c }}
+          title={c}
+        />
+      ))}
+      <button
+        type="button"
+        onClick={() => onChange(null)}
+        className={cn(
+          "flex h-4 w-4 items-center justify-center rounded-full border border-border/50 text-muted-foreground hover:bg-accent",
+          !value && "ring-2 ring-foreground ring-offset-1 ring-offset-popover",
+        )}
+        title={t("tabs.colorNone")}
+      >
+        <X className="h-2.5 w-2.5" />
+      </button>
+      <input
+        type="color"
+        value={value ?? "#888888"}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-4 w-6 cursor-pointer rounded-sm border border-border/50 bg-transparent p-0"
+        title={t("tabs.colorCustom")}
+      />
+    </div>
   );
 }
 

@@ -331,6 +331,19 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   el menú de una tabla bloqueada medía 363 px para una etiqueta de nueve
   letras.
 
+- **Los menús de la pestaña y del entorno se parecen al resto.** Los dos los
+  dibuja ya el renderizador común de menús contextuales (ADR #143). El de la
+  pestaña la nombra arriba, pone icono a todas las acciones (solo lo tenía
+  *Fijar*), muestra Ctrl+W junto a *Cerrar pestaña* cuando es la pestaña
+  activa —la tecla cierra la activa, así que en cualquier otra sería una
+  promesa que la tecla no cumple— y coloca los colores bajo un encabezado
+  **Editar**, encima de una sección **Sesión** con fijar, dividir, sacar a
+  ventana flotante y las cinco formas de cerrar; cerrar no va en rojo, porque
+  no destruye nada. El del entorno lo nombra, ya no mide 192 px fijos que
+  partían *Abrir entorno en una ventana nueva* en dos líneas, y su *Eliminar*
+  tiene por fin el fondo rojo al pasar el ratón que tienen las demás acciones
+  destructivas.
+
 - **Un resultado cortado lo dice donde se muestra y donde se exporta.** Una
   consulta que devuelve más de 50 000 filas muestra solo las 50 000
   primeras. Su pestaña de resultado lleva ahora una marca ámbar, una franja

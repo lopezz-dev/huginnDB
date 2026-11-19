@@ -299,6 +299,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   wraps inside the menu instead of stretching it to the reason's length — a
   locked table menu was 363 px wide for a nine-letter label.
 
+- **The tab and environment menus look like the rest.** Both are now drawn by
+  the shared context-menu renderer (ADR #143). The tab's menu names the tab
+  at its top, gives every action an icon (only *Pin* had one), shows Ctrl+W
+  beside *Close tab* when it is the active tab — the key closes the active
+  tab, so on any other it would be a promise the key does not keep — and
+  puts the colour swatches under an **Edit** heading above a **Session**
+  section with pin, split, float and the five close actions; closing stays
+  plain rather than red, since it destroys nothing. The environment's menu
+  names the environment, is no longer a fixed 192 px that wrapped *Open
+  environment in new window* onto two lines, and its *Delete* now gets the
+  red hover tint every other destructive action has.
+
 - **A cut result says so where it is shown and where it is exported.** A
   query that returns more than 50 000 rows shows only the first 50 000. Its
   result tab now carries an amber mark, a strip over the grid says "First

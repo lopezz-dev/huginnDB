@@ -45,13 +45,9 @@
 
 import { Spinner } from "@/components/ui/spinner";
 import { EnvironmentAvatar } from "@/components/connection/EnvironmentAvatar";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { SimpleTooltip } from "@/components/ui/tooltip";
+import { environmentMenu } from "@/components/connection/environmentMenu";
+import { ContextActionMenu } from "@/components/menus/ContextActionMenu";
+import { SimpleTooltip, SimpleTooltipSlot } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/tauri";
 import { notify } from "@/lib/notify";
@@ -82,7 +78,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { isMainWindow } from "@/lib/window";
-import { AppWindow, Pencil, Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -196,9 +192,6 @@ export function EnvironmentRail({ footer }: EnvironmentRailProps) {
                       environmentLabel(env, defaultName),
                     )
                   }
-                  renameLabel={t("environments.rename")}
-                  openInNewWindowLabel={t("environments.openInNewWindow")}
-                  deleteLabel={t("environments.delete")}
                 />
               ))}
             </SortableContext>
@@ -346,9 +339,6 @@ interface SortableEnvironmentButtonProps {
    *  switch is running: it never touches the session being rebuilt. */
   onOpenInNewWindow: () => void;
   onDelete: () => void;
-  renameLabel: string;
-  openInNewWindowLabel: string;
-  deleteLabel: string;
 }
 
 function SortableEnvironmentButton({
@@ -362,10 +352,8 @@ function SortableEnvironmentButton({
   onRename,
   onOpenInNewWindow,
   onDelete,
-  renameLabel,
-  openInNewWindowLabel,
-  deleteLabel,
 }: SortableEnvironmentButtonProps) {
+  const { t } = useTranslation();
   // See `EnvironmentButton`: disabled is "a switch is running", the spinner is
   // "this is where we are going". They are not the same row.
   const busy = switchingTo !== null;
@@ -390,91 +378,85 @@ function SortableEnvironmentButton({
   };
 
   return (
-    <ContextMenu>
-      <SimpleTooltip label={label} side="right">
-        <ContextMenuTrigger asChild>
-          <button
-            ref={setNodeRef}
-            style={style}
-            {...attributes}
-            {...listeners}
-            type="button"
-            disabled={busy}
-            onClick={onClick}
-            aria-pressed={isActive && schemaOpen}
-            className={cn(
-              // See `EnvironmentButton` on `shrink-0` — the rail scrolls, and
-              // without it the avatars squash instead of overflowing.
-              "group relative flex w-full shrink-0 flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
-              "hover:bg-accent",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
-              isActive && "bg-accent/60",
-              isDragging && "z-10 opacity-80",
-            )}
-          >
-            {isActive && (
-              <span
-                aria-hidden
-                // Same 4px active marker as `ActivityBar`, in the environment's
-                // own colour (its identity outranks the brand blue here) and
-                // flush against the rail's left edge. It sat at `-left-2` while
-                // the button spans the rail's full width, which put a 2px
-                // sliver outside the shell's `overflow-hidden` — invisible.
-                className="absolute left-0 top-1 bottom-1 w-1 rounded-full"
-                style={{
-                  backgroundColor: effectiveColor(env) || "var(--brand)",
-                }}
-              />
-            )}
-            {isTarget ? (
-              <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted">
-                <Spinner size="lg" className="text-muted-foreground" />
-              </div>
-            ) : (
-              <EnvironmentAvatar
-                name={label}
-                color={effectiveColor(env)}
-                icon={effectiveIcon(env)}
-                size={36}
-              />
-            )}
-            {/* 11px rather than the 10px this started at: the rail is 72px
+    <ContextActionMenu
+      width="sm"
+      menu={() =>
+        environmentMenu({
+          t,
+          label,
+          canDelete,
+          onRename,
+          onOpenInNewWindow,
+          onDelete,
+        })
+      }
+    >
+      {/* `SimpleTooltipSlot` keeps the tooltip outside the menu's trigger
+          (`ui/tooltip.tsx`), and the sortable button stays the element both
+          triggers land on: the slot composes its ref with `setNodeRef`. */}
+      <SimpleTooltipSlot label={label} side="right">
+        <button
+          ref={setNodeRef}
+          style={style}
+          {...attributes}
+          {...listeners}
+          type="button"
+          disabled={busy}
+          onClick={onClick}
+          aria-pressed={isActive && schemaOpen}
+          className={cn(
+            // See `EnvironmentButton` on `shrink-0` — the rail scrolls, and
+            // without it the avatars squash instead of overflowing.
+            "group relative flex w-full shrink-0 flex-col items-center gap-1 rounded-md px-1 py-1 transition-colors duration-150 disabled:opacity-60",
+            "hover:bg-accent",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40",
+            isActive && "bg-accent/60",
+            isDragging && "z-10 opacity-80",
+          )}
+        >
+          {isActive && (
+            <span
+              aria-hidden
+              // Same 4px active marker as `ActivityBar`, in the environment's
+              // own colour (its identity outranks the brand blue here) and
+              // flush against the rail's left edge. It sat at `-left-2` while
+              // the button spans the rail's full width, which put a 2px
+              // sliver outside the shell's `overflow-hidden` — invisible.
+              className="absolute left-0 top-1 bottom-1 w-1 rounded-full"
+              style={{
+                backgroundColor: effectiveColor(env) || "var(--brand)",
+              }}
+            />
+          )}
+          {isTarget ? (
+            <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted">
+              <Spinner size="lg" className="text-muted-foreground" />
+            </div>
+          ) : (
+            <EnvironmentAvatar
+              name={label}
+              color={effectiveColor(env)}
+              icon={effectiveIcon(env)}
+              size={36}
+            />
+          )}
+          {/* 11px rather than the 10px this started at: the rail is 72px
                 wide, so the label is the one piece of chrome that has to stay
                 readable at a glance from the corner of the eye, and 10px sat
                 below that on a 1080p display. Tighter tracking keeps roughly
                 the same number of glyphs fitting before the truncation, and the
                 active row goes medium so "which environment am I in" reads from
                 the weight, not only from the background tint. */}
-            <span
-              className={cn(
-                "w-full truncate text-center text-2xs leading-[1.15] tracking-tight text-muted-foreground",
-                isActive && "font-medium text-foreground",
-              )}
-            >
-              {label}
-            </span>
-          </button>
-        </ContextMenuTrigger>
-      </SimpleTooltip>
-      <ContextMenuContent className="w-48 text-xs">
-        <ContextMenuItem onSelect={onRename}>
-          <Pencil className="mr-2 h-3.5 w-3.5" />
-          {renameLabel}
-        </ContextMenuItem>
-        <ContextMenuItem onSelect={onOpenInNewWindow}>
-          <AppWindow className="mr-2 h-3.5 w-3.5" />
-          {openInNewWindowLabel}
-        </ContextMenuItem>
-        {canDelete && (
-          <ContextMenuItem
-            className="text-destructive focus:text-destructive"
-            onSelect={onDelete}
+          <span
+            className={cn(
+              "w-full truncate text-center text-2xs leading-[1.15] tracking-tight text-muted-foreground",
+              isActive && "font-medium text-foreground",
+            )}
           >
-            <Trash2 className="mr-2 h-3.5 w-3.5" />
-            {deleteLabel}
-          </ContextMenuItem>
-        )}
-      </ContextMenuContent>
-    </ContextMenu>
+            {label}
+          </span>
+        </button>
+      </SimpleTooltipSlot>
+    </ContextActionMenu>
   );
 }
