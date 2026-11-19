@@ -334,6 +334,7 @@ The tools then show up under the `huginndb` server inside Codex.
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(none)* | Pin this client to exactly these profile ids, ignoring the Settings → MCP checkboxes. Without the flag the server defers to those checkboxes and re-reads them per call, which is the normal setup. `--connections ""` pins an empty set — an explicit "expose nothing". |
 | `--max-rows <n>` | *(none)* | Replace the **default** row limit (Settings → MCP → *Rows per call*, 200) for this client only. A connection with its own limit keeps it. See [Row limit](#row-limit). |
+| `--read-timeout-secs <n>` | `180` | Time one call's reads may take in all, under the connection's MCP timeout. Set it below your client's own limit; it cannot exceed 300. See [Reads](#reads-the-same-timeout-and-a-client-that-gives-up-stops-them). |
 | `--max-connections <n>` | `2` | Budget per **server**, within this process. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A connection that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
 | `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy, and take the eight write tools off `tools/list` entirely — they could only refuse, and a tool the model never sees is a turn it never wastes. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
@@ -668,10 +669,50 @@ would remove the dependence on the client's patience. It is not built yet.
 
 ### Reads: the same timeout, and a client that gives up stops them
 
-A `run_query` or `run_queries` read gets the connection's MCP timeout too:
-300 seconds, or less if the connection's ceiling is lower. A read takes no
-`timeout_seconds`. A read that runs this long usually has a bad plan, and the
-answer is to make it cheaper, not to give it longer.
+A read gets **180 seconds** by default: the MCP server's `--read-timeout-secs`,
+held under the connection's MCP timeout (300 seconds, or less if the
+connection's ceiling is lower). The 180 is there to finish before the client
+gives up: one client tried in practice abandons a call after 240 seconds
+without cancelling it, and a read that went on to 300 loaded the server for a
+minute for nobody. Lower it if your client waits less; it cannot go above 300.
+A read takes no `timeout_seconds`. A read that runs this long usually has a
+bad plan, and the answer is to make it cheaper, not to give it longer.
+
+The time belongs to the **call**, not to each statement: `run_queries` gives
+its whole list one read time, each statement gets what the ones before it
+left, and once it is spent the rest come back as `{"skipped": "not run: …"}`
+without being sent. Before, each statement had the full limit, so a list of
+four slow reads could hold the client four times longer than it would wait.
+
+**Parallel calls queue.** A model's parallel calls to one MCP server reach
+the app one at a time, over a single connection, so a heavy read makes the
+others wait. A read's time is measured from when the call arrived, and only
+what is left is asked for once its turn comes. A read whose time ran out
+while it waited is never sent: it comes back `not_started`. A read that
+waited says so with `queued_ms`. Send heavy reads one by one.
+
+Every read is named. `run_query` and each `run_queries` slot carry a
+`query_id`, and when the time runs out the error's `data` (or the slot's
+`timeout`) says how it ended:
+
+```json
+{
+  "query_id": "q-3f9c0a1b2c4d",
+  "connection_id": "tiles-bc13",
+  "sql_head": "SELECT o.[Object ID] FROM [Object Metadata] o WHERE …",
+  "elapsed_ms": 180012,
+  "limit_secs": 180,
+  "state": "cancelled",
+  "verdict": "The session was closed, and SQL Server stops the request …"
+}
+```
+
+| `state` | Meaning |
+| --- | --- |
+| `not_started` | No session came free in time; the statement was never sent. Safe to run again later. |
+| `cancelled` | The server stopped it (see the table below). |
+| `still_running` | It goes on (SQLite waiting on a lock). Do not run it again yet. |
+| `unknown` | The stop was sent but not confirmed; the server may run it until it next writes to the client. Do not run it again yet. |
 
 When the time runs out, HuginnDB **stops the statement on the server** and
 closes its session, which never goes back to the pool:

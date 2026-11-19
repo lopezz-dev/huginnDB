@@ -956,6 +956,8 @@ mod tests {
             connection_id: "policy-test-erp".into(),
             policy_id: "policy-test-erp".into(),
             sql: "SELECT * FROM payroll".into(),
+            timeout_secs: None,
+            query_id: None,
         };
         let err = enforce(&state, &run).unwrap_err().to_string();
         assert!(err.contains("free-form queries are disabled"), "{err}");

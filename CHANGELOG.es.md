@@ -142,6 +142,35 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **MCP: las lecturas de una IA terminan ahora antes de que el cliente se
+  rinda, y un timeout dice si la lectura sigue corriendo.** Una lectura tenía
+  los 300 s de la conexión, pero un cliente puede abandonar la llamada antes
+  sin cancelarla (uno lo hizo a los 240 s). La lectura cargaba entonces el
+  servidor un minuto sin que nadie esperase, y el modelo, sin saber nada, la
+  volvía a lanzar encima. `run_queries` era peor: cada sentencia tenía los 300 s
+  enteros, así que cuatro lentas podían retener la llamada veinte minutos.
+  - **El tiempo de lectura es ahora de la llamada.** Son 180 s por defecto, se
+    fijan con el nuevo flag `--read-timeout-secs` del servidor MCP y siguen
+    dentro del timeout MCP de la conexión. `run_queries` lo reparte entre toda
+    su lista, y las sentencias que quedan cuando se agota vuelven como
+    `skipped` sin enviarse.
+  - **Cada lectura lleva un `query_id`.** Cuando una se queda sin tiempo, el
+    `data` del error (o el `timeout` del hueco en `run_queries`) da el id, la
+    conexión, el inicio del SQL, el tiempo transcurrido, el límite y el
+    `state`: `not_started`, `cancelled`, `still_running` o `unknown`.
+  - **Las llamadas en paralelo ya no se envían cuando su cliente se ha
+    rendido.** Las llamadas en paralelo de un modelo a un mismo servidor MCP
+    llegan a la app de una en una. Antes se quedaban en cola detrás de una
+    lectura lenta, consumían allí la espera del cliente y luego se ejecutaban
+    enteras igualmente. Ahora una lectura pide solo el tiempo que le queda
+    cuando le llega el turno. Si se le acaba en la cola, no se envía y vuelve
+    como `not_started`, con lo que esperó; una lectura que haya esperado
+    informa de su `queued_ms`.
+  - Las descripciones de las herramientas piden ahora al modelo que no repita
+    nunca una lectura que pueda seguir corriendo y que mande las lecturas
+    pesadas de una en una.
+  - El protocolo del bridge pasa a la versión 8: la app y su servidor MCP
+    tienen que actualizarse juntos. Véase el ADR #140.
 - **MCP: un `.explain()` de MongoDB se redirige a `pulse_explain`, que
   ahora da estadísticas de ejecución.** Una IA que mandaba
   `db.c.explain('executionStats').aggregate([...])` a `run_query` recibía
