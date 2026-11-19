@@ -97,7 +97,7 @@ export function GridSearchInput({
                     onChange?.(q);
                     onSubmit?.(q);
                   }}
-                  className="font-mono text-xs"
+                  className="font-mono"
                 >
                   <span className="truncate max-w-[20rem]">{q}</span>
                 </DropdownMenuItem>

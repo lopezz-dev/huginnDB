@@ -319,6 +319,20 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Cambiado
 
+- **La barra de menús y todos los desplegables usan la densidad del menú
+  contextual.** Archivo, Ventana, Ver y Ayuda, y el resto de desplegables de
+  la app (el desbordamiento de la barra de la rejilla, las conexiones de la
+  barra de estado, ordenar, exportar, la sesión nueva del terminal), tenían
+  texto de 14px en filas de 32px, mientras que todos los menús del clic
+  derecho tenían 12px en 28px. Ahora comparten la escala del menú contextual,
+  así que un menú se lee igual se abra como se abra (ADR #143).
+  - La escala está en un solo sitio, en la fila de menú que comparten los dos
+    tipos de menú, en vez de que cada llamada elija la suya.
+  - El menú de desbordamiento ya no tiene que encoger las opciones de
+    exportar que toma de la barra: ya eran las mismas filas.
+  - Las marcas de Ver y los iconos del terminal bajan a los 14px que usan
+    todos los demás iconos de menú.
+
 - **El menú contextual de la rejilla muestra su atajo y da a las filas nuevas
   su propia sección.** *Copiar* muestra ahora Ctrl+C, la tecla que ya hace lo
   mismo, e *Insertar fila* y *Duplicar fila* pasan a un encabezado **Crear**

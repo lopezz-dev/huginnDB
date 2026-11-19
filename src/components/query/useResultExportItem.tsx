@@ -113,7 +113,7 @@ export function useResultExportItem(
 
   return useMemo(() => {
     if (!offered) return [];
-    const items = (className?: string) => [
+    const items = () => [
       ...(cut
         ? [
             <DropdownMenuLabel key="shown" className="text-2xs">
@@ -124,7 +124,6 @@ export function useResultExportItem(
       <ExportFormatItems
         key="shown-formats"
         formats={formats}
-        className={className}
         onSelect={run}
       />,
       ...(fromServer
@@ -137,7 +136,6 @@ export function useResultExportItem(
               key="server-formats"
               keyPrefix="server-"
               formats={formats}
-              className={className}
               title={t("query.export.fromServerHint")}
               ellipsis
               onSelect={runFromServer}
@@ -171,12 +169,12 @@ export function useResultExportItem(
         // nested dropdown (see `DropdownMenuSubTrigger`).
         menu: (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="text-xs" disabled={!!lock}>
+            <DropdownMenuSubTrigger disabled={!!lock}>
               <Download className="mr-2 h-3.5 w-3.5" />
               {t("tableData.exportData.label")}
               {lock && <Lock className="ml-2 h-3 w-3 opacity-70" />}
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>{items("text-xs")}</DropdownMenuSubContent>
+            <DropdownMenuSubContent>{items()}</DropdownMenuSubContent>
           </DropdownMenuSub>
         ),
       },
