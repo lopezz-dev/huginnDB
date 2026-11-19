@@ -95,7 +95,7 @@ function makeTableActions(
       // `connectionId` is already the `<parent>::db::<db>` child this row
       // belongs to, and the default would hand it to `queryTargetFor`, which
       // re-points it at whichever database the *focused tab* happens to be on.
-      // "Query this table" means this table's database.
+      // "New query on this table" means this table's database.
       openQueryTab(connectionId, {
         sql: selectSnippet(driver, tbl.name, QUERY_HERE_LIMIT),
         resolveTarget: false,

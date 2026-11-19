@@ -231,7 +231,7 @@ function qualifiedTable(
  * Deliberately unqualified, same as `toSqlInsert`/`toSqlUpdate` — see
  * `qualifiedTable`'s comment.
  *
- * **`limit` is what the schema tree's "Query this table…" passes**, and it is
+ * **`limit` is what the schema tree's "New query on this table" passes**, and it is
  * the one caller whose text is going to be *run* rather than pasted — an
  * unbounded `SELECT *` over a large table is exactly what the grid pages to
  * avoid. It stays optional because "Copy SELECT statement" wants the bare
@@ -240,7 +240,7 @@ function qualifiedTable(
  * being the asymmetric one.
  */
 /**
- * Row cap the schema tree's "Query this table…" seeds its `SELECT` with.
+ * Row cap the schema tree's "New query on this table" seeds its `SELECT` with.
  *
  * It lives next to `selectSnippet` rather than in the tree because it is the
  * same number MongoDB's branch has always hard-coded, and having one of the two

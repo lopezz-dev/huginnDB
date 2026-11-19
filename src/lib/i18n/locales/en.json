@@ -428,7 +428,7 @@
       "newQueryHere": "New query here",
       "copyName": "Copy name",
       "copySelect": "Copy SELECT statement",
-      "queryTableHere": "Query this table…",
+      "newQueryOnTable": "New query on this table",
       "refresh": "Refresh",
       "editStructure": "Edit structure…",
       "newTable": "New table…",
@@ -442,7 +442,12 @@
       "dropView": "Drop view…",
       "newAggregation": "New aggregation…",
       "manageIndexes": "Indexes…",
-      "editViewPipeline": "Edit pipeline…"
+      "editViewPipeline": "Edit pipeline…",
+      "kind": {
+        "table": "table",
+        "view": "view",
+        "collection": "collection"
+      }
     },
     "rename": {
       "title": "Rename table",

@@ -26,35 +26,12 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Download,
-  Eye,
-  FolderPlus,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  SquareTerminal,
-  Table2,
-  Trash2,
-  Upload,
-} from "lucide-react";
 
 import { CreateCollectionDialog } from "@/components/schema/dialogs/CreateCollectionDialog";
 import { ExportDatabaseDialog } from "@/components/schema/dialogs/ExportDatabaseDialog";
 import { ImportSqlDialog } from "@/components/schema/dialogs/ImportSqlDialog";
-import {
-  ContextMenu,
-  ContextMenuAction,
-  ContextMenuContent,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
-  supportsCreateCollection,
-  supportsStructureEditing,
-  supportsViewEditing,
-  supportsSqlDump,
-} from "@/lib/db/driver";
+import { databaseMenu } from "@/components/schema/databaseMenu";
+import { ContextActionMenu } from "@/components/menus/ContextActionMenu";
 import { notify } from "@/lib/notify";
 import { usePolicyLocker } from "@/lib/policy/access";
 import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
@@ -121,7 +98,6 @@ export function DatabaseNodeMenu({
 }) {
   const { t } = useTranslation();
   const lock = usePolicyLocker(accessId);
-  const ddlLock = lock("ddl");
   /** The bound id the create-collection dialog targets; non-null while open. */
   const [createCollectionId, setCreateCollectionId] = useState<string | null>(
     null,
@@ -198,96 +174,33 @@ export function DatabaseNodeMenu({
 
   return (
     <>
-      <ContextMenu onOpenChange={onOpenChange}>
-        <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuAction
-            icon={RefreshCw}
-            label={t("schema.refresh")}
-            onSelect={() => void onRefresh()}
-          />
-          <ContextMenuSeparator />
-          {supportsStructureEditing(driver) && (
-            <ContextMenuAction
-              icon={Table2}
-              label={t("schema.context.newTable")}
-              locked={ddlLock}
-              onSelect={() => void createTableHere()}
-            />
-          )}
-          {supportsViewEditing(driver) && (
-            <ContextMenuAction
-              icon={Eye}
-              label={t("schema.context.newView")}
-              // A view's body is free SQL: under a rule that limits relations
-              // it could read any of them (`apply_view_change` refuses it).
-              locked={ddlLock ?? lock("freeSql")}
-              onSelect={() => void createViewHere()}
-            />
-          )}
-          <ContextMenuAction
-            icon={SquareTerminal}
-            label={t("schema.context.newQueryHere")}
-            locked={lock("freeSql")}
-            onSelect={() => void openQueryHere()}
-          />
-          {onScopeHere && (
-            <ContextMenuAction
-              icon={Search}
-              label={t("connectionsTree.filter.scopeHere")}
-              onSelect={onScopeHere}
-            />
-          )}
-          {supportsCreateCollection(driver) && (
-            <ContextMenuAction
-              icon={FolderPlus}
-              label={t("schema.createCollection.title")}
-              locked={ddlLock}
-              onSelect={() => void createCollectionHere()}
-            />
-          )}
-          {/* Whole-database .sql export/import needs a per-driver literal
-              encoder: MongoDB databases use the per-collection JSON
-              export/import instead (#65), and SQL Server has none yet. */}
-          {supportsSqlDump(driver) && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuAction
-                icon={Download}
-                label={t("schema.exportDatabase.title")}
-                locked={lock("export")}
-                onSelect={() => void exportThisDatabase()}
-              />
-              <ContextMenuAction
-                icon={Upload}
-                label={t("schema.importSql.title")}
-                // A .sql file runs as a batch of free statements.
-                locked={lock("freeSql")}
-                onSelect={() => void importSqlHere()}
-              />
-            </>
-          )}
-          <ContextMenuSeparator />
-          <ContextMenuAction
-            icon={ShieldCheck}
-            label={t("security.title")}
-            locked={lock("monitor")}
-            onSelect={() => void openSecurityHere()}
-          />
-          {canDrop && (
-            <>
-              <ContextMenuSeparator />
-              <ContextMenuAction
-                icon={Trash2}
-                destructive
-                label={t("schema.context.dropDatabase")}
-                locked={ddlLock}
-                onSelect={() => void onDrop()}
-              />
-            </>
-          )}
-        </ContextMenuContent>
-      </ContextMenu>
+      <ContextActionMenu
+        width="md"
+        onOpenChange={onOpenChange}
+        menu={() =>
+          databaseMenu({
+            t,
+            dbName,
+            driver,
+            canDrop,
+            lock,
+            actions: {
+              openSecurity: () => void openSecurityHere(),
+              refresh: () => void onRefresh(),
+              scopeSearchHere: onScopeHere,
+              newTable: () => void createTableHere(),
+              newView: () => void createViewHere(),
+              newQuery: () => void openQueryHere(),
+              newCollection: () => void createCollectionHere(),
+              exportDatabase: () => void exportThisDatabase(),
+              importSql: () => void importSqlHere(),
+              drop: () => void onDrop(),
+            },
+          })
+        }
+      >
+        {children}
+      </ContextActionMenu>
       {createCollectionId && (
         <CreateCollectionDialog
           connectionId={createCollectionId}
