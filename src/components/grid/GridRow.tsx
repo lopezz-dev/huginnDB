@@ -19,46 +19,22 @@
 
 import { memo } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ArrowRightCircle,
-  ClipboardCopy,
-  Copy,
-  CopyPlus,
-  Eraser,
-  Filter,
-  FilterX,
-  PanelRight,
-  Plus,
-  Trash2,
-} from "lucide-react";
 import { flexRender, type Row } from "@tanstack/react-table";
 
+import { ContextActionMenu } from "@/components/menus/ContextActionMenu";
 import {
-  ContextMenu,
-  ContextMenuAction,
-  ContextMenuContent,
-  ContextMenuHeader,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+  cellMenu,
+  selectionMenu,
+  type GridMenuContext,
+  type MenuCell,
+} from "@/components/grid/cellMenu";
+import type { MenuSpec } from "@/lib/menu/menuSpec";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  toJson as rowToJson,
-  toSqlInsert as rowToSqlInsert,
-  toSqlUpdate as rowToSqlUpdate,
-  type SqlTarget,
-  sqlLiteral,
-} from "@/lib/grid/copyFormats";
+import type { SqlTarget } from "@/lib/grid/copyFormats";
 import { formatValue } from "@/lib/grid/formatValue";
 import { GRID_GUTTER_WIDTH } from "@/lib/grid/useColumnSizing";
 import { cn } from "@/lib/utils";
 import { isSideEditorOpen } from "@/stores/session/panelLayout";
-import { ViewAsDateAction, rowLabel } from "@/components/epoch/ViewAsDateAction";
 import type {
   CellValue,
   ColumnFilter,
@@ -90,7 +66,7 @@ export interface GridRowCallbacks {
     distinct: number;
   };
   /** The multi-selection as values arrays. Read when a context menu opens
-   *  (see `MenuBody`), never during the row's render: as a prop it was a new
+   *  (see `ContextActionMenu`), never during the row's render: as a prop it was a new
    *  array on every selection change and repainted every row for a value
    *  only an open menu reads. */
   selectedRows: () => CellValue[][];
@@ -101,17 +77,6 @@ export interface GridRowCallbacks {
   withFullRow: (row: CellValue[], run: (row: CellValue[]) => void) => void;
   /** Whether a cell is one the page left on the server. */
   isTrimmedCell: (row: CellValue[], column: string) => boolean;
-}
-
-/**
- * Runs `children` when it renders rather than when `GridRow` does. Radix
- * mounts a context menu's content only while it is open, so whatever the
- * function reads through `callbacksRef` is the state at the moment the menu
- * opens — which is what lets the menu show the current multi-selection
- * without that selection being a prop of every row.
- */
-function MenuBody({ children }: { children: () => React.ReactNode }) {
-  return <>{children()}</>;
 }
 
 /** Shape of the inline single-cell editor state, narrowed to "does this
@@ -272,8 +237,43 @@ export const GridRow = memo(function GridRow({
   setSelectedCell,
   callbacksRef,
 }: GridRowProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const rowValues = row.original as CellValue[];
+  /**
+   * The menu a right-click on one of this row's cells opens. Called by
+   * `ContextActionMenu` only while the menu is open, so the selection it reads
+   * is the one at the moment of the click — not the one this row last
+   * rendered with, which may predate a Ctrl+click on another row (see
+   * `GridRowCallbacks.selectedRows`).
+   */
+  const menuFor = (cell: MenuCell): MenuSpec => {
+    const ctx: GridMenuContext = {
+      t,
+      language: i18n.language,
+      callbacks: callbacksRef.current,
+      resultColumns,
+      columnIndexByName,
+      driver,
+      tableName,
+      sqlTarget,
+      pkColumnNames,
+      editable,
+      columnLock,
+      onCellSave,
+      onNavigateFk,
+      onAddFilter,
+      onInsertRow,
+      onDuplicateRow,
+      onDeleteRow,
+      onBulkDelete,
+    };
+    const selectedRows = callbacksRef.current.selectedRows();
+    // Right-clicking inside a selection of several rows acts on all of them;
+    // anywhere else, on this cell.
+    return selectionEnabled && selectedRows.length > 1 && isMultiSelected
+      ? selectionMenu(ctx, cell, selectedRows)
+      : cellMenu(ctx, cell);
+  };
   const stateBg = isMultiSelected
     ? "bg-brand/30"
     : isSelected
@@ -413,8 +413,11 @@ export const GridRow = memo(function GridRow({
         const stickyLeft = isPinned ? pinnedLeftAcc : undefined;
         if (isPinned) pinnedLeftAcc += cell.column.getSize();
         return (
-          <ContextMenu key={cell.id}>
-            <ContextMenuTrigger asChild>
+          <ContextActionMenu
+            key={cell.id}
+            width="md"
+            menu={() => menuFor({ rowValues, colIdx, meta, value, isFkCell })}
+          >
               <td
                 data-cell={`${i}-${cIdx}`}
                 className={cn(
@@ -557,339 +560,7 @@ export const GridRow = memo(function GridRow({
               >
                 {flexRender(cell.column.columnDef.cell, cell.getContext())}
               </td>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              <MenuBody>
-                {() => {
-                  // Read now, while the menu mounts — not when the row last
-                  // rendered, which may predate the latest Ctrl+click on
-                  // another row (see `GridRowCallbacks.selectedRows`).
-                  const selectedRows = callbacksRef.current.selectedRows();
-                  // Bulk variant: shown when more than one row is selected
-                  // and the right-clicked row is part of that selection.
-                  // Replaces the per-cell/row entries with selection-wide
-                  // copy + delete; otherwise the regular single-row menu
-                  // below renders.
-                  return selectionEnabled &&
-                    selectedRows.length > 1 &&
-                    isMultiSelected ? (
-                    <>
-                      <ContextMenuHeader
-                        title={t("dataGrid.ctxRowsSelected", {
-                          count: selectedRows.length,
-                        })}
-                      />
-                      <ContextMenuSeparator />
-                      <ContextMenuLabel>{t("dataGrid.ctxSection.copy")}</ContextMenuLabel>
-                      <ContextMenuSub>
-                        <ContextMenuSubTrigger>
-                          <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
-                          {t("dataGrid.ctxCopyRowsAs", {
-                            count: selectedRows.length,
-                          })}
-                        </ContextMenuSubTrigger>
-                        <ContextMenuSubContent>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              callbacksRef.current.copyRows(selectedRows, "json")
-                            }
-                          >
-                            JSON
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              callbacksRef.current.copyRows(selectedRows, "insert")
-                            }
-                          >
-                            SQL INSERT
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              callbacksRef.current.copyRows(selectedRows, "update")
-                            }
-                          >
-                            SQL UPDATE
-                          </ContextMenuItem>
-                        </ContextMenuSubContent>
-                      </ContextMenuSub>
-                      {onAddFilter && (
-                        <>
-                          <ContextMenuLabel>{t("dataGrid.ctxSection.filter")}</ContextMenuLabel>
-                          <ContextMenuAction
-                            icon={Filter}
-                            disabled={selectedRows.some((r) =>
-                              callbacksRef.current.isTrimmedCell(r, meta.name),
-                            )}
-                            label={t("dataGrid.ctxFilterInSelected", {
-                              column: meta.name,
-                              count:
-                                callbacksRef.current.selectedColumnValues(colIdx)
-                                  .distinct,
-                            })}
-                            onSelect={() =>
-                              onAddFilter({
-                                column: meta.name,
-                                op: "in",
-                                values:
-                                  callbacksRef.current.selectedColumnValues(colIdx)
-                                    .values,
-                              })
-                            }
-                          />
-                          <ContextMenuAction
-                            icon={FilterX}
-                            disabled={selectedRows.some((r) =>
-                              callbacksRef.current.isTrimmedCell(r, meta.name),
-                            )}
-                            label={t("dataGrid.ctxFilterNotInSelected", {
-                              column: meta.name,
-                              count:
-                                callbacksRef.current.selectedColumnValues(colIdx)
-                                  .distinct,
-                            })}
-                            onSelect={() =>
-                              onAddFilter({
-                                column: meta.name,
-                                op: "not_in",
-                                values:
-                                  callbacksRef.current.selectedColumnValues(colIdx)
-                                    .values,
-                              })
-                            }
-                          />
-                        </>
-                      )}
-                      {onBulkDelete && (
-                        <>
-                          <ContextMenuSeparator />
-                          <ContextMenuAction
-                            icon={Trash2}
-                            destructive
-                            label={t("dataGrid.ctxDeleteRows", {
-                              count: selectedRows.length,
-                            })}
-                            onSelect={() => onBulkDelete(selectedRows)}
-                          />
-                        </>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <ContextMenuHeader
-                        title={meta.name}
-                        tags={[
-                          meta.data_type,
-                          value === null &&
-                            !callbacksRef.current.isTrimmedCell(rowValues, meta.name) &&
-                            "NULL",
-                        ]}
-                      />
-                      <ContextMenuSeparator />
-                      {/* Sections run from what touches nothing to what
-                      deletes: navigate, copy, view, filter, edit — and the
-                      row deletion alone at the bottom. */}
-                      {isFkCell && value !== null && value !== undefined && (
-                        <>
-                          <ContextMenuLabel>{t("dataGrid.ctxSection.navigate")}</ContextMenuLabel>
-                          <ContextMenuAction
-                            icon={ArrowRightCircle}
-                            label={t("dataGrid.ctxGoToReference")}
-                            onSelect={() => onNavigateFk?.(meta.name, value)}
-                          />
-                        </>
-                      )}
-                      <ContextMenuLabel>{t("dataGrid.ctxSection.copy")}</ContextMenuLabel>
-                      <ContextMenuAction
-                        icon={Copy}
-                        label={t("dataGrid.ctxCopy")}
-                        onSelect={() =>
-                          callbacksRef.current.withFullRow(rowValues, (r) =>
-                            callbacksRef.current.copyToClipboard(
-                              formatValue(r[colIdx]),
-                            ),
-                          )
-                        }
-                      />
-                      <ContextMenuAction
-                        icon={ClipboardCopy}
-                        label={t("dataGrid.ctxCopyWithColumn")}
-                        onSelect={() =>
-                          callbacksRef.current.withFullRow(rowValues, (r) =>
-                            callbacksRef.current.copyToClipboard(
-                              `${meta.name} = ${sqlLiteral(r[colIdx], driver)}`,
-                            ),
-                          )
-                        }
-                      />
-                      {/* Row-level formatters. The per-cell entries above are
-                      the common path; this submenu covers the less frequent
-                      "I want the whole row" cases without bloating the top
-                      level. */}
-                      <ContextMenuSub>
-                        <ContextMenuSubTrigger>
-                          <Copy className="mr-2 h-3.5 w-3.5 shrink-0" />
-                          {t("dataGrid.ctxCopyRowAs")}
-                        </ContextMenuSubTrigger>
-                        <ContextMenuSubContent>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              callbacksRef.current.withFullRow(rowValues, (r) =>
-                                callbacksRef.current.copyToClipboard(
-                                  rowToJson(r, resultColumns),
-                                ),
-                              )
-                            }
-                          >
-                            JSON
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              callbacksRef.current.withFullRow(rowValues, (r) =>
-                                callbacksRef.current.copyToClipboard(
-                                  rowToSqlInsert(r, resultColumns, driver, sqlTarget),
-                                ),
-                              )
-                            }
-                          >
-                            SQL INSERT
-                          </ContextMenuItem>
-                          <ContextMenuItem
-                            onSelect={() =>
-                              callbacksRef.current.withFullRow(rowValues, (r) =>
-                                callbacksRef.current.copyToClipboard(
-                                  rowToSqlUpdate(
-                                    r,
-                                    resultColumns,
-                                    driver,
-                                    sqlTarget,
-                                    pkColumnNames,
-                                  ),
-                                ),
-                              )
-                            }
-                          >
-                            SQL UPDATE
-                          </ContextMenuItem>
-                        </ContextMenuSubContent>
-                      </ContextMenuSub>
-                      <ContextMenuLabel>{t("dataGrid.ctxSection.view")}</ContextMenuLabel>
-                      <ContextMenuAction
-                        icon={PanelRight}
-                        label={t("dataGrid.openInSideEditor")}
-                        onSelect={() =>
-                          callbacksRef.current.openSidePanelEditor(
-                            rowValues,
-                            meta,
-                            formatValue(value),
-                          )
-                        }
-                      />
-                      <ViewAsDateAction
-                        value={value}
-                        source={{
-                          relation: tableName,
-                          column: meta.name,
-                          driver,
-                          row: rowLabel(rowValues, pkColumnNames, columnIndexByName),
-                        }}
-                      />
-                      {onAddFilter && (
-                        <>
-                          <ContextMenuLabel>{t("dataGrid.ctxSection.filter")}</ContextMenuLabel>
-                          <ContextMenuAction
-                            icon={Filter}
-                            // Filtering by a value the page never received
-                            // would filter by its stand-in `null`.
-                            disabled={callbacksRef.current.isTrimmedCell(
-                              rowValues,
-                              meta.name,
-                            )}
-                            label={t("dataGrid.ctxFilterBy")}
-                            onSelect={() =>
-                              onAddFilter(
-                                value === null
-                                  ? { column: meta.name, op: "is_null" }
-                                  : {
-                                      column: meta.name,
-                                      op: "eq",
-                                      value,
-                                    },
-                              )
-                            }
-                          />
-                          <ContextMenuAction
-                            icon={FilterX}
-                            disabled={callbacksRef.current.isTrimmedCell(
-                              rowValues,
-                              meta.name,
-                            )}
-                            label={t("dataGrid.ctxFilterExcluding")}
-                            onSelect={() =>
-                              onAddFilter(
-                                value === null
-                                  ? { column: meta.name, op: "is_not_null" }
-                                  : {
-                                      column: meta.name,
-                                      op: "ne",
-                                      value,
-                                    },
-                              )
-                            }
-                          />
-                        </>
-                      )}
-                      {((editable && onCellSave) || onInsertRow || onDuplicateRow) && (
-                        <ContextMenuLabel>{t("dataGrid.ctxSection.edit")}</ContextMenuLabel>
-                      )}
-                      {editable && onCellSave && (
-                        <ContextMenuAction
-                          icon={Eraser}
-                          // A cut cell holds a stand-in `null`, not a NULL.
-                          disabled={
-                            value === null &&
-                            !callbacksRef.current.isTrimmedCell(rowValues, meta.name)
-                          }
-                          locked={columnLock?.(meta.name) ?? null}
-                          label={t("cellEditor.setNull")}
-                          onSelect={() =>
-                            // The rejection is already reported by `DataGrid`'s save seam (which
-                            // notifies and rethrows); swallowing it here only keeps the
-                            // unhandled-rejection warning out of the console.
-                            onCellSave(rowValues, meta.name, null).catch(() => {})
-                          }
-                        />
-                      )}
-                      {onInsertRow && (
-                        <ContextMenuAction
-                          icon={Plus}
-                          label={t("dataGrid.ctxInsertRow")}
-                          onSelect={() => onInsertRow()}
-                        />
-                      )}
-                      {onDuplicateRow && (
-                        <ContextMenuAction
-                          icon={CopyPlus}
-                          label={t("dataGrid.ctxDuplicateRow")}
-                          onSelect={() => onDuplicateRow(rowValues)}
-                        />
-                      )}
-                      {onDeleteRow && (
-                        <>
-                          <ContextMenuSeparator />
-                          <ContextMenuAction
-                            icon={Trash2}
-                            destructive
-                            label={t("dataGrid.ctxDeleteRow")}
-                            onSelect={() => onDeleteRow(rowValues)}
-                          />
-                        </>
-                      )}
-                    </>
-                  );
-                }}
-              </MenuBody>
-            </ContextMenuContent>
-          </ContextMenu>
+          </ContextActionMenu>
         );
       })}
       {/* Matches the header's filler `<th>` — see the comment there. */}

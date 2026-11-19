@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-142 entries: 115 ADRs, 18 gotchas, 9 conventions.
+143 entries: 116 ADRs, 18 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -182,4 +182,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 140 | ADR | [An AI read's time belongs to the MCP call, is asked for by the sidecar, and its timeout says how it ended](adr/adr-140-an-ai-reads-time-is-the-mcp-calls-and-its-timeout-says-how-it-ended.md) | accepted | 2026-11-18 |
 | 141 | ADR | [The bridge carries one connection per call in flight, and the app gates AI reads per connection](adr/adr-141-the-bridge-carries-a-connection-per-call-and-the-app-gates-ai-reads-per-connection.md) | accepted | 2026-11-19 |
 | 142 | ADR | [An AI can list and stop its own reads, by query id, and nothing else](adr/adr-142-an-ai-can-list-and-stop-its-own-reads-by-query-id.md) | accepted | 2026-11-19 |
+| 143 | ADR | [A context menu is described as data and drawn by one renderer, which owns its order, headings, colour and width](adr/adr-143-a-context-menu-is-described-as-data-and-drawn-by-one-renderer.md) | accepted | 2026-11-19 |
 <!-- index:end -->

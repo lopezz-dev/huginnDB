@@ -121,6 +121,19 @@
       "about": "Acerca de HuginnDB"
     }
   },
+  "contextMenu": {
+    "section": {
+      "navigate": "Navegar",
+      "copy": "Copiar",
+      "view": "Ver",
+      "sort": "Ordenar",
+      "filter": "Filtrar",
+      "create": "Crear",
+      "edit": "Editar",
+      "transfer": "Transferir",
+      "session": "Sesión"
+    }
+  },
   "connectionsTree": {
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
     "connect": "Conectar",
@@ -837,15 +850,7 @@
       "in": "En"
     },
     "headerInsertOnly": "Bloqueada por la política de tu organización: solo se rellena al añadir una fila",
-    "ctxViewAsDate": "Ver como fecha",
-    "ctxSection": {
-      "navigate": "Navegar",
-      "copy": "Copiar",
-      "view": "Ver",
-      "filter": "Filtrar",
-      "edit": "Editar",
-      "sort": "Ordenar"
-    }
+    "ctxViewAsDate": "Ver como fecha"
   },
   "tableData": {
     "refresh": "Actualizar",

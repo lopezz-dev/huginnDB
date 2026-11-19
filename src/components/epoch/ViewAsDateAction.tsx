@@ -4,17 +4,41 @@
  * the same way when to show it: `detectEpoch` on the value alone, nothing
  * about the column's name or type (see `lib/epoch/epoch.ts`).
  *
- * Renders nothing when the value is not a plausible timestamp, so callers drop
- * it into their "View" section unconditionally.
+ * `viewAsDateEntry` is the menu entry as data, for a menu described with
+ * `MenuSpec` (ADR #143); `null` when the value is not a plausible timestamp.
+ * `ViewAsDateAction` draws the same entry for a menu still written in JSX
+ * (the document view, until it moves to `ContextActionMenu`).
  */
 
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { CalendarClock } from "lucide-react";
 import { ContextMenuAction } from "@/components/ui/context-menu";
 import { detectEpoch, shortDate } from "@/lib/epoch/epoch";
 import { formatValue } from "@/lib/grid/formatValue";
+import type { MenuAction } from "@/lib/menu/menuSpec";
 import { useEpochPanel, type EpochSource } from "@/stores/session/epoch";
 import type { CellValue } from "@/types";
+
+export function viewAsDateEntry(
+  value: unknown,
+  source: EpochSource,
+  t: TFunction,
+  language: string,
+): MenuAction | null {
+  const detected = detectEpoch(value);
+  if (!detected) return null;
+  return {
+    id: "viewAsDate",
+    section: "view",
+    icon: CalendarClock,
+    label: t("dataGrid.ctxViewAsDate"),
+    // The date itself, so a glance at the menu is often all it takes.
+    detail: shortDate(detected.millis, language),
+    onSelect: () =>
+      useEpochPanel.getState().openFromCell(detected.digits, source, detected.approximate),
+  };
+}
 
 export function ViewAsDateAction({
   value,
@@ -24,17 +48,14 @@ export function ViewAsDateAction({
   source: EpochSource;
 }) {
   const { t, i18n } = useTranslation();
-  const detected = detectEpoch(value);
-  if (!detected) return null;
+  const entry = viewAsDateEntry(value, source, t, i18n.language);
+  if (!entry) return null;
   return (
     <ContextMenuAction
-      icon={CalendarClock}
-      label={t("dataGrid.ctxViewAsDate")}
-      // The date itself, so a glance at the menu is often all it takes.
-      detail={shortDate(detected.millis, i18n.language)}
-      onSelect={() =>
-        useEpochPanel.getState().openFromCell(detected.digits, source, detected.approximate)
-      }
+      icon={entry.icon}
+      label={entry.label}
+      detail={entry.detail}
+      onSelect={entry.onSelect}
     />
   );
 }

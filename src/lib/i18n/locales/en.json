@@ -121,6 +121,19 @@
       "about": "About HuginnDB"
     }
   },
+  "contextMenu": {
+    "section": {
+      "navigate": "Navigate",
+      "copy": "Copy",
+      "view": "View",
+      "sort": "Sort",
+      "filter": "Filter",
+      "create": "Create",
+      "edit": "Edit",
+      "transfer": "Transfer",
+      "session": "Session"
+    }
+  },
   "connectionsTree": {
     "empty": "No saved connections yet. Add one from File → New connection.",
     "connect": "Connect",
@@ -837,15 +850,7 @@
       "in": "In"
     },
     "headerInsertOnly": "Locked by your organization's policy — only filled when adding a row",
-    "ctxViewAsDate": "View as date",
-    "ctxSection": {
-      "navigate": "Navigate",
-      "copy": "Copy",
-      "view": "View",
-      "filter": "Filter",
-      "edit": "Edit",
-      "sort": "Sort"
-    }
+    "ctxViewAsDate": "View as date"
   },
   "tableData": {
     "refresh": "Refresh",
