@@ -101,6 +101,10 @@ pub fn exposure(request: &BridgeRequest) -> Exposure {
         | PulseSessions { .. }
         | PulseIndexUsage { .. } => Exposure::Never,
 
+        // An MCP client's handle on its own reads (ADR #142). The panel stops
+        // its reads by stopping its turn, which drops them.
+        ListReads { .. } | CancelRead { .. } => Exposure::Never,
+
         // Who may log in and what they may do is the most attack-shaped thing
         // HuginnDB can read, and no assisted task needs it. Withheld on
         // purpose, not by omission.

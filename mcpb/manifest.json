@@ -63,6 +63,8 @@
     { "name": "pulse_storage", "description": "The biggest relations, split into data, index and free space." },
     { "name": "pulse_sessions", "description": "Sessions or operations currently open on the server." },
     { "name": "pulse_index_usage", "description": "Index usage across the biggest relations, least-read first." },
+    { "name": "running_queries", "description": "The AI's reads in flight on a connection, queued or running, with their query_id." },
+    { "name": "cancel_query", "description": "Stop one of the AI's reads by its query_id. Never reaches other sessions." },
     { "name": "insert_row", "description": "Insert one row. Needs the 'data' write policy." },
     { "name": "update_cell", "description": "Update one column of the row addressed by its full primary key. Needs 'data'." },
     { "name": "delete_rows", "description": "Delete rows addressed by their full primary keys. Needs 'data'." },

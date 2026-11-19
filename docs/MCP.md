@@ -438,6 +438,8 @@ connector — leaving only the connections you opened yourself.
 | `run_query` | Run a single **read-only** statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Anything that writes is refused here whatever the policy says. |
 | `run_write` *(write)* | Run a single statement that **changes** the database. DML needs `data`, DDL needs `full`. A read is refused here too — it belongs in `run_query`, which needs no write permission. |
 | `run_queries` | Run several **read-only** statements in one call, each as `run_query` would. One that fails is reported in its own slot and the rest still run. Rows share one budget: the connection's [row limit](#row-limit). |
+| `running_queries` | The AI's reads in flight on a connection — from any MCP client and the AI panel — oldest first: `query_id`, `state` (`queued` or `running`), `elapsed_ms` and the start of the SQL. Never other sessions on the server. |
+| `cancel_query` | Stop one of those reads by its `query_id`. Its session is closed and the server told to stop the statement; its own call ends saying it was stopped. Reaches only AI reads on that connection, so it works on read-only connections too. Answers `stopped` or `not_found`. |
 | `run_writes` *(write)* | Apply several row writes (`INSERT`/`UPDATE`/`DELETE`) in **one transaction** — all land or none do. Each write can carry `expect_rows`; `verify` reads run after the commit and come back in the same reply. Requires `data` or `full`. See [Batching](#batching-fewer-calls-fewer-tokens). |
 | `run_script` *(write)* | Run a whole SQL script — a migration, a `.sql` file — on **one pinned session**, in order, so temporary tables and `SET`s carry to the end of the script. SQL Server runs it `GO` batch by `GO` batch, so a `DECLARE`d variable lives for its batch, as in SSMS. One transaction by default. Pass it inline as `sql` or as a local file `path`. Requires `data`; any DDL, temporary tables included, requires `full`. Not MongoDB. See [Scripts](#scripts-temporary-tables-and-migrations). |
 | `browse_table` | Browse one page of rows without writing SQL. |
@@ -695,6 +697,14 @@ The wait counts against the read's time. A read whose time runs out while it
 waits is never sent: it comes back `not_started`, saying how many slots the
 connection has. A read that waited says so with `queued_ms`. Send heavy reads
 one by one.
+
+**A read can be stopped.** `running_queries` lists the AI's reads on a
+connection, queued or running, by `query_id`. `cancel_query` stops one: a
+queued read is never sent, and a running one is stopped where it runs, as
+when its time runs out (the table below). The call that sent it ends with
+`query stopped (not applied): query q-… was stopped by cancel_query`. When a
+read comes back `still_running` or `unknown`, stop it this way instead of
+sending more work on top of it.
 
 Every read is named. `run_query` and each `run_queries` slot carry a
 `query_id`, and when the time runs out the error's `data` (or the slot's

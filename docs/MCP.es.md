@@ -447,6 +447,8 @@ datos a demanda.
 | `run_query` | Ejecuta una única sentencia de **solo lectura** (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Cualquier cosa que escriba se rechaza aquí diga lo que diga el nivel. |
 | `run_write` *(escritura)* | Ejecuta una única sentencia que **cambia** la base de datos. El DML necesita `data`, el DDL `full`. Una lectura también se rechaza aquí — va en `run_query`, que no necesita permiso de escritura. |
 | `run_queries` | Ejecuta varias sentencias **de solo lectura** en una llamada, cada una como lo haría `run_query`. La que falla se informa en su propio hueco y las demás se ejecutan igual. Las filas comparten un único presupuesto: el [límite de filas](#límite-de-filas) de la conexión. |
+| `running_queries` | Las lecturas de IA en curso en una conexión, de cualquier cliente MCP y del panel de IA, de la más antigua a la más reciente: `query_id`, `state` (`queued` o `running`), `elapsed_ms` y el inicio del SQL. Nunca muestra otras sesiones del servidor. |
+| `cancel_query` | Para una de esas lecturas por su `query_id`. Se cierra su sesión y se le pide al servidor que pare la sentencia; su propia llamada termina diciendo que se paró. Solo alcanza lecturas de IA de esa conexión, así que también funciona en conexiones de solo lectura. Responde `stopped` o `not_found`. |
 | `run_writes` *(escritura)* | Aplica varias escrituras de fila (`INSERT`/`UPDATE`/`DELETE`) en **una transacción**: o entran todas o ninguna. Cada escritura puede llevar `expect_rows`; las lecturas de `verify` se ejecutan tras el commit y vuelven en la misma respuesta. Necesita `data` o `full`. Ver [Lotes](#lotes-menos-llamadas-menos-tokens). |
 | `run_script` *(escritura)* | Ejecuta un script SQL entero — una migración, un fichero `.sql` — en **una única sesión fijada**, en orden, así que las tablas temporales y los `SET` duran hasta el final del script. SQL Server lo ejecuta lote `GO` a lote `GO`, así que una variable `DECLARE` vive lo que su lote, como en SSMS. Una transacción por defecto. Va en línea como `sql` o como `path` a un fichero local. Necesita `data`; cualquier DDL, tablas temporales incluidas, necesita `full`. No MongoDB. Ver [Scripts](#scripts-tablas-temporales-y-migraciones). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
@@ -720,6 +722,15 @@ La espera cuenta contra el tiempo de la lectura. Si se le acaba mientras
 espera, no llega a enviarse y vuelve como `not_started`, diciendo cuántos
 huecos tiene la conexión. Una lectura que haya esperado lo indica con
 `queued_ms`. Manda las lecturas pesadas de una en una.
+
+**Una lectura se puede parar.** `running_queries` lista las lecturas de IA de
+una conexión, en cola o en marcha, por su `query_id`. `cancel_query` para una:
+si estaba en cola no llega a enviarse, y si estaba en marcha se para donde
+corre, igual que cuando se le acaba el tiempo (véase la tabla de abajo). La
+llamada que la envió termina con
+`query stopped (not applied): query q-… was stopped by cancel_query`. Cuando
+una lectura vuelve como `still_running` o `unknown`, párala así en vez de
+mandar más trabajo encima.
 
 Cada lectura lleva nombre. `run_query` y cada hueco de `run_queries` traen un
 `query_id`. Cuando se acaba el tiempo, el `data` del error (o el `timeout` del

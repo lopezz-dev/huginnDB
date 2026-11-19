@@ -121,34 +121,58 @@ fn is_zero(n: &u64) -> bool {
     *n == 0
 }
 
-/// Run `sql`, which the caller has classified as a read, behind the read-only
-/// barrier and the ad-hoc row cap (ADR #127), stopped on the server after
-/// `timeout` or as soon as this future is dropped.
+/// One AI read to run: what, where, for how long, and under which name.
+pub(crate) struct AiReadOrder<'a> {
+    /// The pool it runs on — for MongoDB, possibly a per-database view.
+    pub connection_id: &'a str,
+    /// The profile it belongs to: what `running_queries` and `cancel_query`
+    /// name it by (ADR #142).
+    pub profile_id: &'a str,
+    pub sql: &'a str,
+    pub timeout: McpTimeout,
+    /// Its name in its timeout error, `running_queries` and `cancel_query`
+    /// (ADR #140). The caller mints it, so a sidecar that never gets the
+    /// reply still knows it.
+    pub query_id: &'a str,
+    /// Its connection's limit on AI reads at once (ADR #141).
+    pub gate: &'a ReadGate,
+}
+
+/// Run `order.sql`, which the caller has classified as a read, behind the
+/// read-only barrier and the ad-hoc row cap (ADR #127), stopped on the server
+/// after its timeout, as soon as this future is dropped, or when
+/// `cancel_query` asks (ADR #142).
 ///
-/// `query_id` names the read in the error it may end with (ADR #140). The
-/// caller mints it, so a sidecar that never gets the reply still knows it.
-///
-/// It first waits for a slot of `gate`, its connection's limit on AI reads
-/// at once (ADR #141), and the wait counts against `timeout`: a read that
-/// does not get a slot in time is never sent, and says so (`not_started`).
+/// It first waits for a slot of its gate (ADR #141), and the wait counts
+/// against the timeout: a read that does not get a slot in time is never
+/// sent, and says so (`not_started`). While it waits it is listed as
+/// `queued`, and once it has a slot as `running`.
 ///
 /// Refuses outright a statement that is not even shaped like a read, before
-/// it takes a slot.
+/// it is registered or takes a slot.
 pub(crate) async fn execute_read_bounded(
     sink: &dyn LogSink,
     state: &AppState,
-    connection_id: &str,
-    sql: &str,
-    timeout: McpTimeout,
-    query_id: &str,
-    gate: &ReadGate,
+    order: AiReadOrder<'_>,
 ) -> AppResult<BoundedRead> {
+    let AiReadOrder {
+        connection_id,
+        profile_id,
+        sql,
+        timeout,
+        query_id,
+        gate,
+    } = order;
     let pool = state.pool_for(connection_id)?;
     if !matches!(pool, DbPool::Mongo(_)) && !is_read_only(sql) {
         return Err(AppError::InvalidInput(
             "this statement is not a read, and was sent to be run as one".into(),
         ));
     }
+    let (registered, progress) = state
+        .runs
+        .start_ai_read(query_id.to_string(), profile_id, sql)?;
+    let stop = registered.signal();
     let start = Instant::now();
     let ctx = ReadContext {
         query_id,
@@ -159,20 +183,65 @@ pub(crate) async fn execute_read_bounded(
     };
     let deadline = tokio::time::Instant::now() + Duration::from_secs(u64::from(timeout.secs));
 
-    let Ok(_slot) = tokio::time::timeout_at(deadline, gate.enter()).await else {
-        return Err(ctx.timed_out(
-            ReadStopState::NotStarted,
-            &format!(
-                "It waited {} s for one of this connection's {} slots for AI reads, all \
-                 taken by other reads, and was never sent. Send heavy reads one at a time.",
-                start.elapsed().as_secs(),
-                gate.limit()
-            ),
-        ));
+    let work = async {
+        let Ok(_slot) = tokio::time::timeout_at(deadline, gate.enter()).await else {
+            return Err(ctx.timed_out(
+                ReadStopState::NotStarted,
+                &format!(
+                    "It waited {} s for one of this connection's {} slots for AI reads, all \
+                     taken by other reads, and was never sent. Send heavy reads one at a time.",
+                    start.elapsed().as_secs(),
+                    gate.limit()
+                ),
+            ));
+        };
+        progress.running();
+        let queued_ms = start.elapsed().as_millis() as u64;
+        let result = run_read(sink, &pool, &ctx, deadline).await?;
+        Ok(BoundedRead { result, queued_ms })
     };
-    let queued_ms = start.elapsed().as_millis() as u64;
-    let result = run_read(sink, &pool, &ctx, deadline).await?;
-    Ok(BoundedRead { result, queued_ms })
+    tokio::select! {
+        // A read that ended as the stop arrived is reported as ended.
+        biased;
+        ended = work => ended,
+        // Dropping `work` is the stop: the read's session is closed and the
+        // server told to stop it, the same path as a caller that goes away
+        // (ADR #134).
+        () = stop.requested() => Err(stopped_on_request(&pool, query_id, progress.is_running())),
+    }
+}
+
+/// What a read stopped by `cancel_query` says on its own call (ADR #142):
+/// a read changes nothing, so it is `not applied` whatever happened; the
+/// words say what became of it on the server.
+fn stopped_on_request(pool: &DbPool, query_id: &str, was_running: bool) -> AppError {
+    let what = if !was_running {
+        "It was still waiting for a slot and was never sent."
+    } else {
+        match pool {
+            DbPool::Postgres(_) => {
+                "Its session was closed and the server told to stop it (pg_cancel_backend)."
+            }
+            DbPool::Mysql(_) => {
+                "Its session was closed and the server told to stop it (KILL QUERY)."
+            }
+            DbPool::MsSql(_) => {
+                "Its session was closed, and SQL Server stops the request of a client that \
+                 disconnects."
+            }
+            DbPool::Mongo(_) => {
+                "It was abandoned; MongoDB stops the operation itself at its maxTimeMS."
+            }
+            DbPool::Sqlite(_) => {
+                "SQLite cannot stop a running statement: it finishes in the background, on a \
+                 connection taken out of the pool, and changes nothing."
+            }
+        }
+    };
+    AppError::Stopped {
+        outcome: crate::error::StopOutcome::NotApplied,
+        detail: format!("query {query_id} was stopped by cancel_query. {what}"),
+    }
 }
 
 /// [`execute_read_bounded`] once the read has its slot.
@@ -765,6 +834,18 @@ mod tests {
         fn log(&self, _: crate::log_bus::LogEntry) {}
     }
 
+    /// An order for a read named `id` on connection (and profile) `c`.
+    fn order<'a>(sql: &'a str, secs: u32, id: &'a str, gate: &'a ReadGate) -> AiReadOrder<'a> {
+        AiReadOrder {
+            connection_id: "c",
+            profile_id: "c",
+            sql,
+            timeout: seconds(secs),
+            query_id: id,
+            gate,
+        }
+    }
+
     fn state_on(pool: DbPool) -> AppState {
         let state = AppState::new();
         state
@@ -784,7 +865,7 @@ mod tests {
         let held = gate.enter().await;
 
         // The only slot is held past this read's second: it never runs.
-        let err = execute_read_bounded(&Quiet, &state, "c", "SELECT 1", seconds(1), "q-a", &gate)
+        let err = execute_read_bounded(&Quiet, &state, order("SELECT 1", 1, "q-a", &gate))
             .await
             .expect_err("no slot in time");
         let t = timeout_of(&err);
@@ -796,7 +877,7 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(300)).await;
             drop(held);
         });
-        let read = execute_read_bounded(&Quiet, &state, "c", "SELECT 1", seconds(5), "q-b", &gate)
+        let read = execute_read_bounded(&Quiet, &state, order("SELECT 1", 5, "q-b", &gate))
             .await
             .expect("a slot came free in time");
         assert!(read.queued_ms >= 250, "{}", read.queued_ms);
@@ -812,11 +893,102 @@ mod tests {
         let state = state_on(pool("gate_refused").await);
         let gate = state.read_gates.gate("c", 1);
         let _held = gate.enter().await;
-        let err =
-            execute_read_bounded(&Quiet, &state, "c", "DELETE FROM t", seconds(5), "q", &gate)
-                .await
-                .expect_err("not a read");
+        let err = execute_read_bounded(&Quiet, &state, order("DELETE FROM t", 5, "q", &gate))
+            .await
+            .expect_err("not a read");
         assert!(err.to_string().contains("not a read"), "{err}");
+    }
+
+    /// `cancel_query` on a read that is running (ADR #142): it is listed as
+    /// running, stops at once with a "stopped" error instead of waiting out
+    /// its time, leaves the registry, and its session does not go back to the
+    /// pool — the next statement gets a fresh, writable connection.
+    #[tokio::test]
+    async fn a_running_read_stops_on_request_and_leaves_no_session_behind() {
+        let state = std::sync::Arc::new(state_on(pool("cancel_running").await));
+        let mut locker = lock("cancel_running").await;
+        let gate = state.read_gates.gate("c", 2);
+
+        let read = {
+            let state = state.clone();
+            let gate = gate.clone();
+            tokio::spawn(async move {
+                execute_read_bounded(
+                    &Quiet,
+                    &state,
+                    order("SELECT id FROM t", 30, "q-run", &gate),
+                )
+                .await
+            })
+        };
+        // Wait until it is registered and past its gate.
+        for _ in 0..50 {
+            if state.runs.ai_reads("c").first().map(|r| r.state)
+                == Some(crate::runs::AiReadState::Running)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(
+            state.runs.ai_reads("c")[0].state,
+            crate::runs::AiReadState::Running
+        );
+
+        let asked = Instant::now();
+        assert_eq!(
+            state.runs.stop_ai_read("c", "q-run"),
+            crate::runs::CancelOutcome::Stopped
+        );
+        let err = read.await.unwrap().expect_err("stopped");
+        assert!(asked.elapsed() < Duration::from_secs(2), "stopped at once");
+        let message = err.to_string();
+        assert!(message.contains("query stopped (not applied)"), "{message}");
+        assert!(
+            message.contains("q-run was stopped by cancel_query"),
+            "{message}"
+        );
+        assert!(state.runs.ai_reads("c").is_empty(), "it left the registry");
+
+        locker.execute("ROLLBACK").await.unwrap();
+        let DbPool::Sqlite(p) = state.pool_for("c").unwrap() else {
+            unreachable!()
+        };
+        sqlx::query("INSERT INTO t (id) VALUES (2)")
+            .execute(&p)
+            .await
+            .expect("a fresh, writable connection in the stopped one's place");
+    }
+
+    /// A read still waiting for a slot is listed as queued, and stopping it
+    /// says it was never sent.
+    #[tokio::test]
+    async fn a_queued_read_stops_on_request_without_ever_being_sent() {
+        let state = std::sync::Arc::new(state_on(pool("cancel_queued").await));
+        let gate = state.read_gates.gate("c", 1);
+        let held = gate.enter().await;
+
+        let read = {
+            let state = state.clone();
+            let gate = gate.clone();
+            tokio::spawn(async move {
+                execute_read_bounded(&Quiet, &state, order("SELECT 1", 30, "q-wait", &gate)).await
+            })
+        };
+        for _ in 0..50 {
+            if !state.runs.ai_reads("c").is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert_eq!(
+            state.runs.ai_reads("c")[0].state,
+            crate::runs::AiReadState::Queued
+        );
+        state.runs.stop_ai_read("c", "q-wait");
+        let err = read.await.unwrap().expect_err("stopped");
+        assert!(err.to_string().contains("never sent"), "{err}");
+        drop(held);
     }
 
     #[test]

@@ -8,6 +8,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **MCP: `running_queries` and `cancel_query`, so an AI can see and stop its
+  own reads.** A read whose timeout said `still_running` or `unknown` used to
+  go on loading the server, and the model could only wait or send more work
+  on top.
+  - **`running_queries`** lists the AI reads in flight on a connection, from
+    any MCP client and the AI panel: each with its `query_id`, whether it is
+    queued or running, how long it has been going, and the start of its SQL.
+  - **`cancel_query`** stops one by its `query_id`. A queued read is never
+    sent, and a running one is stopped on the server, the same way as when
+    its time runs out. The call that sent it ends saying it was stopped.
+  - It reaches only AI reads on that connection, never a person's query or
+    another session on the server, so it works on read-only connections too.
+  - The bridge protocol moves to 9. See ADR #142.
+
 - **MCP: a limit on AI reads at once, per connection, and parallel calls
   that really run in parallel.** An MCP server used to send its calls to the
   app one at a time, over a single connection. A model's parallel reads
