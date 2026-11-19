@@ -19,6 +19,8 @@ export {
   type Scope,
 } from "./actions";
 
+export { FIXED_KEYS, type FixedKey } from "./fixedKeys";
+
 export {
   type KeyLike,
   chordFromEvent,

@@ -289,6 +289,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Changed
 
+- **The grid's right-click menu shows its shortcut and gives new rows their
+  own section.** *Copy* now shows Ctrl+C, the key that already does the same,
+  and *Insert row* and *Duplicate row* sit under a **Create** heading above
+  **Edit**, which keeps *Set NULL*. It is the first menu drawn by the renderer
+  every context menu will share, which decides their order, headings, colour
+  and width in one place (ADR #143); the explorer's, the tab's and the
+  environment's menus follow. Separately, a locked action's policy reason now
+  wraps inside the menu instead of stretching it to the reason's length — a
+  locked table menu was 363 px wide for a nine-letter label.
+
 - **A cut result says so where it is shown and where it is exported.** A
   query that returns more than 50 000 rows shows only the first 50 000. Its
   result tab now carries an amber mark, a strip over the grid says "First

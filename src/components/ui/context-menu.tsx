@@ -48,10 +48,30 @@ const ContextMenuSubContent = React.forwardRef<
 ));
 ContextMenuSubContent.displayName = ContextMenuPrimitive.SubContent.displayName;
 
+/**
+ * A context menu's width class (ADR #143). The value is a *minimum*: a menu
+ * grows to fit its longest label and shortcut on one line, up to the cap, so
+ * the tier only keeps menus of one kind from each being as wide as their own
+ * words. `sm` is a handful of short actions, `md` a menu with sections and
+ * shortcuts, `lg` one whose labels name things (a column, a count).
+ *
+ * Literal strings, not a template: Tailwind only generates classes it can
+ * read in the source (see `styles.ts` on `fieldFocus`).
+ */
+const CONTEXT_MENU_WIDTH = {
+  sm: "min-w-[10rem]",
+  md: "min-w-[14rem]",
+  lg: "min-w-[18rem]",
+} as const;
+
+export type ContextMenuWidth = keyof typeof CONTEXT_MENU_WIDTH;
+
 const ContextMenuContent = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Content> & {
+    width?: ContextMenuWidth;
+  }
+>(({ className, width = "sm", ...props }, ref) => (
   <ContextMenuPrimitive.Portal>
     <ContextMenuPrimitive.Content
       ref={ref}
@@ -59,7 +79,10 @@ const ContextMenuContent = React.forwardRef<
         // Same capped-height + scroll treatment as `DropdownMenuContent` (see
         // the note there): a long menu must scroll rather than be clipped.
         MENU_PANEL,
-        "min-w-[10rem]",
+        CONTEXT_MENU_WIDTH[width],
+        // The cap. Past it a label truncates rather than the menu crossing
+        // half the window.
+        "max-w-[28rem]",
         className,
       )}
       {...props}
@@ -141,8 +164,14 @@ const ContextMenuAction = React.forwardRef<
       {locked ? (
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate">{label}</span>
-          <span className="flex items-center gap-1 text-3xs leading-tight text-muted-foreground/80">
-            <Lock aria-hidden className="h-2.5 w-2.5 shrink-0" />
+          {/* `contain: inline-size` takes the reason out of the menu's
+              width: it wraps inside whatever the labels make the menu,
+              instead of stretching the menu to its own length on one line
+              (a 363px menu for a 9-character label, before ADR #143). The
+              `min-w` keeps it from wrapping into a column of single words
+              in a narrow menu. */}
+          <span className="flex min-w-[12rem] items-start gap-1 text-3xs leading-tight text-muted-foreground/80 [contain:inline-size]">
+            <Lock aria-hidden className="mt-px h-2.5 w-2.5 shrink-0" />
             <span>{locked}</span>
           </span>
         </span>

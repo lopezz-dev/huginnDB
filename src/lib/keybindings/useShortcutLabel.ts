@@ -12,7 +12,11 @@ import type { ActionId } from "./actions";
 import { formatForDisplay } from "./chord";
 import { getBinding } from "./resolve";
 
-export function useShortcutLabel(id: ActionId): string | undefined {
-  const binding = usePreferences((s) => getBinding(selectKeybindings(s), id));
+export function useShortcutLabel(id: ActionId | undefined): string | undefined {
+  // `undefined` lets a list of items call this unconditionally (the rules of
+  // hooks) when only some of them name an action — `ContextActionMenu`.
+  const binding = usePreferences((s) =>
+    id === undefined ? undefined : getBinding(selectKeybindings(s), id),
+  );
   return binding ? formatForDisplay(binding) : undefined;
 }

@@ -319,6 +319,18 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Cambiado
 
+- **El menú contextual de la rejilla muestra su atajo y da a las filas nuevas
+  su propia sección.** *Copiar* muestra ahora Ctrl+C, la tecla que ya hace lo
+  mismo, e *Insertar fila* y *Duplicar fila* pasan a un encabezado **Crear**
+  por encima de **Editar**, que se queda con *Poner a NULL*. Es el primer menú
+  que dibuja el renderizador que compartirán todos los menús contextuales, y
+  que decide en un solo sitio su orden, sus encabezados, su color y su ancho
+  (ADR #143); los menús del explorador, de las pestañas y de los entornos
+  vendrán después. Aparte, el motivo de la política bajo una acción bloqueada
+  se parte en líneas dentro del menú en vez de estirarlo hasta su longitud:
+  el menú de una tabla bloqueada medía 363 px para una etiqueta de nueve
+  letras.
+
 - **Un resultado cortado lo dice donde se muestra y donde se exporta.** Una
   consulta que devuelve más de 50 000 filas muestra solo las 50 000
   primeras. Su pestaña de resultado lleva ahora una marca ámbar, una franja

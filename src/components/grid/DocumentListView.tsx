@@ -1665,7 +1665,7 @@ function FieldMenuItems({
       <ContextMenuHeader title={field} tags={[f.type, f.trimmed, !f.trimmed && isNull && "NULL"]} />
       <ContextMenuSeparator />
       {/* Same order as the table grid's menu: what touches nothing first. */}
-      <ContextMenuLabel>{t("dataGrid.ctxSection.copy")}</ContextMenuLabel>
+      <ContextMenuLabel>{t("contextMenu.section.copy")}</ContextMenuLabel>
       <ContextMenuAction
         icon={Copy}
         label={t("dataGrid.ctxCopy")}
@@ -1675,13 +1675,13 @@ function FieldMenuItems({
           connection, which is the one this document came from. */}
       {!f.trimmed && detectEpoch(f.value) && (
         <>
-          <ContextMenuLabel>{t("dataGrid.ctxSection.view")}</ContextMenuLabel>
+          <ContextMenuLabel>{t("contextMenu.section.view")}</ContextMenuLabel>
           <ViewAsDateAction value={f.value} source={{ column: field }} />
         </>
       )}
       {sortable && (
         <>
-          <ContextMenuLabel>{t("dataGrid.ctxSection.sort")}</ContextMenuLabel>
+          <ContextMenuLabel>{t("contextMenu.section.sort")}</ContextMenuLabel>
           <ContextMenuAction
             icon={ArrowUp}
             label={t("dataGrid.sort.byAsc", { field })}
@@ -1705,7 +1705,7 @@ function FieldMenuItems({
       )}
       {filterable && (
         <>
-          <ContextMenuLabel>{t("dataGrid.ctxSection.filter")}</ContextMenuLabel>
+          <ContextMenuLabel>{t("contextMenu.section.filter")}</ContextMenuLabel>
           <ContextMenuAction
             icon={Filter}
             label={t("dataGrid.ctxFilterBy")}
