@@ -8,6 +8,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **MCP: `pulse_explain` answers on SQL Server, without running the
+  statement.** It used to say "not supported", so an AI had no way to tell
+  whether a read against SQL Server would take a second or ten minutes until
+  it ran it. Against a NAV database, a search over every object's decompressed
+  code took up to 101 s, and some never came back.
+  - **It returns SQL Server's estimated plan,** read with `SHOWPLAN_XML` on a
+    session that is closed afterwards.
+  - **The plan comes back summarised, not as XML:** the statement's cost, the
+    operators as a tree with their estimated rows, the three biggest scans
+    with rows read and table size, the indexes the optimiser wished it had,
+    and its warnings.
+  - It needs the `SHOWPLAN` permission, and says so when it is missing.
+  - The tool's description now tells the model to call it before a read that
+    may be heavy, and that estimated costs leave out per-row work such as
+    `DECOMPRESS`.
+
 - **Import a CSV, JSON or Excel file into a table.** A SQL table's
   *Insert* menu (and the table's right-click menu in the schema tree) now
   offers *Import from file (CSV, JSON, Excel)…*. Each table column takes the

@@ -133,9 +133,16 @@ pub async fn pulse_explain_inner(
         )),
         DbPool::Mysql(p) => crate::db::mysql::pulse::explain(&p, sample).await,
         DbPool::Mongo(conn) => crate::db::mongo::pulse::explain(&conn, sample, mode).await,
+        // The estimated plan only: SQL Server's actual plan (`STATISTICS XML`)
+        // runs the statement, which a read through `run_query` already does.
+        DbPool::MsSql(_) if mode == ExplainMode::Execution => Err(AppError::InvalidInput(
+            "pulse_explain's execution mode is MongoDB-only; SQL Server answers with its \
+             estimated plan"
+                .into(),
+        )),
+        DbPool::MsSql(p) => crate::db::mssql::explain::estimated_plan(&p, sample).await,
         DbPool::Postgres(_) => Err(unsupported("PostgreSQL")),
         DbPool::Sqlite(_) => Err(unsupported("SQLite")),
-        DbPool::MsSql(_) => Err(unsupported("SQL Server")),
     }
 }
 

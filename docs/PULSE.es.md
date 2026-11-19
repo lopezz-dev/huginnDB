@@ -205,3 +205,7 @@ solo lectura: un asistente puede preguntar "por qué va lento este servidor"
 o "qué le pasó la semana pasada" y recibir cifras reales, pero nunca puede
 cambiar nada a través de ellas. Consulta la propia guía del conector para
 saber cómo conectar un cliente en primer lugar.
+
+Una de ellas llega más lejos que el panel: `pulse_explain` también responde
+en SQL Server, con el plan estimado resumido (véase [MCP](MCP.md)), aunque
+Pulse todavía no monitoriza SQL Server.
