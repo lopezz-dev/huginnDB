@@ -295,6 +295,27 @@ pub const DEFAULT_MCP_TIMEOUT_SECS: u32 = 300;
 /// `profiles.json` would be asking for a session nobody is watching.
 pub const MAX_MCP_TIMEOUT_SECS: u32 = 86_400;
 
+/// How many AI reads may run at once against one connection, when it does not
+/// say otherwise (ADR #141). Two: enough for a model's cheap lookups to pass a
+/// slow read, few enough that a burst of heavy reads cannot pile onto a
+/// production server. The rest wait their turn, and the wait counts against
+/// their time.
+pub const DEFAULT_MCP_CONCURRENT_READS: u32 = 2;
+
+/// Most a connection may allow. A desktop client against one server; past it
+/// the limit would only be protecting the bridge, which has its own.
+pub const MAX_MCP_CONCURRENT_READS: u32 = 16;
+
+/// How many AI reads `profile` lets run at once:
+/// [`ConnectionProfile::mcp_concurrent_reads`], or
+/// [`DEFAULT_MCP_CONCURRENT_READS`], clamped to `1..=`[`MAX_MCP_CONCURRENT_READS`].
+pub fn mcp_concurrent_reads(profile: Option<&ConnectionProfile>) -> u32 {
+    profile
+        .and_then(|p| p.mcp_concurrent_reads)
+        .unwrap_or(DEFAULT_MCP_CONCURRENT_READS)
+        .clamp(1, MAX_MCP_CONCURRENT_READS)
+}
+
 /// The timeout in force for one long-running MCP call, and the two numbers it
 /// was decided from — all three go into the audit log and the error a timeout
 /// returns, so whoever reads either knows which knob to turn.
@@ -568,6 +589,17 @@ pub struct ConnectionProfile {
     /// Resolved only by [`mcp_timeout`].
     #[serde(default)]
     pub mcp_timeout_secs: Option<u32>,
+    /// How many AI reads (MCP `run_query` / `run_queries`, the AI panel's) may
+    /// run at once against this connection. `None` means
+    /// [`DEFAULT_MCP_CONCURRENT_READS`]. The rest wait, and the wait counts
+    /// against their time (ADR #141).
+    ///
+    /// **Strictly local**, like `mcp_timeout_secs`: how hard this machine's AI
+    /// clients may load a server is this machine's decision, so `merge_into`
+    /// preserves it across a shared-origin sync. Resolved only by
+    /// [`mcp_concurrent_reads`].
+    #[serde(default)]
+    pub mcp_concurrent_reads: Option<u32>,
     /// Whether the in-app AI panel may reach this connection at all.
     ///
     /// Opt-in, off by default, and strictly local — the same three properties
@@ -1576,6 +1608,10 @@ pub struct AppState {
     /// A person's query runs in flight, by the id the query tab gave each one,
     /// and the means of stopping it (`cancel_query`, ADR #137).
     pub runs: Arc<crate::runs::RunRegistry>,
+    /// How many AI reads may run at once per connection, and the queue for
+    /// the rest (ADR #141). Here, in the app, because it is the one place that
+    /// sees every MCP client and the AI panel at once.
+    pub read_gates: Arc<crate::commands::query::ReadGates>,
     /// This machine's managed policy (`crate::policy`). Starts unmanaged in
     /// every `AppState`; the desktop app and the MCP sidecar call
     /// `policy::install` on it at startup, so a test never inherits the policy
@@ -1698,6 +1734,7 @@ impl AppState {
             ai_probe: Arc::new(RwLock::new(None)),
             ai_turns: Arc::new(RwLock::new(HashMap::new())),
             runs: Arc::new(crate::runs::RunRegistry::default()),
+            read_gates: Arc::default(),
             policy: crate::policy::unmanaged(),
             open_locks: parking_lot::Mutex::new(HashMap::new()),
         }

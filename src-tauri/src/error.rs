@@ -6,7 +6,7 @@
 //! directly) keeps Rust call sites idiomatic and allows future structured
 //! error reporting without changing the wire format.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// The error type every Tauri command returns. Each variant maps to one
@@ -192,8 +192,14 @@ pub enum AppError {
     /// Only constructed by the MCP sidecar, hence the allowance in builds
     /// without the `mcp` feature.
     #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
-    #[error("{0}")]
-    Bridged(String),
+    ///
+    /// `detail` is the app's [`AppError::detail`], carried through so the two
+    /// paths also hand the MCP client the same structured `data`.
+    #[error("{message}")]
+    Bridged {
+        message: String,
+        detail: Option<serde_json::Value>,
+    },
 
     /// A person stopped the run this statement belonged to (`cancel_query`,
     /// ADR #137), and the statement was stopped where it ran.
@@ -210,6 +216,119 @@ pub enum AppError {
         outcome: StopOutcome,
         detail: String,
     },
+
+    /// An AI's read ran out of time (ADR #134, amended by ADR #140).
+    ///
+    /// Its own variant rather than a sentence in [`Self::InvalidInput`]
+    /// because the model needs more than the sentence: which read it was (to
+    /// match it against `running_queries` or a later `cancel_query`), how long
+    /// it ran against which limit, and above all whether it is **still running
+    /// on the server**. Those travel as [`Self::detail`] — through the bridge
+    /// as `BridgeResponse::err_detail`, and to the MCP client as the error's
+    /// `data` — while the message stays the sentence it always was.
+    #[error("{}", .0.message())]
+    ReadTimedOut(Box<ReadTimeout>),
+}
+
+/// What happened to a read that ran out of time, as far as the app can know.
+///
+/// Decided by the executor of each driver, the one place that knows whether
+/// its stop was answered (`commands::query::bounded`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadStopState {
+    /// It never reached the server: no session came free (or, for
+    /// `run_queries`, the call's budget was spent) before its time ran out.
+    NotStarted,
+    /// The server stopped it: the cancel was answered, MongoDB's `maxTimeMS`
+    /// fired, or SQL Server's session was closed — which aborts its request
+    /// (gotcha #132).
+    Cancelled,
+    /// It goes on running. SQLite cannot interrupt a statement waiting on a
+    /// lock; it finishes on a connection taken out of the pool.
+    StillRunning,
+    /// The stop was sent and not answered, or failed. The server may run the
+    /// statement until it next writes to the client.
+    Unknown,
+}
+
+/// The structured half of [`AppError::ReadTimedOut`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadTimeout {
+    /// The read's id, as `run_query` / `running_queries` report it.
+    pub query_id: String,
+    pub connection_id: String,
+    /// The first [`Self::SQL_HEAD_CHARS`] characters of the statement.
+    pub sql_head: String,
+    pub elapsed_ms: u64,
+    pub limit_secs: u32,
+    pub state: ReadStopState,
+    /// What happened, in words: which stop was sent and what came of it.
+    pub verdict: String,
+}
+
+impl ReadTimeout {
+    /// How much of the statement the error repeats: enough to recognise it
+    /// among a model's parallel calls, not enough to fill its context.
+    pub const SQL_HEAD_CHARS: usize = 200;
+
+    /// The start of `sql`, whitespace collapsed, cut at a character boundary.
+    pub fn head_of(sql: &str) -> String {
+        let collapsed = sql.split_whitespace().collect::<Vec<_>>().join(" ");
+        match collapsed.char_indices().nth(Self::SQL_HEAD_CHARS) {
+            Some((cut, _)) => format!("{}…", &collapsed[..cut]),
+            None => collapsed,
+        }
+    }
+
+    /// The sentence the error has always been, now led by what state the
+    /// read was left in.
+    fn message(&self) -> String {
+        let what = match self.state {
+            ReadStopState::NotStarted => "the read never started",
+            ReadStopState::Cancelled => "the read was cancelled",
+            ReadStopState::StillRunning => "the read is still running",
+            ReadStopState::Unknown => "the read may still be running",
+        };
+        format!(
+            "{what}: it ran out of time after {} s (query {}). {} {READ_TIMEOUT_HINT}",
+            self.limit_secs, self.query_id, self.verdict
+        )
+    }
+}
+
+/// The end of every [`AppError::ReadTimedOut`] message.
+///
+/// Not `script::TIMEOUT_HINT`: a read takes no `timeout_seconds`. And the
+/// advice matters more than the knob — a read that runs this long usually has
+/// a bad plan, and running it again only loads the server a second time.
+pub const READ_TIMEOUT_HINT: &str = "Do not run it again as it is. If its state is \
+     still_running or unknown, check running_queries and stop it with cancel_query. Then \
+     look at its plan (EXPLAIN, or pulse_explain) and make it cheaper — a narrower filter, an index, a \
+     different join. A read's time limit is set by the MCP server (--read-timeout-secs) \
+     under this connection's MCP timeout, which only the user can change \
+     (HuginnDB → Settings → MCP).";
+
+impl AppError {
+    /// The structured half of an error that has one, for a caller that can
+    /// carry more than a sentence (the bridge's `err_detail`, an MCP error's
+    /// `data`). `None` for every error that is only its message.
+    pub fn detail(&self) -> Option<serde_json::Value> {
+        match self {
+            AppError::ReadTimedOut(t) => serde_json::to_value(t).ok(),
+            AppError::Bridged { detail, .. } => detail.clone(),
+            _ => None,
+        }
+    }
+
+    /// An error the app already rendered, with no structured half.
+    #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
+    pub fn bridged(message: impl Into<String>) -> Self {
+        AppError::Bridged {
+            message: message.into(),
+            detail: None,
+        }
+    }
 }
 
 /// What a stopped statement left behind, as far as the app can know it.
@@ -545,7 +664,7 @@ mod tests {
     #[test]
     fn a_bridged_error_renders_the_remote_message_unchanged() {
         assert_eq!(
-            AppError::Bridged("invalid input: X".into()).to_string(),
+            AppError::bridged("invalid input: X").to_string(),
             "invalid input: X"
         );
         for original in [
@@ -555,7 +674,7 @@ mod tests {
             AppError::MissingPassword("abc::huginn".into()),
         ] {
             let wire = original.to_string();
-            assert_eq!(AppError::Bridged(wire.clone()).to_string(), wire);
+            assert_eq!(AppError::bridged(wire.clone()).to_string(), wire);
         }
     }
 }

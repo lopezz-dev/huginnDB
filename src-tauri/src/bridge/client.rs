@@ -12,7 +12,6 @@ use std::io;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
-use tokio::sync::Mutex;
 use tokio::time::{timeout, Duration};
 
 /// How long to wait for the app to answer one call, unless the call carries a
@@ -29,6 +28,13 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(300);
 /// the cancel to be acknowledged and the reply to cross.
 const REPLY_SLACK: Duration = Duration::from_secs(120);
 
+/// What a read is given on top of the time it asked for: the app's stop takes
+/// at most `bounded::KILL_WAIT` (10 s) past the deadline, and a read has no
+/// rollback to wait for. Short on purpose — the sidecar's read budget is set
+/// to finish before its MCP client gives up, and a long slack here would
+/// spend that margin waiting on a wedged app (ADR #140).
+const READ_REPLY_SLACK: Duration = Duration::from_secs(30);
+
 /// How long to wait for the app's answer to `request`.
 ///
 /// For a `run_script` / `run_writes` the app enforces the timeout and answers
@@ -39,10 +45,11 @@ const REPLY_SLACK: Duration = Duration::from_secs(120);
 /// with no idea whether the script committed — takes a wedged app rather than
 /// a slow rollback.
 ///
-/// A `run_query` is bounded by the app too: by the connection's MCP timeout,
-/// never more than [`crate::state::DEFAULT_MCP_TIMEOUT_SECS`], after which the
-/// app stops the statement on the server and says how (ADR #134). The wait is
-/// that plus [`REPLY_SLACK`], so the app's answer arrives first rather than
+/// A `run_query` is bounded by the app too: by what it asked for under the
+/// connection's MCP timeout, never more than
+/// [`crate::state::DEFAULT_MCP_TIMEOUT_SECS`], after which the app stops the
+/// statement on the server and says how (ADRs #134, #140). The wait is that
+/// plus [`READ_REPLY_SLACK`], so the app's answer arrives first rather than
 /// this side's "did not answer". Giving up still stops the read: the app sees
 /// the connection close and drops it.
 pub(crate) fn reply_wait(request: &BridgeRequest) -> Duration {
@@ -54,8 +61,11 @@ pub(crate) fn reply_wait(request: &BridgeRequest) -> Duration {
                 .clamp(1, crate::state::MAX_MCP_TIMEOUT_SECS);
             CALL_TIMEOUT.max(Duration::from_secs(2 * u64::from(secs)) + REPLY_SLACK)
         }
-        BridgeRequest::RunStatement { .. } => {
-            Duration::from_secs(u64::from(crate::state::DEFAULT_MCP_TIMEOUT_SECS)) + REPLY_SLACK
+        BridgeRequest::RunStatement { timeout_secs, .. } => {
+            let secs = timeout_secs
+                .unwrap_or(crate::state::DEFAULT_MCP_TIMEOUT_SECS)
+                .clamp(1, crate::state::DEFAULT_MCP_TIMEOUT_SECS);
+            Duration::from_secs(u64::from(secs)) + READ_REPLY_SLACK
         }
         _ => CALL_TIMEOUT,
     }
@@ -72,26 +82,95 @@ pub enum BridgeError {
     /// The app could not be reached, or the connection broke. **Only ever
     /// returned before the request was written** — see [`BridgeClient::call`].
     Unreachable(String),
-    /// The app answered, and the answer was an error. This is the database's
-    /// or the policy's verdict and must be reported as-is.
-    Remote(String),
+    /// The app answered, and the answer was an error — or the call was sent
+    /// and no answer came. This is the database's or the policy's verdict and
+    /// must be reported as-is. `detail` is the answer's structured half
+    /// ([`crate::error::AppError::detail`]), when it had one.
+    Remote {
+        message: String,
+        detail: Option<serde_json::Value>,
+    },
 }
 
-/// A live connection to the desktop app.
+impl BridgeError {
+    /// A [`Self::Remote`] that is only its message.
+    fn remote(message: impl Into<String>) -> Self {
+        BridgeError::Remote {
+            message: message.into(),
+            detail: None,
+        }
+    }
+}
+
+/// The sidecar's connections to the desktop app: one per call in flight.
 ///
-/// The stream is behind a `Mutex` rather than being cloned per call: the
-/// protocol is strictly one request, one response, in order, on one connection.
-/// Two concurrent calls would interleave their lines and each would read the
-/// other's answer. MCP dispatches tools serially so contention is nil, but the
-/// lock is what makes that a guarantee rather than an assumption.
+/// The protocol is strictly one request, one reply, in order, on one
+/// connection — two calls on one socket would each read the other's answer.
+/// It used to be one connection behind a mutex, on the belief that MCP
+/// dispatches tools one at a time. It does not: rmcp runs each call in a task
+/// of its own, so a model's parallel calls queued behind that mutex for as
+/// long as the slowest took, a read against one database behind a read
+/// against another, and a `cancel_query` behind the very read it was meant to
+/// stop (ADR #141).
+///
+/// So each call leases a connection of its own — an idle one, or a new
+/// handshake — and gives it back once its reply has been read in full. How
+/// many reads may run against one database is not decided here: the app
+/// gates them per connection (`commands::query::ReadGates`), the one place
+/// that sees every client. This side only bounds how many sockets it holds
+/// ([`MAX_CALLS_IN_FLIGHT`]).
 pub struct BridgeClient {
-    stream: Mutex<Connection>,
+    /// Connections free for the next call, each with its handshake done.
+    idle: parking_lot::Mutex<Vec<Connection>>,
+    /// One permit per call in flight.
+    slots: tokio::sync::Semaphore,
+    /// How a new connection finds the app.
+    dial: Dial,
     /// Connections this client is allowed to reach, re-sent on reconnect.
     allowed: Vec<String>,
     /// Whether the app should authorize against `mcp_exposed` rather than
     /// against `allowed`. Re-sent on reconnect for the same reason `allowed`
     /// is: a reconnect is a fresh handshake and the app remembers nothing.
     defer_exposure: bool,
+}
+
+/// How many calls one sidecar may have in flight to the app at once — and so
+/// how many loopback sockets it may hold. A call past it waits for one to
+/// finish. Well above what the app lets run against one database
+/// (`DEFAULT_MCP_CONCURRENT_READS`), so it is that gate, not this one, that a
+/// model's parallel reads meet.
+pub(crate) const MAX_CALLS_IN_FLIGHT: usize = 8;
+
+/// Where a new connection is dialled.
+enum Dial {
+    /// The discovery file, read afresh each time: the app may have restarted
+    /// on another port with another token.
+    Discovery,
+    /// A fixed port and token — a test's fake app, which must never be
+    /// mistaken for a developer's running one.
+    #[cfg(test)]
+    Fixed { port: u16, token: String },
+}
+
+/// A connection leased by one call, with its slot. Given back to the idle
+/// list only by [`Self::release`] — after a reply was read in full. Dropped
+/// any other way (a reply that never came, a call the MCP client cancelled),
+/// the connection is closed, which is how the app learns to stop a read
+/// (ADR #134).
+struct Lease<'a> {
+    client: &'a BridgeClient,
+    connection: Option<Connection>,
+    _slot: tokio::sync::SemaphorePermit<'a>,
+}
+
+impl Lease<'_> {
+    fn release(mut self) {
+        if let Some(connection) = self.connection.take() {
+            if connection.writer.is_some() {
+                self.client.idle.lock().push(connection);
+            }
+        }
+    }
 }
 
 struct Connection {
@@ -160,11 +239,44 @@ impl BridgeClient {
         .await
         .ok()?
         .ok()?;
-        Some(Self {
-            stream: Mutex::new(connection),
+        Some(Self::with(
+            connection,
+            Dial::Discovery,
             allowed,
             defer_exposure,
-        })
+            MAX_CALLS_IN_FLIGHT,
+        ))
+    }
+
+    fn with(
+        first: Connection,
+        dial: Dial,
+        allowed: Vec<String>,
+        defer_exposure: bool,
+        slots: usize,
+    ) -> Self {
+        Self {
+            idle: parking_lot::Mutex::new(vec![first]),
+            slots: tokio::sync::Semaphore::new(slots),
+            dial,
+            allowed,
+            defer_exposure,
+        }
+    }
+
+    /// A slot, and an idle connection if there is one. Waits while
+    /// [`MAX_CALLS_IN_FLIGHT`] calls are out.
+    async fn lease(&self) -> Lease<'_> {
+        let slot = self
+            .slots
+            .acquire()
+            .await
+            .expect("the bridge's semaphore is never closed");
+        Lease {
+            client: self,
+            connection: self.idle.lock().pop(),
+            _slot: slot,
+        }
     }
 
     async fn handshake(
@@ -225,14 +337,52 @@ impl BridgeClient {
         self.call_within(request, reply_wait(request)).await
     }
 
+    /// [`Self::call`] for a request that is only built once it is this
+    /// call's turn to send: `build` runs after a slot is free, and may decline
+    /// (`Err`), in which case nothing is sent.
+    ///
+    /// For a read with a time budget (ADR #140). Past [`MAX_CALLS_IN_FLIGHT`]
+    /// calls wait here; built before the wait, a read would ask the app for
+    /// time it had already spent waiting, and be sent after its client had
+    /// given up.
+    ///
+    /// The outer `Err` is `build`'s refusal, which is not a bridge failure: it
+    /// must not trigger the caller's local fallback either.
+    pub async fn call_on_turn<E>(
+        &self,
+        build: impl FnOnce() -> Result<BridgeRequest, E>,
+    ) -> Result<Result<Value, BridgeError>, E> {
+        let lease = self.lease().await;
+        let request = match build() {
+            Ok(request) => request,
+            Err(declined) => {
+                // Nothing was written: the connection is as clean as it came.
+                lease.release();
+                return Err(declined);
+            }
+        };
+        let wait = reply_wait(&request);
+        Ok(self.send_on(lease, &request, wait).await)
+    }
+
     /// [`Self::call`], waiting `wait` for the reply.
     async fn call_within(
         &self,
         request: &BridgeRequest,
         wait: Duration,
     ) -> Result<Value, BridgeError> {
-        let mut guard = self.stream.lock().await;
+        let lease = self.lease().await;
+        self.send_on(lease, request, wait).await
+    }
 
+    /// Send `request` on `lease`'s connection — a fresh one when it has none
+    /// or its idle one went stale — and await its reply.
+    async fn send_on(
+        &self,
+        mut lease: Lease<'_>,
+        request: &BridgeRequest,
+        wait: Duration,
+    ) -> Result<Value, BridgeError> {
         let payload = serde_json::to_vec(request)
             .map_err(|e| BridgeError::Unreachable(format!("could not encode request: {e}")))?;
 
@@ -249,9 +399,15 @@ impl BridgeClient {
         // a desync. Any of those means the connection is unusable, and since
         // nothing has been sent yet, replacing it is as safe as the reconnect
         // below.
-        if connection_is_stale(&mut guard).await {
+        // A leased connection with nothing idle to reuse is dialled here too,
+        // and is just as unsent when that fails.
+        let stale = match lease.connection.as_mut() {
+            Some(connection) => connection_is_stale(connection).await,
+            None => true,
+        };
+        if stale {
             match self.reconnect().await {
-                Some(fresh) => *guard = fresh,
+                Some(fresh) => lease.connection = Some(fresh),
                 None => {
                     return Err(BridgeError::Unreachable(
                         "the HuginnDB app closed the bridge connection (request not sent)".into(),
@@ -259,6 +415,10 @@ impl BridgeClient {
                 }
             }
         }
+        let connection = lease
+            .connection
+            .as_mut()
+            .expect("a lease past the stale check holds a connection");
 
         // One reconnect attempt, but only for a request we have not sent yet:
         // an MCP client keeps a sidecar alive for days, across app restarts, so
@@ -271,7 +431,7 @@ impl BridgeClient {
         // provably did not execute, and re-sending cannot double-apply. If the
         // framing ever stops being newline-delimited, this reasoning goes with
         // it.
-        let sent = match writer_of(&mut guard) {
+        let sent = match writer_of(connection) {
             Ok(writer) => write_payload(writer, &payload).await,
             Err(e) => Err(e),
         };
@@ -288,8 +448,8 @@ impl BridgeClient {
             };
             match self.reconnect().await {
                 Some(fresh) => {
-                    *guard = fresh;
-                    let writer = writer_of(&mut guard).expect("a fresh connection has its writer");
+                    *connection = fresh;
+                    let writer = writer_of(connection).expect("a fresh connection has its writer");
                     if let Err(e) = write_payload(writer, &payload).await {
                         return Err(unsent(e));
                     }
@@ -300,55 +460,63 @@ impl BridgeClient {
 
         // From here on the request is in flight. Every failure is `Remote`.
         let awaiting = AwaitingReply {
-            connection: &mut guard,
+            connection,
             answered: false,
         };
         let line = match timeout(wait, awaiting.connection.reader.next_line()).await {
             Err(_) => {
                 // The app is still working on it, and will write its reply to
-                // this connection when it is done. Left open, the next call
-                // would be queued behind this one and read *that* reply as
-                // its own — the result of a script for a SELECT, or a
-                // success for a re-run that has not happened yet. `awaiting`
-                // drops the write half on the way out, which makes the next
-                // call reconnect instead, and tells the app to stop a read.
-                return Err(BridgeError::Remote(format!(
+                // this connection when it is done. Reused, the connection
+                // would hand *that* reply to the next call as its own — the
+                // result of a script for a SELECT, or a success for a re-run
+                // that has not happened yet. `awaiting` drops the write half
+                // on the way out, so the lease closes it instead of giving it
+                // back, and the app stops a read.
+                return Err(BridgeError::remote(format!(
                     "the HuginnDB app did not answer within {} s; whether this call \
                      completed is unknown — check before running it again",
                     wait.as_secs()
                 )));
             }
-            Ok(Err(e)) => return Err(BridgeError::Remote(e.to_string())),
+            Ok(Err(e)) => return Err(BridgeError::remote(e.to_string())),
             Ok(Ok(None)) => {
-                return Err(BridgeError::Remote(
-                    "the HuginnDB app closed the connection before answering".into(),
+                return Err(BridgeError::remote(
+                    "the HuginnDB app closed the connection before answering",
                 ))
             }
             Ok(Ok(Some(line))) => line,
         };
         awaiting.answered();
+        // Read in full: the connection is clean for the next call, whatever
+        // the reply says.
+        lease.release();
 
         let response: BridgeResponse = serde_json::from_str(&line)
-            .map_err(|e| BridgeError::Remote(format!("malformed reply: {e}")))?;
+            .map_err(|e| BridgeError::remote(format!("malformed reply: {e}")))?;
         match (response.ok, response.err) {
             (Some(wrapper), _) => Ok(wrapper.value),
-            (None, Some(err)) => Err(BridgeError::Remote(err)),
-            (None, None) => Err(BridgeError::Remote("empty reply".into())),
+            (None, Some(message)) => Err(BridgeError::Remote {
+                message,
+                detail: response.err_detail,
+            }),
+            (None, None) => Err(BridgeError::remote("empty reply")),
         }
     }
 
     /// Re-read the discovery file and dial again — the app may have restarted
     /// on a different port with a different token since we attached.
     async fn reconnect(&self) -> Option<Connection> {
-        let discovery = read_discovery()?;
+        let (token, port) = match &self.dial {
+            Dial::Discovery => {
+                let discovery = read_discovery()?;
+                (discovery.token, discovery.port)
+            }
+            #[cfg(test)]
+            Dial::Fixed { port, token } => (token.clone(), *port),
+        };
         timeout(
             CONNECT_TIMEOUT,
-            Self::handshake(
-                &discovery.token,
-                discovery.port,
-                &self.allowed,
-                self.defer_exposure,
-            ),
+            Self::handshake(&token, port, &self.allowed, self.defer_exposure),
         )
         .await
         .ok()?
@@ -481,11 +649,17 @@ impl BridgeClient {
     /// Attach to an app listening on `port` with `token`, bypassing the
     /// discovery file — for tests that stand up a fake app.
     pub(crate) async fn connect_to_for_test(port: u16, token: &str) -> Self {
-        Self {
-            stream: Mutex::new(Self::handshake(token, port, &[], true).await.unwrap()),
-            allowed: Vec::new(),
-            defer_exposure: true,
-        }
+        Self::connect_to_for_test_with(port, token, MAX_CALLS_IN_FLIGHT).await
+    }
+
+    /// [`Self::connect_to_for_test`] with `slots` calls in flight at most.
+    pub(crate) async fn connect_to_for_test_with(port: u16, token: &str, slots: usize) -> Self {
+        let first = Self::handshake(token, port, &[], true).await.unwrap();
+        let dial = Dial::Fixed {
+            port,
+            token: token.to_string(),
+        };
+        Self::with(first, dial, Vec::new(), true, slots)
     }
 }
 
@@ -648,7 +822,7 @@ mod tests {
             .await
             .expect_err("the app is still busy");
         assert!(
-            matches!(&first, BridgeError::Remote(m) if m.contains("unknown")),
+            matches!(&first, BridgeError::Remote { message, .. } if message.contains("unknown")),
             "{first:?}"
         );
         // Before and after the late reply lands: either way the next call
@@ -695,6 +869,8 @@ mod tests {
             connection_id: "c".into(),
             policy_id: "c".into(),
             sql: "SELECT 1".into(),
+            timeout_secs: None,
+            query_id: None,
         };
         assert!(
             timeout(Duration::from_millis(100), client.call(&request))
@@ -730,15 +906,176 @@ mod tests {
             }),
             CALL_TIMEOUT
         );
-        // A read: the app's own deadline (300 s at most) plus the slack.
-        assert_eq!(
-            reply_wait(&BridgeRequest::RunStatement {
-                connection_id: "c".into(),
-                policy_id: "c".into(),
-                sql: "SELECT 1".into(),
-            }),
-            Duration::from_secs(420)
+        // A read: what it asked for (300 s at most) plus a short slack, so a
+        // sidecar asking for 180 s answers well inside a 240 s client.
+        let read = |timeout_secs| BridgeRequest::RunStatement {
+            connection_id: "c".into(),
+            policy_id: "c".into(),
+            sql: "SELECT 1".into(),
+            timeout_secs,
+            query_id: None,
+        };
+        assert_eq!(reply_wait(&read(None)), Duration::from_secs(330));
+        assert_eq!(reply_wait(&read(Some(180))), Duration::from_secs(210));
+        assert_eq!(reply_wait(&read(Some(7200))), Duration::from_secs(330));
+    }
+
+    /// Calls past the in-flight limit wait for a slot. A read built before
+    /// its turn would ask the app for time it spent waiting (ADR #140), so
+    /// `call_on_turn` builds it only once a slot is free — and a build that
+    /// declines sends nothing at all. One slot here, so the second call has
+    /// to wait for the first.
+    #[tokio::test]
+    async fn a_request_is_built_only_when_its_turn_comes() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (got, mut seen) = tokio::sync::mpsc::unbounded_channel::<String>();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read_half, mut writer) = stream.into_split();
+            let mut lines = BufReader::new(read_half).lines();
+            lines.next_line().await.unwrap(); // hello
+            write_line(
+                &mut writer,
+                &HelloAck {
+                    protocol_version: PROTOCOL_VERSION,
+                    error: None,
+                },
+            )
+            .await
+            .unwrap();
+            // Answer each request 300 ms after it arrives.
+            while let Ok(Some(line)) = lines.next_line().await {
+                let _ = got.send(line);
+                tokio::time::sleep(Duration::from_millis(300)).await;
+                write_line(
+                    &mut writer,
+                    &crate::bridge::protocol::BridgeResponse::ok(serde_json::json!(true)),
+                )
+                .await
+                .unwrap();
+            }
+        });
+        let client =
+            std::sync::Arc::new(BridgeClient::connect_to_for_test_with(port, "t", 1).await);
+        let request = BridgeRequest::IsMongo {
+            connection_id: "c".into(),
+        };
+
+        let first = {
+            let client = client.clone();
+            let request = request.clone();
+            tokio::spawn(async move { client.call(&request).await })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let asked = std::time::Instant::now();
+        let built_after = std::sync::Mutex::new(None);
+        let second = client
+            .call_on_turn(|| {
+                *built_after.lock().unwrap() = Some(asked.elapsed());
+                Ok::<_, ()>(request.clone())
+            })
+            .await
+            .expect("built");
+        assert!(second.is_ok(), "{second:?}");
+        assert!(first.await.unwrap().is_ok());
+        let waited = built_after.lock().unwrap().unwrap();
+        assert!(
+            waited >= Duration::from_millis(200),
+            "built after the first call's reply, not before: {waited:?}"
         );
+
+        // A build that declines sends nothing.
+        let declined = client
+            .call_on_turn(|| Err::<BridgeRequest, _>("spent"))
+            .await;
+        assert_eq!(declined.unwrap_err(), "spent");
+        assert!(seen.recv().await.is_some());
+        assert!(seen.recv().await.is_some());
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), seen.recv())
+                .await
+                .is_err(),
+            "the declined call never reached the app"
+        );
+    }
+
+    /// A fake app that answers every request on every connection after
+    /// `delay`, and counts the connections it was given.
+    async fn slow_app(delay: Duration) -> (u16, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let accepted = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count = accepted.clone();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let (read_half, mut writer) = stream.into_split();
+                    let mut lines = BufReader::new(read_half).lines();
+                    lines.next_line().await.unwrap(); // hello
+                    let ack = HelloAck {
+                        protocol_version: PROTOCOL_VERSION,
+                        error: None,
+                    };
+                    write_line(&mut writer, &ack).await.unwrap();
+                    while let Ok(Some(_)) = lines.next_line().await {
+                        tokio::time::sleep(delay).await;
+                        let ok = crate::bridge::protocol::BridgeResponse::ok(serde_json::json!(1));
+                        if write_line(&mut writer, &ok).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        (port, accepted)
+    }
+
+    /// A model's parallel calls run side by side, each on a connection of its
+    /// own, instead of queueing behind one socket (ADR #141). Answered, the
+    /// connections are kept and reused rather than dialled per call.
+    #[tokio::test]
+    async fn parallel_calls_run_side_by_side_and_their_connections_are_reused() {
+        let (port, accepted) = slow_app(Duration::from_millis(300)).await;
+        let client = std::sync::Arc::new(BridgeClient::connect_to_for_test(port, "t").await);
+        let request = BridgeRequest::IsMongo {
+            connection_id: "c".into(),
+        };
+        let started = std::time::Instant::now();
+        let calls: Vec<_> = (0..3)
+            .map(|_| {
+                let client = client.clone();
+                let request = request.clone();
+                tokio::spawn(async move { client.call(&request).await })
+            })
+            .collect();
+        for call in calls {
+            assert!(call.await.unwrap().is_ok());
+        }
+        assert!(
+            started.elapsed() < Duration::from_millis(800),
+            "three 300 ms calls in parallel, not in series: {:?}",
+            started.elapsed()
+        );
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 3);
+
+        // All three went back idle: the next three reuse them.
+        let again: Vec<_> = (0..3)
+            .map(|_| {
+                let client = client.clone();
+                let request = request.clone();
+                tokio::spawn(async move { client.call(&request).await })
+            })
+            .collect();
+        for call in again {
+            assert!(call.await.unwrap().is_ok());
+        }
+        assert_eq!(accepted.load(std::sync::atomic::Ordering::SeqCst), 3);
     }
 
     #[tokio::test]

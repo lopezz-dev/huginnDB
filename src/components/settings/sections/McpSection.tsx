@@ -53,6 +53,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConnectionTreeCard } from "./ConnectionTreeCard";
 import { PrefGroup } from "./PrefGroup";
 import { PrefRow } from "./PrefRow";
+import { DEFAULT_MCP_CONCURRENT_READS } from "@/lib/connection/mcpConcurrentReads";
 import { DEFAULT_MCP_TIMEOUT_SECS } from "@/lib/connection/mcpTimeout";
 import { McpConnectionTree } from "./McpConnectionTree";
 import { WRITE_LEVELS } from "./McpWritePolicySelect";
@@ -319,6 +320,36 @@ export function McpSection() {
   }
 
   /**
+   * Persist how many AI reads may run at once on one connection, or clear it
+   * (`null`) so it follows the default. The same shape as `setTimeoutSecs`.
+   */
+  async function setConcurrentReads(id: string, reads: number | null) {
+    const name = profiles.find((p) => p.id === id)?.name ?? id;
+    setProfiles((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, mcp_concurrent_reads: reads } : p,
+      ),
+    );
+    try {
+      await api.setMcpConcurrentReads([id], reads);
+      notify.success(
+        reads == null
+          ? t("settings.mcp.concurrentReads.clearedSaved", {
+              name,
+              reads: DEFAULT_MCP_CONCURRENT_READS,
+            })
+          : t("settings.mcp.concurrentReads.saved", { name, reads }),
+      );
+    } catch {
+      notify.error(t("settings.mcp.concurrentReads.saveError"));
+      void api
+        .listProfiles()
+        .then(setProfiles)
+        .catch(() => {});
+    }
+  }
+
+  /**
    * Set every listed connection's policy in one backend write.
    *
    * "Listed" — scope plus name filter — rather than "selected": the selection
@@ -529,6 +560,9 @@ export function McpSection() {
               {t("settings.mcp.timeout.hint")}
             </p>
             <p className="text-2xs leading-relaxed text-muted-foreground">
+              {t("settings.mcp.concurrentReads.hint")}
+            </p>
+            <p className="text-2xs leading-relaxed text-muted-foreground">
               {t("settings.mcp.sharedIdsHint")}
             </p>
             {/* The snippet below is valid whether or not anything is ticked, so
@@ -550,6 +584,9 @@ export function McpSection() {
           onSetPolicy={(id, level) => void setWritePolicy(id, level)}
           onSetMaxRows={(id, rows) => void setMaxRows(id, rows)}
           onSetTimeout={(id, secs) => void setTimeoutSecs(id, secs)}
+          onSetConcurrentReads={(id, reads) =>
+            void setConcurrentReads(id, reads)
+          }
           defaultMaxRows={defaultMaxRows}
           sharedTooltip={sharedTooltip}
           searching={filter.trim().length > 0}

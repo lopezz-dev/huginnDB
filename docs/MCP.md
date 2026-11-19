@@ -334,6 +334,7 @@ The tools then show up under the `huginndb` server inside Codex.
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(none)* | Pin this client to exactly these profile ids, ignoring the Settings → MCP checkboxes. Without the flag the server defers to those checkboxes and re-reads them per call, which is the normal setup. `--connections ""` pins an empty set — an explicit "expose nothing". |
 | `--max-rows <n>` | *(none)* | Replace the **default** row limit (Settings → MCP → *Rows per call*, 200) for this client only. A connection with its own limit keeps it. See [Row limit](#row-limit). |
+| `--read-timeout-secs <n>` | `180` | Time one call's reads may take in all, under the connection's MCP timeout. Set it below your client's own limit; it cannot exceed 300. See [Reads](#reads-the-same-timeout-and-a-client-that-gives-up-stops-them). |
 | `--max-connections <n>` | `2` | Budget per **server**, within this process. See [Connection footprint](#connection-footprint) — the default is deliberately well below the desktop app's. A connection that pins its own limit in HuginnDB still wins when it is the stricter of the two. |
 | `--read-only[=true\|false]` | `false` | Global kill-switch: force **every** connection to read-only regardless of its saved write policy, and take the eight write tools off `tools/list` entirely — they could only refuse, and a tool the model never sees is a turn it never wastes. A quick way to expose the connector in a guaranteed-safe mode without touching any profile. |
 | `--allow-writes` | — | **Deprecated and ignored.** Writes are now governed per connection by the write policy set in Settings → MCP (see [Security](#security)); this flag no longer grants anything and only prints a one-time deprecation notice. |
@@ -437,6 +438,8 @@ connector — leaving only the connections you opened yourself.
 | `run_query` | Run a single **read-only** statement (SQL for Postgres/MySQL/SQLite/SQL Server, mongosh-style for MongoDB). Anything that writes is refused here whatever the policy says. |
 | `run_write` *(write)* | Run a single statement that **changes** the database. DML needs `data`, DDL needs `full`. A read is refused here too — it belongs in `run_query`, which needs no write permission. |
 | `run_queries` | Run several **read-only** statements in one call, each as `run_query` would. One that fails is reported in its own slot and the rest still run. Rows share one budget: the connection's [row limit](#row-limit). |
+| `running_queries` | The AI's reads in flight on a connection — from any MCP client and the AI panel — oldest first: `query_id`, `state` (`queued` or `running`), `elapsed_ms` and the start of the SQL. Never other sessions on the server. |
+| `cancel_query` | Stop one of those reads by its `query_id`. Its session is closed and the server told to stop the statement; its own call ends saying it was stopped. Reaches only AI reads on that connection, so it works on read-only connections too. Answers `stopped` or `not_found`. |
 | `run_writes` *(write)* | Apply several row writes (`INSERT`/`UPDATE`/`DELETE`) in **one transaction** — all land or none do. Each write can carry `expect_rows`; `verify` reads run after the commit and come back in the same reply. Requires `data` or `full`. See [Batching](#batching-fewer-calls-fewer-tokens). |
 | `run_script` *(write)* | Run a whole SQL script — a migration, a `.sql` file — on **one pinned session**, in order, so temporary tables and `SET`s carry to the end of the script. SQL Server runs it `GO` batch by `GO` batch, so a `DECLARE`d variable lives for its batch, as in SSMS. One transaction by default. Pass it inline as `sql` or as a local file `path`. Requires `data`; any DDL, temporary tables included, requires `full`. Not MongoDB. See [Scripts](#scripts-temporary-tables-and-migrations). |
 | `browse_table` | Browse one page of rows without writing SQL. |
@@ -668,10 +671,63 @@ would remove the dependence on the client's patience. It is not built yet.
 
 ### Reads: the same timeout, and a client that gives up stops them
 
-A `run_query` or `run_queries` read gets the connection's MCP timeout too:
-300 seconds, or less if the connection's ceiling is lower. A read takes no
-`timeout_seconds`. A read that runs this long usually has a bad plan, and the
-answer is to make it cheaper, not to give it longer.
+A read gets **180 seconds** by default: the MCP server's `--read-timeout-secs`,
+held under the connection's MCP timeout (300 seconds, or less if the
+connection's ceiling is lower). The 180 is there to finish before the client
+gives up: one client tried in practice abandons a call after 240 seconds
+without cancelling it, and a read that went on to 300 loaded the server for a
+minute for nobody. Lower it if your client waits less; it cannot go above 300.
+A read takes no `timeout_seconds`. A read that runs this long usually has a
+bad plan, and the answer is to make it cheaper, not to give it longer.
+
+The time belongs to the **call**, not to each statement: `run_queries` gives
+its whole list one read time, each statement gets what the ones before it
+left, and once it is spent the rest come back as `{"skipped": "not run: …"}`
+without being sent. Before, each statement had the full limit, so a list of
+four slow reads could hold the client four times longer than it would wait.
+
+**Reads at once, per connection.** A model's parallel calls reach the app
+side by side, each on a connection of its own. Reads against different
+databases do not wait for each other. Against one connection, at most **2**
+AI reads run at once — MCP clients and the AI panel together — and the rest
+wait their turn. Change the limit per connection in Settings → MCP (the third
+number, 1 to 16); keep it low against a production server.
+
+The wait counts against the read's time. A read whose time runs out while it
+waits is never sent: it comes back `not_started`, saying how many slots the
+connection has. A read that waited says so with `queued_ms`. Send heavy reads
+one by one.
+
+**A read can be stopped.** `running_queries` lists the AI's reads on a
+connection, queued or running, by `query_id`. `cancel_query` stops one: a
+queued read is never sent, and a running one is stopped where it runs, as
+when its time runs out (the table below). The call that sent it ends with
+`query stopped (not applied): query q-… was stopped by cancel_query`. When a
+read comes back `still_running` or `unknown`, stop it this way instead of
+sending more work on top of it.
+
+Every read is named. `run_query` and each `run_queries` slot carry a
+`query_id`, and when the time runs out the error's `data` (or the slot's
+`timeout`) says how it ended:
+
+```json
+{
+  "query_id": "q-3f9c0a1b2c4d",
+  "connection_id": "tiles-bc13",
+  "sql_head": "SELECT o.[Object ID] FROM [Object Metadata] o WHERE …",
+  "elapsed_ms": 180012,
+  "limit_secs": 180,
+  "state": "cancelled",
+  "verdict": "The session was closed, and SQL Server stops the request …"
+}
+```
+
+| `state` | Meaning |
+| --- | --- |
+| `not_started` | No session came free in time; the statement was never sent. Safe to run again later. |
+| `cancelled` | The server stopped it (see the table below). |
+| `still_running` | It goes on (SQLite waiting on a lock). Do not run it again yet. |
+| `unknown` | The stop was sent but not confirmed; the server may run it until it next writes to the client. Do not run it again yet. |
 
 When the time runs out, HuginnDB **stops the statement on the server** and
 closes its session, which never goes back to the pool:

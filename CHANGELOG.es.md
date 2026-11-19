@@ -26,6 +26,39 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   - La descripción de la herramienta pide ahora al modelo que la llame antes
     de una lectura que pueda ser pesada, y avisa de que los costes estimados
     no cuentan el trabajo por fila como `DECOMPRESS`.
+- **MCP: `running_queries` y `cancel_query`, para que una IA vea y pare sus
+  propias lecturas.** Cuando el timeout de una lectura decía `still_running`
+  o `unknown`, la lectura seguía cargando el servidor y al modelo solo le
+  quedaba esperar o mandar más trabajo encima.
+  - **`running_queries`** lista las lecturas de IA en curso en una conexión,
+    vengan de cualquier cliente MCP o del panel de IA: cada una con su
+    `query_id`, si está en cola o en marcha, cuánto lleva y el inicio de su
+    SQL.
+  - **`cancel_query`** para una por su `query_id`. Si estaba en cola no llega
+    a enviarse; si estaba en marcha se para en el servidor, igual que cuando
+    se le acaba el tiempo. La llamada que la envió termina diciendo que se
+    paró.
+  - Solo alcanza lecturas de IA de esa conexión, nunca la consulta de una
+    persona ni otra sesión del servidor, así que también funciona en
+    conexiones de solo lectura.
+  - El protocolo del bridge pasa a la versión 9. Véase el ADR #142.
+
+- **MCP: un límite de lecturas de IA a la vez por conexión, y llamadas en
+  paralelo que de verdad van en paralelo.** Un servidor MCP enviaba sus
+  llamadas a la app de una en una, por una sola conexión. Las lecturas en
+  paralelo de un modelo hacían cola allí: una rápida contra una base de datos
+  esperaba a una lenta contra otra. Y entre clientes distintos no había ningún
+  límite.
+  - **Cada llamada tiene ahora su propia conexión,** hasta ocho por servidor
+    MCP.
+  - **La app deja correr como mucho dos lecturas de IA a la vez contra una
+    conexión,** contando juntos todos los clientes MCP y el panel de IA. Las
+    demás esperan su turno dentro de su propio tiempo. Una lectura que no
+    llega a entrar vuelve como `not_started`; una que esperó informa de su
+    `queued_ms`.
+  - **El límite se cambia por conexión en Ajustes → MCP:** es el tercer
+    número, de 1 a 16. Se queda en esta máquina aunque se sincronice un
+    origen compartido. Véase el ADR #141.
 
 - **Importar un fichero CSV, JSON o Excel a una tabla.** El menú
   *Insertar* de una tabla SQL (y el menú contextual de la tabla en el árbol
@@ -159,6 +192,35 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Corregido
 
+- **MCP: las lecturas de una IA terminan ahora antes de que el cliente se
+  rinda, y un timeout dice si la lectura sigue corriendo.** Una lectura tenía
+  los 300 s de la conexión, pero un cliente puede abandonar la llamada antes
+  sin cancelarla (uno lo hizo a los 240 s). La lectura cargaba entonces el
+  servidor un minuto sin que nadie esperase, y el modelo, sin saber nada, la
+  volvía a lanzar encima. `run_queries` era peor: cada sentencia tenía los 300 s
+  enteros, así que cuatro lentas podían retener la llamada veinte minutos.
+  - **El tiempo de lectura es ahora de la llamada.** Son 180 s por defecto, se
+    fijan con el nuevo flag `--read-timeout-secs` del servidor MCP y siguen
+    dentro del timeout MCP de la conexión. `run_queries` lo reparte entre toda
+    su lista, y las sentencias que quedan cuando se agota vuelven como
+    `skipped` sin enviarse.
+  - **Cada lectura lleva un `query_id`.** Cuando una se queda sin tiempo, el
+    `data` del error (o el `timeout` del hueco en `run_queries`) da el id, la
+    conexión, el inicio del SQL, el tiempo transcurrido, el límite y el
+    `state`: `not_started`, `cancelled`, `still_running` o `unknown`.
+  - **Las llamadas en paralelo ya no se envían cuando su cliente se ha
+    rendido.** Las llamadas en paralelo de un modelo a un mismo servidor MCP
+    llegan a la app de una en una. Antes se quedaban en cola detrás de una
+    lectura lenta, consumían allí la espera del cliente y luego se ejecutaban
+    enteras igualmente. Ahora una lectura pide solo el tiempo que le queda
+    cuando le llega el turno. Si se le acaba en la cola, no se envía y vuelve
+    como `not_started`, con lo que esperó; una lectura que haya esperado
+    informa de su `queued_ms`.
+  - Las descripciones de las herramientas piden ahora al modelo que no repita
+    nunca una lectura que pueda seguir corriendo y que mande las lecturas
+    pesadas de una en una.
+  - El protocolo del bridge pasa a la versión 8: la app y su servidor MCP
+    tienen que actualizarse juntos. Véase el ADR #140.
 - **MCP: un `.explain()` de MongoDB se redirige a `pulse_explain`, que
   ahora da estadísticas de ejecución.** Una IA que mandaba
   `db.c.explain('executionStats').aggregate([...])` a `run_query` recibía

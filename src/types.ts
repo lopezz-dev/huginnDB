@@ -191,6 +191,11 @@ export interface ConnectionProfile {
    *  Strictly local like `mcp_max_rows` (preserved across a shared-origin
    *  sync), edited in Settings → MCP, clamped to 1..86400 backend-side. */
   mcp_timeout_secs?: number | null;
+  /** How many AI reads (MCP `run_query` / `run_queries`, the AI panel's) may
+   *  run at once against this connection; the rest wait, and the wait counts
+   *  against their time (ADR #141). `null`/absent = 2. Strictly local like
+   *  `mcp_timeout_secs`, edited in Settings → MCP, clamped to 1..16. */
+  mcp_concurrent_reads?: number | null;
   /** Whether the in-app AI panel may reach this connection at all. Opt-in,
    *  `false`/absent by default, and strictly local for the same reasons as
    *  `mcp_exposed`: preserved across a shared-origin sync, cleared on import.

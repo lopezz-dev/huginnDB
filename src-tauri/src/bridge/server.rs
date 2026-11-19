@@ -312,7 +312,7 @@ async fn handle(app: &AppHandle, request: &BridgeRequest, exposure: &Exposure) -
         Err(e) => {
             let message = e.to_string();
             log_served(app, request, start, Some(&message));
-            BridgeResponse::err(message)
+            BridgeResponse::from_error(&e)
         }
     }
 }
@@ -379,6 +379,8 @@ pub(crate) fn connection_id_of(request: &BridgeRequest) -> String {
         | PulseStorage { connection_id }
         | PulseSessions { connection_id }
         | PulseIndexUsage { connection_id }
+        | ListReads { connection_id }
+        | CancelRead { connection_id, .. }
         | ResolveMongoTarget { connection_id, .. }
         | GetTableStructure { connection_id, .. }
         | ListIndexes { connection_id, .. }
@@ -682,6 +684,8 @@ mod tests {
             connection_id: "c".into(),
             policy_id: "c".into(),
             sql: sql.into(),
+            timeout_secs: None,
+            query_id: None,
         };
         assert!(abandonable(&statement("SELECT COUNT(*) FROM v GROUP BY k")));
         assert!(abandonable(&statement("db.events.find({})")));
@@ -847,6 +851,8 @@ mod tests {
                 connection_id: "c".into(),
                 policy_id: "p".into(),
                 sql: sql.into(),
+                timeout_secs: None,
+                query_id: None,
             })
         };
         assert_eq!(run("db.users.find({})"), Some(StmtClass::Read));

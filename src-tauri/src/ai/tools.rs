@@ -101,6 +101,10 @@ pub fn exposure(request: &BridgeRequest) -> Exposure {
         | PulseSessions { .. }
         | PulseIndexUsage { .. } => Exposure::Never,
 
+        // An MCP client's handle on its own reads (ADR #142). The panel stops
+        // its reads by stopping its turn, which drops them.
+        ListReads { .. } | CancelRead { .. } => Exposure::Never,
+
         // Who may log in and what they may do is the most attack-shaped thing
         // HuginnDB can read, and no assisted task needs it. Withheld on
         // purpose, not by omission.
@@ -315,6 +319,10 @@ pub fn to_request(spec: &ToolSpec, args: &Value, ctx: &ToolCtx) -> AppResult<Bri
             connection_id,
             policy_id: ctx.policy_id.clone(),
             sql: required_str(args, "sql", name)?,
+            // The panel has no outside client to fit: its reads keep the
+            // connection's MCP timeout, and the app names them (ADR #140).
+            timeout_secs: None,
+            query_id: None,
         },
         BROWSE_TABLE => BridgeRequest::FetchTableData {
             connection_id,
@@ -812,6 +820,7 @@ mod tests {
                 connection_id,
                 policy_id,
                 sql,
+                ..
             } => {
                 assert_eq!(connection_id, "parent::db::shop");
                 assert_eq!(policy_id, "parent");

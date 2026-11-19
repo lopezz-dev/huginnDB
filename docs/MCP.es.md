@@ -354,6 +354,7 @@ Codex.
 | --- | --- | --- |
 | `--connections <a,b,c>` | *(ninguna)* | Fija este cliente exactamente a estos IDs de perfil, ignorando las casillas de Ajustes → MCP. Sin el flag, el servidor se remite a esas casillas y las relee en cada llamada, que es el montaje normal. `--connections ""` fija un conjunto vacío — un "no expongas nada" explícito. |
 | `--max-rows <n>` | *(ninguno)* | Sustituye el límite de filas **por defecto** (Ajustes → MCP → *Filas por llamada*, 200) solo para este cliente. Una conexión con límite propio lo conserva. Véase [Límite de filas](#límite-de-filas). |
+| `--read-timeout-secs <n>` | `180` | Tiempo que pueden tardar en total las lecturas de una llamada, bajo el timeout MCP de la conexión. Ponlo por debajo del límite de tu cliente; no puede pasar de 300. Véase [Lecturas](#lecturas-el-mismo-timeout-y-un-cliente-que-se-rinde-las-para). |
 | `--read-only[=true\|false]` | `false` | Kill-switch global: fuerza **todas** las conexiones a solo lectura sin importar su nivel de escritura guardado. Una forma rápida de exponer el conector en modo garantizado-seguro sin tocar ningún perfil. |
 | `--allow-writes` | — | **Obsoleto e ignorado.** Las escrituras ahora se gobiernan por conexión mediante el nivel de escritura configurado en Ajustes → MCP (ver [Seguridad](#seguridad)); este flag ya no concede nada y solo imprime un aviso de obsolescencia. |
 
@@ -446,6 +447,8 @@ datos a demanda.
 | `run_query` | Ejecuta una única sentencia de **solo lectura** (SQL para Postgres/MySQL/SQLite/SQL Server, estilo mongosh para MongoDB). Cualquier cosa que escriba se rechaza aquí diga lo que diga el nivel. |
 | `run_write` *(escritura)* | Ejecuta una única sentencia que **cambia** la base de datos. El DML necesita `data`, el DDL `full`. Una lectura también se rechaza aquí — va en `run_query`, que no necesita permiso de escritura. |
 | `run_queries` | Ejecuta varias sentencias **de solo lectura** en una llamada, cada una como lo haría `run_query`. La que falla se informa en su propio hueco y las demás se ejecutan igual. Las filas comparten un único presupuesto: el [límite de filas](#límite-de-filas) de la conexión. |
+| `running_queries` | Las lecturas de IA en curso en una conexión, de cualquier cliente MCP y del panel de IA, de la más antigua a la más reciente: `query_id`, `state` (`queued` o `running`), `elapsed_ms` y el inicio del SQL. Nunca muestra otras sesiones del servidor. |
+| `cancel_query` | Para una de esas lecturas por su `query_id`. Se cierra su sesión y se le pide al servidor que pare la sentencia; su propia llamada termina diciendo que se paró. Solo alcanza lecturas de IA de esa conexión, así que también funciona en conexiones de solo lectura. Responde `stopped` o `not_found`. |
 | `run_writes` *(escritura)* | Aplica varias escrituras de fila (`INSERT`/`UPDATE`/`DELETE`) en **una transacción**: o entran todas o ninguna. Cada escritura puede llevar `expect_rows`; las lecturas de `verify` se ejecutan tras el commit y vuelven en la misma respuesta. Necesita `data` o `full`. Ver [Lotes](#lotes-menos-llamadas-menos-tokens). |
 | `run_script` *(escritura)* | Ejecuta un script SQL entero — una migración, un fichero `.sql` — en **una única sesión fijada**, en orden, así que las tablas temporales y los `SET` duran hasta el final del script. SQL Server lo ejecuta lote `GO` a lote `GO`, así que una variable `DECLARE` vive lo que su lote, como en SSMS. Una transacción por defecto. Va en línea como `sql` o como `path` a un fichero local. Necesita `data`; cualquier DDL, tablas temporales incluidas, necesita `full`. No MongoDB. Ver [Scripts](#scripts-tablas-temporales-y-migraciones). |
 | `browse_table` | Navega una página de filas sin escribir SQL. |
@@ -691,10 +694,66 @@ lanzar el script, recibir un id y consultar su estado. Todavía no existe.
 
 ### Lecturas: el mismo timeout, y un cliente que se rinde las para
 
-Una lectura de `run_query` o `run_queries` también tiene el timeout MCP de la
-conexión: 300 segundos, o menos si el techo de la conexión es más bajo. Una
-lectura no acepta `timeout_seconds`. Una lectura que tarda tanto suele tener un
-mal plan, y lo que toca es abaratarla, no darle más tiempo.
+Una lectura tiene **180 segundos** por defecto: el `--read-timeout-secs` del
+servidor MCP, dentro del timeout MCP de la conexión (300 segundos, o menos si el
+techo de la conexión es más bajo). Los 180 están para terminar antes de que el
+cliente se rinda. Un cliente probado en la práctica abandona la llamada a los
+240 segundos sin cancelarla, y una lectura que seguía hasta los 300 cargaba el
+servidor un minuto para nadie. Bájalo si tu cliente espera menos; no puede
+pasar de 300. Una lectura no acepta `timeout_seconds`. Una lectura que tarda
+tanto suele tener un mal plan, y lo que toca es abaratarla, no darle más tiempo.
+
+El tiempo es de la **llamada**, no de cada sentencia. `run_queries` da a toda
+su lista un único tiempo de lectura: cada sentencia recibe lo que dejaron las
+anteriores, y cuando se agota, las que quedan vuelven como
+`{"skipped": "not run: …"}` sin llegar a enviarse. Antes cada sentencia tenía
+el límite entero, así que cuatro lecturas lentas podían retener al cliente
+cuatro veces más de lo que estaba dispuesto a esperar.
+
+**Lecturas a la vez, por conexión.** Las llamadas en paralelo de un modelo
+llegan a la app a la vez, cada una por una conexión propia. Las lecturas contra
+bases de datos distintas no se esperan entre sí. Contra una misma conexión,
+como mucho **2** lecturas de IA corren a la vez (clientes MCP y panel de IA,
+todos juntos), y las demás esperan su turno. Cambia el límite por conexión en
+Ajustes → MCP (el tercer número, de 1 a 16). Mantenlo bajo contra un servidor
+de producción.
+
+La espera cuenta contra el tiempo de la lectura. Si se le acaba mientras
+espera, no llega a enviarse y vuelve como `not_started`, diciendo cuántos
+huecos tiene la conexión. Una lectura que haya esperado lo indica con
+`queued_ms`. Manda las lecturas pesadas de una en una.
+
+**Una lectura se puede parar.** `running_queries` lista las lecturas de IA de
+una conexión, en cola o en marcha, por su `query_id`. `cancel_query` para una:
+si estaba en cola no llega a enviarse, y si estaba en marcha se para donde
+corre, igual que cuando se le acaba el tiempo (véase la tabla de abajo). La
+llamada que la envió termina con
+`query stopped (not applied): query q-… was stopped by cancel_query`. Cuando
+una lectura vuelve como `still_running` o `unknown`, párala así en vez de
+mandar más trabajo encima.
+
+Cada lectura lleva nombre. `run_query` y cada hueco de `run_queries` traen un
+`query_id`. Cuando se acaba el tiempo, el `data` del error (o el `timeout` del
+hueco) dice cómo terminó:
+
+```json
+{
+  "query_id": "q-3f9c0a1b2c4d",
+  "connection_id": "tiles-bc13",
+  "sql_head": "SELECT o.[Object ID] FROM [Object Metadata] o WHERE …",
+  "elapsed_ms": 180012,
+  "limit_secs": 180,
+  "state": "cancelled",
+  "verdict": "The session was closed, and SQL Server stops the request …"
+}
+```
+
+| `state` | Significado |
+| --- | --- |
+| `not_started` | No quedó libre ninguna sesión a tiempo; la sentencia no llegó a enviarse. Se puede repetir más tarde. |
+| `cancelled` | El servidor la paró (véase la tabla de abajo). |
+| `still_running` | Sigue corriendo (SQLite esperando un bloqueo). No la repitas todavía. |
+| `unknown` | Se mandó la parada pero sin confirmación; el servidor puede seguir con ella hasta que vuelva a escribir al cliente. No la repitas todavía. |
 
 Cuando se acaba el tiempo, HuginnDB **para la sentencia en el servidor** y
 cierra su sesión, que nunca vuelve al pool:

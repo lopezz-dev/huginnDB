@@ -82,6 +82,17 @@ use crate::state::{ActivePool, AppState, McpRowCap, McpTimeout, McpWritePolicy};
 /// being safely usable.
 const DEFAULT_MAX_CONNECTIONS: u32 = 2;
 
+/// How long one call's reads may take in all, unless `--read-timeout-secs`
+/// says otherwise (ADR #140).
+///
+/// The app would give a read 300 s, but the MCP client is the one waiting,
+/// and clients give up sooner: one gave up after 240 s without cancelling,
+/// so for its last minute the read loaded the server for nobody. 180 s leaves
+/// that client a minute's margin for the stop and the reply. Only this side
+/// can know its client, so it is this side's to ask; the app still holds the
+/// answer under the connection's own MCP timeout.
+const DEFAULT_READ_TIMEOUT_SECS: u32 = 180;
+
 /// How long a pool may go untouched before this process closes it.
 ///
 /// The sidecar is long-lived — it lives as long as the MCP client keeps it,
@@ -149,6 +160,11 @@ struct Config {
     /// is the *smaller* of the two — the flag raises the sidecar's own default,
     /// it never overrides a limit the user recorded against the server.
     max_connections: u32,
+    /// Seconds one call's reads may take in all (`--read-timeout-secs`,
+    /// [`DEFAULT_READ_TIMEOUT_SECS`] when absent). Never more than the app's
+    /// own [`crate::state::DEFAULT_MCP_TIMEOUT_SECS`]: it exists to fit the
+    /// MCP client's wait, not to lengthen a read past what ADR #134 allows.
+    read_timeout_secs: u32,
     /// Whether the deprecated `--allow-writes` flag was seen, so `serve` can
     /// emit a one-time deprecation notice. It no longer grants anything — the
     /// per-connection [`McpWritePolicy`] (Settings → MCP) is the sole authority.
@@ -170,7 +186,8 @@ impl Config {
         }
     }
 
-    /// Parse `--connections a,b,c`, `--read-only`, `--max-rows N`, and the
+    /// Parse `--connections a,b,c`, `--read-only`, `--max-rows N`,
+    /// `--max-connections N`, `--read-timeout-secs N`, and the
     /// deprecated `--allow-writes` from `argv` (program name at index 0).
     /// Accepts both `--flag value` and `--flag=value`, mirroring the desktop
     /// CLI parser.
@@ -179,6 +196,7 @@ impl Config {
         let mut read_only = false;
         let mut max_rows = None;
         let mut max_connections = DEFAULT_MAX_CONNECTIONS;
+        let mut read_timeout_secs = DEFAULT_READ_TIMEOUT_SECS;
         let mut saw_allow_writes = false;
 
         let args: Vec<String> = argv.iter().skip(1).cloned().collect();
@@ -232,6 +250,13 @@ impl Config {
                         }
                     }
                 }
+                "--read-timeout-secs" => {
+                    if let Some(v) = value(&mut iter).and_then(|v| v.parse::<u32>().ok()) {
+                        if v > 0 {
+                            read_timeout_secs = v.min(crate::state::DEFAULT_MCP_TIMEOUT_SECS);
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -241,6 +266,7 @@ impl Config {
             read_only,
             max_rows,
             max_connections,
+            read_timeout_secs,
             saw_allow_writes,
         }
     }
@@ -291,6 +317,16 @@ mod args {
         /// (matched case-insensitively), or its profile id. Both are reported
         /// by `list_connections`; prefer the name.
         pub connection_id: String,
+    }
+
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct CancelQuery {
+        /// The connection the read runs on: the same name or id it was sent
+        /// to with `run_query` / `run_queries`.
+        pub connection_id: String,
+        /// The read's `query_id`, from `running_queries`, or from the
+        /// `run_query` / `run_queries` reply or timeout error that named it.
+        pub query_id: String,
     }
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1105,8 +1141,19 @@ fn summarize_names(exposed: &[&crate::state::ConnectionProfile]) -> String {
     }
 }
 
+/// Say on stderr (stdout is the JSON-RPC channel) that the app stopped
+/// serving the bridge and this process falls back to its own pools.
+fn note_bridge_gone(why: &str) {
+    eprintln!(
+        "[huginndb-mcp] the HuginnDB app is no longer serving the bridge \
+         ({why}); falling back to this process's own connection pools"
+    );
+}
+
+/// Map a backend error onto an MCP error, keeping its structured half (a
+/// read's timeout: its id, state and limit — ADR #140) as the error's `data`.
 fn to_err(e: crate::error::AppError) -> ErrorData {
-    ErrorData::internal_error(e.to_string(), None)
+    ErrorData::internal_error(e.to_string(), e.detail())
 }
 
 /// What `run_query` / `run_queries` say to a MongoDB `.explain(…)`.
@@ -1264,7 +1311,7 @@ impl Huginn {
                     }
                     return Ok(value);
                 }
-                Err(BridgeError::Remote(message)) => {
+                Err(BridgeError::Remote { message, detail }) => {
                     // The app answered, and the answer was a failure. Report it:
                     // re-running against a local pool could double-apply a write
                     // whose reply was merely lost. See `BridgeClient::call`.
@@ -1273,7 +1320,7 @@ impl Huginn {
                     if audit {
                         AuditSink::new(&self.state).log(audit_entry(&request, Some(&message)));
                     }
-                    return Err(crate::error::AppError::Bridged(message));
+                    return Err(crate::error::AppError::Bridged { message, detail });
                 }
                 Err(BridgeError::Unreachable(why)) => {
                     // The request never left this process — the app shut down,
@@ -1283,10 +1330,7 @@ impl Huginn {
                     // footprint just changed shape, and silently growing a
                     // second budget is the thing this whole bridge exists to
                     // avoid doing invisibly.
-                    eprintln!(
-                        "[huginndb-mcp] the HuginnDB app is no longer serving the bridge \
-                         ({why}); falling back to this process's own connection pools"
-                    );
+                    note_bridge_gone(&why);
                 }
             }
         }
@@ -1323,8 +1367,8 @@ impl Huginn {
         };
         match bridge.call(&request).await {
             Ok(_) => Some(Ok(())),
-            Err(BridgeError::Remote(message)) => {
-                Some(Err(crate::error::AppError::Bridged(message)))
+            Err(BridgeError::Remote { message, detail }) => {
+                Some(Err(crate::error::AppError::Bridged { message, detail }))
             }
             Err(BridgeError::Unreachable(why)) => {
                 eprintln!(
@@ -1716,22 +1760,122 @@ impl Huginn {
         // back to `ReadOnly`, regardless of the connection's real setting.
         self.require_verbs(&a.connection_id, verbs)?;
 
-        // Reads are not audited; writes append to mcp-audit.log.
+        let cap = self.row_cap(&a.connection_id);
+        if class == StmtClass::Read {
+            let budget = ReadBudget::start(self.config.read_timeout_secs);
+            let read = self
+                .send_read(&target, &a.connection_id, &a.sql, budget)
+                .await
+                .map_err(to_err)?;
+            return ok_json(&read.map(|r| Capped::cut(r, cap.rows as usize, cap)));
+        }
+
+        // Writes append to mcp-audit.log; reads are not audited.
         let value = self
             .call(
                 BridgeRequest::RunStatement {
                     connection_id: target,
                     policy_id: a.connection_id.clone(),
                     sql: a.sql.clone(),
+                    timeout_secs: None,
+                    query_id: None,
                 },
-                class != StmtClass::Read,
+                true,
             )
             .await
             .map_err(to_err)?;
         let result: crate::commands::query::QueryResult =
             serde_json::from_value(value).map_err(|e| to_err(crate::error::AppError::from(e)))?;
-        let cap = self.row_cap(&a.connection_id);
         ok_json(&Capped::cut(result, cap.rows as usize, cap))
+    }
+
+    /// Send one read the tier checks have passed, named and bounded by what
+    /// is left of `budget` (ADR #140).
+    ///
+    /// The id is minted here, before the request leaves, so it is known even
+    /// when no reply ever comes back. The app holds the time asked for under
+    /// the connection's own MCP timeout and stops the read on the server when
+    /// it runs out (ADR #134).
+    ///
+    /// The time is read off the budget only once it is this read's turn on
+    /// the bridge ([`Self::call_on_turn`]): past its in-flight limit a model's
+    /// parallel calls wait there, and a read must not ask for time it spent
+    /// waiting. One whose budget ran out in the wait is never sent, and says
+    /// so. The app then makes it wait for a slot of its connection's gate,
+    /// inside the same time (ADR #141).
+    async fn send_read(
+        &self,
+        target: &str,
+        policy_id: &str,
+        sql: &str,
+        budget: ReadBudget,
+    ) -> AppResult<Identified<crate::commands::query::QueryResult>> {
+        let query_id = crate::commands::query::mint_read_id();
+        let entered = std::time::Instant::now();
+        let queued = std::sync::atomic::AtomicU64::new(0);
+        let build = || {
+            queued.store(
+                entered.elapsed().as_millis() as u64,
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            let Some(secs) = budget.remaining_secs() else {
+                return Err(crate::error::AppError::ReadTimedOut(Box::new(
+                    crate::error::ReadTimeout {
+                        query_id: query_id.clone(),
+                        connection_id: target.to_string(),
+                        sql_head: crate::error::ReadTimeout::head_of(sql),
+                        elapsed_ms: queued.load(std::sync::atomic::Ordering::Relaxed),
+                        limit_secs: budget.secs,
+                        state: crate::error::ReadStopState::NotStarted,
+                        verdict: format!(
+                            "It waited {} s for a free slot behind this MCP server's other \
+                             calls to the HuginnDB app, and was never sent. Send heavy reads \
+                             one by one rather than as parallel calls.",
+                            queued.load(std::sync::atomic::Ordering::Relaxed) / 1000
+                        ),
+                    },
+                )));
+            };
+            Ok(BridgeRequest::RunStatement {
+                connection_id: target.to_string(),
+                policy_id: policy_id.to_string(),
+                sql: sql.to_string(),
+                timeout_secs: Some(secs),
+                query_id: Some(query_id.clone()),
+            })
+        };
+        let value = self.call_on_turn(build).await?;
+        // Two waits, one number: for a slot on this side's bridge, and for
+        // one of the connection's read slots in the app (ADR #141).
+        let in_app = value.get("queued_ms").and_then(|v| v.as_u64()).unwrap_or(0);
+        Ok(Identified {
+            query_id: query_id.clone(),
+            queued_ms: queued.load(std::sync::atomic::Ordering::Relaxed) + in_app,
+            inner: serde_json::from_value(value)?,
+        })
+    }
+
+    /// [`Self::call`] for a read built only once it is its turn on the bridge
+    /// (`BridgeClient::call_on_turn`, ADR #140). `build` may decline, and then
+    /// nothing is sent anywhere. Reads are not audited.
+    async fn call_on_turn(
+        &self,
+        build: impl Fn() -> AppResult<BridgeRequest>,
+    ) -> AppResult<serde_json::Value> {
+        use crate::bridge::client::BridgeError;
+        if let Some(bridge) = self.bridge.get().await {
+            match bridge.call_on_turn(&build).await? {
+                Ok(value) => return Ok(value),
+                Err(BridgeError::Remote { message, detail }) => {
+                    return Err(crate::error::AppError::Bridged { message, detail });
+                }
+                Err(BridgeError::Unreachable(why)) => note_bridge_gone(&why),
+            }
+        }
+        if crate::vault::is_locked() {
+            return Err(crate::error::AppError::Locked);
+        }
+        crate::bridge::exec::execute(&self.state, &NoopSink, &build()?).await
     }
 
     /// The timeout for a `run_script` / `run_writes` on `connection_id`: the
@@ -1986,12 +2130,19 @@ impl Huginn {
                       find/aggregate/countDocuments/distinct for MongoDB. \
                       Anything that writes is refused here whatever the \
                       connection's policy says — use `run_write` for those. \
-                      Rows are capped by the server's --max-rows. A read \
-                      gets the connection's MCP timeout (300 s at most); \
-                      past it, it is stopped on the server. A read that \
-                      times out has a bad plan: check it with EXPLAIN or \
-                      `pulse_explain` and make it cheaper before running it \
-                      again."
+                      Rows are capped by the server's --max-rows. The reply \
+                      carries the read's `query_id`. A read gets this \
+                      server's read time (--read-timeout-secs, 180 s by \
+                      default) under the connection's MCP timeout; past it, \
+                      it is stopped on the server and the error's data says \
+                      how it ended: `state` is not_started, cancelled, \
+                      still_running or unknown. Never re-run one whose state \
+                      is still_running or unknown — it is still loading the \
+                      server: see it with `running_queries` and stop it with \
+                      `cancel_query`. A read that times out has a bad plan: check it \
+                      with EXPLAIN or `pulse_explain` and make it cheaper \
+                      first. Send heavy reads one at a time, not as parallel \
+                      calls against the same connection."
     )]
     async fn run_query(
         &self,
@@ -2038,23 +2189,42 @@ impl Huginn {
     /// is model turns, not milliseconds. The rows share one `cap` budget
     /// across the list, so ten queries cannot put ten times the cap in the
     /// model's context.
+    ///
+    /// They share one time budget too (ADR #140): each read asks for what the
+    /// ones before it left, and once it is spent the rest are not sent at all.
+    /// Each used to get the whole limit, so four slow reads could keep the
+    /// MCP client waiting four times longer than it ever would.
     async fn read_many(
         &self,
         target: &str,
         policy_id: &str,
         queries: &[String],
         cap: McpRowCap,
+        budget: ReadBudget,
     ) -> Vec<ReadOutcome> {
         let mut left = cap.rows as usize;
         let mut out = Vec::with_capacity(queries.len());
         for sql in queries {
-            out.push(match self.read_one(target, policy_id, sql).await {
-                Ok(result) => {
-                    let result = Capped::cut(result, left, cap);
-                    left -= result.result.rows.len();
-                    ReadOutcome::Rows(result)
+            if budget.remaining_secs().is_none() {
+                out.push(ReadOutcome::Skipped {
+                    skipped: format!(
+                        "not run: this call's {} s for its reads was spent by the ones before \
+                         it. Run it on its own, after checking why those were slow.",
+                        budget.secs
+                    ),
+                });
+                continue;
+            }
+            out.push(match self.read_one(target, policy_id, sql, budget).await {
+                Ok(read) => {
+                    let read = read.map(|r| Capped::cut(r, left, cap));
+                    left -= read.inner.result.rows.len();
+                    ReadOutcome::Rows(read)
                 }
-                Err(error) => ReadOutcome::Failed { error },
+                Err(e) => ReadOutcome::Failed {
+                    timeout: e.detail(),
+                    error: e.to_string(),
+                },
             });
         }
         out
@@ -2068,30 +2238,21 @@ impl Huginn {
         target: &str,
         policy_id: &str,
         sql: &str,
-    ) -> Result<crate::commands::query::QueryResult, String> {
+        budget: ReadBudget,
+    ) -> AppResult<Identified<crate::commands::query::QueryResult>> {
+        use crate::error::AppError;
         let verbs = crate::db::classify::verbs_of(sql);
         if verbs.class() != StmtClass::Read && is_mongo_explain(sql) {
-            return Err(MONGO_EXPLAIN_HINT.to_string());
+            return Err(AppError::InvalidInput(MONGO_EXPLAIN_HINT.to_string()));
         }
         if verbs.class() != StmtClass::Read {
-            return Err("this statement writes; only reads run here — writes go in \
-                        `run_writes`"
-                .to_string());
+            return Err(AppError::InvalidInput(
+                "this statement writes; only reads run here — writes go in `run_writes`".into(),
+            ));
         }
         self.require_verbs(policy_id, verbs)
-            .map_err(|e| e.message.to_string())?;
-        let value = self
-            .call(
-                BridgeRequest::RunStatement {
-                    connection_id: target.to_string(),
-                    policy_id: policy_id.to_string(),
-                    sql: sql.to_string(),
-                },
-                false,
-            )
-            .await
-            .map_err(|e| e.to_string())?;
-        serde_json::from_value(value).map_err(|e| e.to_string())
+            .map_err(|e| AppError::InvalidInput(e.message.to_string()))?;
+        self.send_read(target, policy_id, sql, budget).await
     }
 
     #[tool(
@@ -2100,10 +2261,15 @@ impl Huginn {
         description = "Run several READ-ONLY statements in one call — prefer \
                       this to consecutive `run_query` calls. Each runs as \
                       `run_query` would; one that fails is reported in its \
-                      slot (`{\"error\": …}`) without stopping the rest. \
-                      Returns one result per statement, in order. Rows share \
-                      one budget: the connection's MCP row limit. Each read \
-                      gets the connection's MCP timeout, as in `run_query`."
+                      slot (`{\"error\": …}`, with `timeout` when it ran \
+                      out of time) without stopping the rest. Returns one \
+                      result per statement, in order, each with its \
+                      `query_id`. Rows share one budget: the connection's \
+                      MCP row limit. Time is shared too: the whole call \
+                      gets one read time, as in `run_query`, and statements \
+                      left when it is spent come back as `{\"skipped\": …}` \
+                      without running. Put cheap reads here; run a heavy one \
+                      on its own."
     )]
     async fn run_queries(
         &self,
@@ -2132,11 +2298,74 @@ impl Huginn {
             .resolve_mongo_target(&a.connection_id, a.database.as_deref())
             .await?;
         let cap = self.row_cap(&a.connection_id);
+        let budget = ReadBudget::start(self.config.read_timeout_secs);
         ok_json(
             &self
-                .read_many(&target, &a.connection_id, &a.queries, cap)
+                .read_many(&target, &a.connection_id, &a.queries, cap, budget)
                 .await,
         )
+    }
+
+    #[tool(
+        title = "List the AI's reads in flight",
+        annotations(read_only_hint = true, open_world_hint = false),
+        description = "The AI reads in flight on a connection — from any MCP \
+                      client and the HuginnDB AI panel — oldest first: each \
+                      with its `query_id`, `state` (`queued`: waiting for one \
+                      of the connection's read slots; `running`: on the \
+                      server), `elapsed_ms` and the start of its SQL. Use it \
+                      before sending another heavy read, and to find a read \
+                      to stop with `cancel_query` after a call of yours timed \
+                      out with state still_running or unknown. Lists only AI \
+                      reads, never other sessions on the server."
+    )]
+    async fn running_queries(
+        &self,
+        Parameters(a): Parameters<args::Connection>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let connection_id = self.canonical_connection(&a.connection_id)?;
+        let out = self
+            .call(BridgeRequest::ListReads { connection_id }, false)
+            .await
+            .map_err(to_err)?;
+        ok_json(&out)
+    }
+
+    #[tool(
+        title = "Stop one of the AI's reads",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        ),
+        description = "Stop an AI read in flight by its `query_id`: its \
+                      session is closed and the server told to stop the \
+                      statement, and its own call ends with an error saying \
+                      it was stopped. Reaches only AI reads on this \
+                      connection — never a person's query, never another \
+                      session on the server — so it works on read-only \
+                      connections too. Returns `result`: `stopped`, or \
+                      `not_found` when the read already ended (or never \
+                      existed). Stop a read you no longer need instead of \
+                      sending more work on top of it."
+    )]
+    async fn cancel_query(
+        &self,
+        Parameters(a): Parameters<args::CancelQuery>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let connection_id = self.canonical_connection(&a.connection_id)?;
+        let out = self
+            .call(
+                BridgeRequest::CancelRead {
+                    connection_id,
+                    query_id: a.query_id,
+                },
+                false,
+            )
+            .await
+            .map_err(to_err)?;
+        ok_json(&out)
     }
 
     #[tool(
@@ -2219,8 +2448,10 @@ impl Huginn {
             verify: Vec<ReadOutcome>,
         }
         let cap = self.row_cap(&a.connection_id);
+        // Their own budget, from the commit on: the writes had theirs.
+        let budget = ReadBudget::start(self.config.read_timeout_secs);
         let verify = self
-            .read_many(&target, &a.connection_id, &a.verify, cap)
+            .read_many(&target, &a.connection_id, &a.verify, cap, budget)
             .await;
         ok_json(&Reply { batch, verify })
     }
@@ -3143,8 +3374,75 @@ const MAX_BATCH_READS: usize = crate::commands::write_batch::MAX_WRITES;
 #[derive(serde::Serialize)]
 #[serde(untagged)]
 enum ReadOutcome {
-    Rows(Capped),
-    Failed { error: String },
+    Rows(Identified<Capped>),
+    Failed {
+        error: String,
+        /// A timeout's structured half — its `query_id`, `state` and limit
+        /// (ADR #140). Absent for any other failure.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        timeout: Option<serde_json::Value>,
+    },
+    /// Never sent: the call's time for its reads was spent.
+    Skipped {
+        skipped: String,
+    },
+}
+
+/// A read's reply, led by the id it ran under (ADR #140) — the id a timeout
+/// error, `running_queries` and `cancel_query` speak of.
+#[derive(serde::Serialize)]
+struct Identified<T: serde::Serialize> {
+    query_id: String,
+    /// How long the read waited for its turn on the bridge before it was
+    /// sent — a model's parallel calls to one MCP server queue there. Absent
+    /// when it did not wait.
+    #[serde(skip_serializing_if = "is_zero")]
+    queued_ms: u64,
+    #[serde(flatten)]
+    inner: T,
+}
+
+impl<T: serde::Serialize> Identified<T> {
+    fn map<U: serde::Serialize>(self, f: impl FnOnce(T) -> U) -> Identified<U> {
+        Identified {
+            query_id: self.query_id,
+            queued_ms: self.queued_ms,
+            inner: f(self.inner),
+        }
+    }
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
+/// The time one MCP call has for its reads, from the moment it arrived
+/// (ADR #140). Copied into each read, which asks the app for what is left.
+#[derive(Debug, Clone, Copy)]
+struct ReadBudget {
+    secs: u32,
+    deadline: tokio::time::Instant,
+}
+
+impl ReadBudget {
+    fn start(secs: u32) -> Self {
+        Self {
+            secs,
+            deadline: tokio::time::Instant::now() + std::time::Duration::from_secs(u64::from(secs)),
+        }
+    }
+
+    /// Seconds left, rounded up, or `None` once less than half of one is: a
+    /// read sent with less would only open a session to be cancelled.
+    /// Rounded up because the app takes whole seconds and a fresh budget is
+    /// already a hair under its full length; the overshoot is under 0.5 s.
+    fn remaining_secs(&self) -> Option<u32> {
+        let left = self
+            .deadline
+            .saturating_duration_since(tokio::time::Instant::now())
+            .as_millis();
+        (left >= 500).then(|| u32::try_from(left.div_ceil(1000)).unwrap_or(u32::MAX))
+    }
 }
 
 // `router = self.tool_router` dispatches through the stored router (built once
@@ -3614,6 +3912,7 @@ mod tests {
             read_only: false,
             max_rows: None,
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            read_timeout_secs: DEFAULT_READ_TIMEOUT_SECS,
             saw_allow_writes: false,
         }
     }
@@ -3785,6 +4084,7 @@ mod tests {
                 read_only,
                 max_rows: None,
                 max_connections: DEFAULT_MAX_CONNECTIONS,
+                read_timeout_secs: DEFAULT_READ_TIMEOUT_SECS,
                 saw_allow_writes: false,
             }),
             // No bridge: these tests exercise the local path, which is what a
@@ -3836,6 +4136,7 @@ mod tests {
             read_only: false,
             max_rows: None,
             max_connections: DEFAULT_MAX_CONNECTIONS,
+            read_timeout_secs: DEFAULT_READ_TIMEOUT_SECS,
             saw_allow_writes: false,
         });
         huginn
@@ -3859,10 +4160,18 @@ mod tests {
                     rows: 4,
                     source: crate::state::McpRowCapSource::Connection,
                 },
+                ReadBudget::start(60),
             )
             .await;
         let json = serde_json::to_value(&out).unwrap();
         assert_eq!(json[0]["rows"], serde_json::json!([[1], [2], [3]]));
+        let qid = |i: usize| json[i]["query_id"].as_str().unwrap_or_default().to_string();
+        assert!(qid(0).starts_with("q-"), "{}", json[0]);
+        assert_ne!(qid(0), qid(3), "each read is named apart");
+        assert!(
+            json[2].get("query_id").is_none(),
+            "a refused statement was never sent, so it has no id"
+        );
         assert_eq!(json[0]["truncated"], false);
         assert!(
             json[0].get("notice").is_none(),
@@ -3899,6 +4208,213 @@ mod tests {
             .unwrap();
         assert_eq!(n, 3);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// A huginn with one SQLite pool, for the read-time tests below.
+    async fn huginn_on_sqlite(id: &str, path: &std::path::Path) -> Huginn {
+        use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+        let _ = std::fs::remove_file(path);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect_with(
+                SqliteConnectOptions::new()
+                    .filename(path)
+                    .create_if_missing(true),
+            )
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let huginn = huginn_with_policy(id, McpWritePolicy::ReadOnly, false);
+        huginn
+            .state
+            .connections
+            .write()
+            .insert(id.into(), ActivePool::bare(DbPool::Sqlite(pool)));
+        huginn
+    }
+
+    /// Once a call's read time is spent, what is left of the list is not sent
+    /// at all — each read used to get the whole limit of its own (ADR #140).
+    #[tokio::test]
+    async fn reads_left_when_the_call_has_no_time_are_skipped_not_run() {
+        let id = "t-read-skipped";
+        let path =
+            std::env::temp_dir().join(format!("huginndb-mcp-skip-{}.db", std::process::id()));
+        let huginn = huginn_on_sqlite(id, &path).await;
+
+        let spent = ReadBudget::start(0);
+        let out = huginn
+            .read_many(
+                id,
+                id,
+                &["SELECT 1".into(), "SELECT 2".into()],
+                cap(10, crate::state::McpRowCapSource::Connection),
+                spent,
+            )
+            .await;
+        let json = serde_json::to_value(&out).unwrap();
+        for slot in json.as_array().unwrap() {
+            let why = slot["skipped"].as_str().unwrap_or_default();
+            assert!(why.contains("not run"), "{slot}");
+            assert!(slot.get("rows").is_none(), "{slot}");
+        }
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A read that runs out of time comes back in its slot with what the app
+    /// knows: its id, the limit it got, and that it is still running (SQLite
+    /// cannot stop a statement waiting on a lock). The sidecar's local path,
+    /// end to end through `bridge::exec`.
+    #[tokio::test]
+    async fn a_read_out_of_time_reports_its_id_and_state_in_its_slot() {
+        use sqlx::{ConnectOptions as _, Executor as _};
+        let id = "t-read-timeout";
+        let path =
+            std::env::temp_dir().join(format!("huginndb-mcp-timeout-{}.db", std::process::id()));
+        let huginn = huginn_on_sqlite(id, &path).await;
+        let mut locker = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&path)
+            .connect()
+            .await
+            .unwrap();
+        locker.execute("BEGIN EXCLUSIVE").await.unwrap();
+
+        let out = huginn
+            .read_many(
+                id,
+                id,
+                &["SELECT id FROM t".into(), "SELECT 1".into()],
+                cap(10, crate::state::McpRowCapSource::Connection),
+                ReadBudget::start(1),
+            )
+            .await;
+        let json = serde_json::to_value(&out).unwrap();
+        let timeout = &json[0]["timeout"];
+        assert_eq!(timeout["state"], "still_running", "{}", json[0]);
+        assert_eq!(timeout["limit_secs"], 1);
+        assert_eq!(timeout["connection_id"], id);
+        assert!(timeout["query_id"].as_str().unwrap().starts_with("q-"));
+        assert!(json[0]["error"]
+            .as_str()
+            .unwrap()
+            .starts_with("the read is still running"));
+        // The first read spent the call's second: the next is not sent.
+        assert!(json[1].get("skipped").is_some(), "{}", json[1]);
+
+        locker.execute("ROLLBACK").await.unwrap();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The sidecar's whole loop for a read it no longer wants (ADR #142),
+    /// end to end through `bridge::exec` on the local path: the read is in
+    /// flight, `running_queries` lists it under the id its slot will report,
+    /// `cancel_query` stops it, and its slot says it was stopped. A second
+    /// cancel finds nothing.
+    #[tokio::test]
+    async fn a_read_listed_by_running_queries_is_stopped_by_cancel_query() {
+        use sqlx::{ConnectOptions as _, Executor as _};
+        let id = "t-cancel";
+        let path =
+            std::env::temp_dir().join(format!("huginndb-mcp-cancel-{}.db", std::process::id()));
+        let huginn = huginn_on_sqlite(id, &path).await;
+        let mut locker = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&path)
+            .connect()
+            .await
+            .unwrap();
+        locker.execute("BEGIN EXCLUSIVE").await.unwrap();
+
+        let queries = ["SELECT id FROM t".to_string()];
+        let reading = huginn.read_many(
+            id,
+            id,
+            &queries,
+            cap(10, crate::state::McpRowCapSource::Connection),
+            ReadBudget::start(60),
+        );
+        let stopping = async {
+            let mut listed = serde_json::Value::Null;
+            for _ in 0..50 {
+                listed = huginn
+                    .call(
+                        BridgeRequest::ListReads {
+                            connection_id: id.into(),
+                        },
+                        false,
+                    )
+                    .await
+                    .unwrap();
+                if listed[0]["state"] == "running" {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            assert_eq!(listed[0]["state"], "running", "{listed}");
+            let query_id = listed[0]["query_id"].as_str().unwrap().to_string();
+            let cancel = |query_id: String| {
+                huginn.call(
+                    BridgeRequest::CancelRead {
+                        connection_id: id.into(),
+                        query_id,
+                    },
+                    false,
+                )
+            };
+            let first = cancel(query_id.clone()).await.unwrap();
+            assert_eq!(first["result"], "stopped");
+            query_id
+        };
+        let (out, query_id) = tokio::join!(reading, stopping);
+
+        let json = serde_json::to_value(&out).unwrap();
+        let error = json[0]["error"].as_str().unwrap();
+        assert!(
+            error.contains(&format!("{query_id} was stopped by cancel_query")),
+            "{error}"
+        );
+        let again = huginn
+            .call(
+                BridgeRequest::CancelRead {
+                    connection_id: id.into(),
+                    query_id,
+                },
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(again["result"], "not_found", "it already ended");
+
+        locker.execute("ROLLBACK").await.unwrap();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn read_timeout_secs_defaults_under_the_client_and_never_passes_the_app() {
+        let secs = |a: &[&str]| Config::from_args(&args(a)).read_timeout_secs;
+        assert_eq!(secs(&[]), DEFAULT_READ_TIMEOUT_SECS);
+        assert_eq!(secs(&["--read-timeout-secs", "50"]), 50);
+        assert_eq!(secs(&["--read-timeout-secs=90"]), 90);
+        assert_eq!(
+            secs(&["--read-timeout-secs", "3600"]),
+            crate::state::DEFAULT_MCP_TIMEOUT_SECS,
+            "it fits the client's wait; it cannot lengthen a read"
+        );
+        assert_eq!(
+            secs(&["--read-timeout-secs", "0"]),
+            DEFAULT_READ_TIMEOUT_SECS
+        );
+        assert_eq!(
+            secs(&["--read-timeout-secs", "soon"]),
+            DEFAULT_READ_TIMEOUT_SECS
+        );
+
+        // A fresh budget asks for all of itself, not a second less.
+        assert_eq!(ReadBudget::start(180).remaining_secs(), Some(180));
+        assert_eq!(ReadBudget::start(1).remaining_secs(), Some(1));
+        assert_eq!(ReadBudget::start(0).remaining_secs(), None);
     }
 
     #[tokio::test]
@@ -4984,7 +5500,7 @@ mod tests {
         );
         // What `bridge::server::handle` puts on the wire.
         let wire = local.to_string();
-        let bridged = to_err(crate::error::AppError::Bridged(wire.clone()));
+        let bridged = to_err(crate::error::AppError::bridged(wire.clone()));
 
         assert_eq!(bridged.message, to_err(local).message);
         assert_eq!(bridged.message, wire);

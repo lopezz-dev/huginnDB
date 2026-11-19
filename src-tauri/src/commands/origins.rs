@@ -842,6 +842,9 @@ pub(crate) fn merge_into(
                 // is what lets an hour-long migration run, a decision about
                 // this machine and this copy of the data, not the file's.
                 profile.mcp_timeout_secs = existing.mcp_timeout_secs;
+                // And how many reads they may run on it at once — how hard
+                // this machine's AI may load the server (ADR #141).
+                profile.mcp_concurrent_reads = existing.mcp_concurrent_reads;
                 // And the same pair one surface across: whether the in-app AI
                 // panel may reach this connection, and whether its rows may go
                 // to an untrusted endpoint. Both are decisions about what
@@ -1408,6 +1411,25 @@ mod tests {
         let secs = |id: &str| after.iter().find(|p| p.id == id).unwrap().mcp_timeout_secs;
         assert_eq!(secs("shared"), Some(7200));
         assert_eq!(secs("other"), None);
+    }
+
+    /// How many AI reads may run at once is local too: a publisher who lets
+    /// eight run against their copy does not get to let eight run here.
+    #[test]
+    fn a_sync_preserves_the_local_mcp_concurrent_reads() {
+        let mine = ConnectionProfile {
+            origin_id: Some("o1".into()),
+            mcp_concurrent_reads: Some(1),
+            ..testkit::profile("shared")
+        };
+        let incoming = [published(ConnectionProfile {
+            mcp_concurrent_reads: Some(8),
+            ..testkit::profile("shared")
+        })];
+
+        let after = merge(vec![mine], &incoming);
+
+        assert_eq!(after[0].mcp_concurrent_reads, Some(1));
     }
 
     /// The counterpart to the three above, and the reason the preserve list is

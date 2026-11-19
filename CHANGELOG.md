@@ -23,6 +23,34 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - The tool's description now tells the model to call it before a read that
     may be heavy, and that estimated costs leave out per-row work such as
     `DECOMPRESS`.
+- **MCP: `running_queries` and `cancel_query`, so an AI can see and stop its
+  own reads.** A read whose timeout said `still_running` or `unknown` used to
+  go on loading the server, and the model could only wait or send more work
+  on top.
+  - **`running_queries`** lists the AI reads in flight on a connection, from
+    any MCP client and the AI panel: each with its `query_id`, whether it is
+    queued or running, how long it has been going, and the start of its SQL.
+  - **`cancel_query`** stops one by its `query_id`. A queued read is never
+    sent, and a running one is stopped on the server, the same way as when
+    its time runs out. The call that sent it ends saying it was stopped.
+  - It reaches only AI reads on that connection, never a person's query or
+    another session on the server, so it works on read-only connections too.
+  - The bridge protocol moves to 9. See ADR #142.
+
+- **MCP: a limit on AI reads at once, per connection, and parallel calls
+  that really run in parallel.** An MCP server used to send its calls to the
+  app one at a time, over a single connection. A model's parallel reads
+  queued there, a quick one against one database behind a slow one against
+  another. Across clients nothing was limited at all.
+  - **Each call now has a connection of its own,** up to eight per MCP
+    server.
+  - **The app lets at most two AI reads run at once against a connection,**
+    counting every MCP client and the AI panel together. The rest wait their
+    turn, inside their own time. A read that never gets in comes back
+    `not_started`; one that waited reports `queued_ms`.
+  - **Change the limit per connection in Settings → MCP:** the third number,
+    from 1 to 16. It stays on this machine across a shared-origin sync. See
+    ADR #141.
 
 - **Import a CSV, JSON or Excel file into a table.** A SQL table's
   *Insert* menu (and the table's right-click menu in the schema tree) now
@@ -145,6 +173,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
+- **MCP: an AI's reads now finish before the client gives up, and a timeout
+  says whether the read is still running.** A read used to get the
+  connection's 300 s, but a client can abandon a call sooner, without
+  cancelling it (one did at 240 s). The read then loaded the server for a
+  minute with nobody waiting, and the model, told nothing, ran it again on
+  top. `run_queries` was worse: each statement had the full 300 s, so four
+  slow ones could hold the call for twenty minutes.
+  - **The read time is now the call's.** It is 180 s by default, set with the
+    MCP server's new `--read-timeout-secs` flag and still held under the
+    connection's MCP timeout. `run_queries` shares it across its whole list,
+    and statements left when it is spent come back as `skipped` without being
+    sent.
+  - **Every read carries a `query_id`.** When one runs out of time, the
+    error's `data` (or the slot's `timeout` in `run_queries`) gives the id,
+    connection, start of the SQL, elapsed time, limit and `state`:
+    `not_started`, `cancelled`, `still_running` or `unknown`.
+  - **Parallel calls are no longer sent after their client gave up.** A
+    model's parallel calls to one MCP server go to the app one at a time, so
+    they used to queue behind a slow read, run down the client's wait there,
+    and then run in full anyway. A read now asks only for the time it has
+    left once its turn comes. One that ran out of time in the queue is never
+    sent, and comes back `not_started` with how long it waited; a read that
+    waited reports `queued_ms`.
+  - The tool descriptions now tell the model never to re-run a read that may
+    still be running, and to send heavy reads one at a time.
+  - The bridge protocol moves to 8, so the app and its MCP server must be
+    updated together. See ADR #140.
 - **MCP: a MongoDB `.explain()` is pointed at `pulse_explain`, which now
   reports execution statistics.** An AI that sent
   `db.c.explain('executionStats').aggregate([...])` to `run_query` was told
