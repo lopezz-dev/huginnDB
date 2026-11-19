@@ -4080,13 +4080,22 @@
     },
     "task": {
       "writeSql": "Escribir SQL",
-      "explainQuery": "Explica esta sentencia.",
+      "explainQuery": "Explicar esta sentencia",
       "explainSlow": "¿Por qué es lenta esta sentencia?",
       "documentRelation": "Documenta {{relation}}.",
       "writeSqlHint": "Escribir SQL para esto — lee el esquema y redacta la sentencia",
       "explainSlowHint": "Preguntar por qué es lenta esta sentencia",
       "documentRelationAction": "Documentar con IA"
     }
+  },
+  "editorMenu": {
+    "commandPalette": "Paleta de comandos",
+    "cut": "Cortar",
+    "copy": "Copiar",
+    "paste": "Pegar",
+    "selectAll": "Seleccionar todo",
+    "changeAll": "Cambiar todas las apariciones",
+    "format": "Formatear"
   },
   "extensions": {
     "searchPlaceholder": "Buscar temas…",

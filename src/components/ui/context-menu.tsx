@@ -260,7 +260,9 @@ const ContextMenuShortcut = ({
 }: React.HTMLAttributes<HTMLSpanElement>) => (
   <span
     className={cn(
-      "ml-auto text-3xs tracking-widest text-muted-foreground",
+      // `pl-4`, like `detail`: in a menu as wide as its longest label, the
+      // label of that row would otherwise touch its key.
+      "ml-auto shrink-0 pl-4 text-3xs tracking-widest text-muted-foreground",
       className,
     )}
     {...props}
