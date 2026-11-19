@@ -126,8 +126,12 @@ async fn rows(state: &AppState) -> Vec<(i32, i32)> {
 #[ignore = "needs HUGINNDB_TEST_MSSQL_HOST"]
 async fn mssql_live_an_estimated_plan_does_not_run_the_statement() {
     let Some(state) = state().await else { return };
+    // The filter is what makes it heavy: a bare `COUNT_BIG(*)` of a cross
+    // join is answered from row counts in milliseconds, which would prove
+    // nothing. Evaluated per row, it runs for minutes.
     let heavy = "SELECT COUNT_BIG(*) FROM sys.all_columns a \
-                 CROSS JOIN sys.all_columns b CROSS JOIN sys.all_columns c";
+                 CROSS JOIN sys.all_columns b CROSS JOIN sys.all_columns c \
+                 WHERE CHECKSUM(a.object_id, b.object_id, c.object_id) = 7";
     let started = std::time::Instant::now();
     let plan = crate::commands::pulse::pulse_explain_inner(
         &state,
