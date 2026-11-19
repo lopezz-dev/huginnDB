@@ -10,6 +10,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **MCP: `pulse_explain` responde en SQL Server, sin ejecutar la
+  sentencia.** Antes decía «no soportado», así que una IA no tenía forma de
+  saber si una lectura contra SQL Server iba a tardar un segundo o diez
+  minutos hasta lanzarla. En una base de datos de NAV, una búsqueda en el
+  código descomprimido de todos los objetos llegó a 101 s, y alguna no
+  volvió nunca.
+  - **Devuelve el plan estimado de SQL Server,** leído con `SHOWPLAN_XML` en
+    una sesión que se cierra después.
+  - **El plan vuelve resumido, no como XML:** el coste de la sentencia, los
+    operadores en árbol con sus filas estimadas, los tres mayores recorridos
+    con filas leídas y tamaño de la tabla, los índices que el optimizador
+    echaba en falta y sus avisos.
+  - Necesita el permiso `SHOWPLAN`, y lo dice cuando falta.
+  - La descripción de la herramienta pide ahora al modelo que la llame antes
+    de una lectura que pueda ser pesada, y avisa de que los costes estimados
+    no cuentan el trabajo por fila como `DECOMPRESS`.
 - **MCP: `running_queries` y `cancel_query`, para que una IA vea y pare sus
   propias lecturas.** Cuando el timeout de una lectura decía `still_running`
   o `unknown`, la lectura seguía cargando el servidor y al modelo solo le

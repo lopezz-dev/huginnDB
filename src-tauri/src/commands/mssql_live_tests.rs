@@ -118,6 +118,60 @@ async fn rows(state: &AppState) -> Vec<(i32, i32)> {
         .collect()
 }
 
+/// `pulse_explain` on SQL Server returns the estimated plan **without running
+/// the statement**: a triple cross join of `sys.all_columns` that would take
+/// minutes comes back in seconds, summarised, and the session that had
+/// SHOWPLAN on never returns to the pool — the next read gets rows, not a plan.
+#[tokio::test]
+#[ignore = "needs HUGINNDB_TEST_MSSQL_HOST"]
+async fn mssql_live_an_estimated_plan_does_not_run_the_statement() {
+    let Some(state) = state().await else { return };
+    // The filter is what makes it heavy: a bare `COUNT_BIG(*)` of a cross
+    // join is answered from row counts in milliseconds, which would prove
+    // nothing. Evaluated per row, it runs for minutes.
+    let heavy = "SELECT COUNT_BIG(*) FROM sys.all_columns a \
+                 CROSS JOIN sys.all_columns b CROSS JOIN sys.all_columns c \
+                 WHERE CHECKSUM(a.object_id, b.object_id, c.object_id) = 7";
+    let started = std::time::Instant::now();
+    let plan = crate::commands::pulse::pulse_explain_inner(
+        &state,
+        "c",
+        heavy,
+        crate::pulse::ExplainMode::Plan,
+    )
+    .await
+    .expect("a plan");
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(10),
+        "the statement was run: {:?}",
+        started.elapsed()
+    );
+    let raw = &plan.raw;
+    eprintln!("{}", serde_json::to_string_pretty(raw).unwrap());
+    assert_eq!(raw["engine"], "sqlserver");
+    assert!(raw["statements"][0]["cost"].as_f64().unwrap() > 0.0);
+    assert!(!raw["operators"].as_array().unwrap().is_empty());
+
+    let crate::state::DbPool::MsSql(pool) = state.pool_for("c").unwrap() else {
+        unreachable!()
+    };
+    let rows = pool.query_all("SELECT 42", &[]).await.unwrap();
+    assert_eq!(
+        rows[0].try_get::<i32, _>(0).unwrap(),
+        Some(42),
+        "the next borrower gets rows, not a plan"
+    );
+
+    let refused = crate::commands::pulse::pulse_explain_inner(
+        &state,
+        "c",
+        "SELECT 1",
+        crate::pulse::ExplainMode::Execution,
+    )
+    .await;
+    assert!(refused.is_err(), "the executed plan is MongoDB's only");
+}
+
 #[tokio::test]
 #[ignore = "needs HUGINNDB_TEST_MSSQL_HOST"]
 async fn mssql_live_a_variable_lives_for_its_whole_batch() {

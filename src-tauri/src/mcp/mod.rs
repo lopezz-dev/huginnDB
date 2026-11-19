@@ -521,7 +521,8 @@ mod args {
         /// `"executionStats"` runs it to completion and reports documents
         /// examined, keys examined and time per stage — the same cost as
         /// running it with `run_query`, bounded by the connection's
-        /// operation timeout. MySQL accepts only `"queryPlanner"`.
+        /// operation timeout. MySQL and SQL Server accept only
+        /// `"queryPlanner"`.
         //
         // Plain `//`, not `///`: schemars publishes doc comments as the
         // parameter's description, and this note is for us, not the model.
@@ -2726,13 +2727,21 @@ impl Huginn {
         title = "Explain a statement",
         annotations(read_only_hint = true, open_world_hint = true),
         description = "Explain how the server executes one read-only \
-                      statement (MySQL and MongoDB) — the way to see which \
-                      index a query uses or why it is slow. Use this \
+                      statement (MySQL, MongoDB and SQL Server) — the way \
+                      to see which index a query uses or why it is slow. \
+                      Call it BEFORE a read that may scan a big table or do \
+                      per-row work over blobs (DECOMPRESS, CAST): it costs \
+                      milliseconds, and the read can cost minutes. Use this \
                       instead of EXPLAIN or MongoDB's .explain() in \
                       run_query: pass the statement itself (on MongoDB \
                       without .explain(), e.g. db.c.aggregate([...])). By \
-                      default returns the plan without running it; on \
-                      MongoDB, verbosity \"executionStats\" runs it and \
+                      default returns the plan without running it. On SQL \
+                      Server that is the estimated plan, summarised: cost, \
+                      operators with estimated rows, the biggest scans with \
+                      rows read and table size, missing indexes and \
+                      warnings; estimated costs leave out per-row work in \
+                      scalar functions, so weigh that by the rows scanned. \
+                      On MongoDB, verbosity \"executionStats\" runs it and \
                       reports what each stage examined and how long it \
                       took. Also takes a pulse_top_queries row's 'sample'. \
                       Refuses a statement that is not read-only, is itself \

@@ -28,6 +28,7 @@
 //! `uniqueidentifier`, but wrong for the binary family — see
 //! [`binary_convert`].
 
+pub mod explain;
 pub mod schema;
 pub mod values;
 

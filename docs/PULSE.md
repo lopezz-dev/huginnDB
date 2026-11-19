@@ -187,3 +187,7 @@ HuginnDB's [MCP connector](MCP.md) — `pulse_health`, `pulse_metrics`,
 this server slow" or "what happened to it last week" and get real numbers
 back, but it can never change anything through them. See the connector's own
 guide for how to connect a client in the first place.
+
+One of them reaches further than the panel: `pulse_explain` also answers on
+SQL Server, with the estimated plan summarised (see [MCP](MCP.md)), although
+Pulse itself does not monitor SQL Server yet.
