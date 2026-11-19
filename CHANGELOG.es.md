@@ -331,6 +331,15 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   el menú de una tabla bloqueada medía 363 px para una etiqueta de nueve
   letras.
 
+- **El menú del espacio vacío de la rejilla nombra su tabla y muestra F5 en
+  Recargar.** El clic derecho bajo las filas de una tabla (o sobre una tabla
+  vacía) abre un menú con el nombre de la tabla como cabecera, con
+  *Recargar* —que muestra ahora F5, la tecla que ya la recarga— bajo **Ver**,
+  por encima de *Insertar fila* bajo **Crear**. Un alta bloqueada sigue
+  apareciendo, bloqueada con su motivo. El menú de un campo en la vista de
+  lista se ve igual que antes; los dos pasan ya por el renderizador común
+  (ADR #143).
+
 - **Un resultado cortado lo dice donde se muestra y donde se exporta.** Una
   consulta que devuelve más de 50 000 filas muestra solo las 50 000
   primeras. Su pestaña de resultado lleva ahora una marca ámbar, una franja
