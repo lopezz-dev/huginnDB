@@ -299,6 +299,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   wraps inside the menu instead of stretching it to the reason's length — a
   locked table menu was 363 px wide for a nine-letter label.
 
+- **The grid's blank-space menu names its table and shows F5 on Reload.**
+  Right-clicking below a table's rows (or on an empty table) opens a menu
+  headed by the table's name, with *Reload* — now showing F5, the key that
+  already reloads it — under **View** above *Insert row* under **Create**.
+  A blocked insert is still listed, locked with its reason. The list view's
+  field menu looks the same as before; both now go through the shared
+  renderer (ADR #143).
+
 - **A cut result says so where it is shown and where it is exported.** A
   query that returns more than 50 000 rows shows only the first 50 000. Its
   result tab now carries an amber mark, a strip over the grid says "First
