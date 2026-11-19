@@ -379,6 +379,8 @@ pub(crate) fn connection_id_of(request: &BridgeRequest) -> String {
         | PulseStorage { connection_id }
         | PulseSessions { connection_id }
         | PulseIndexUsage { connection_id }
+        | ListReads { connection_id }
+        | CancelRead { connection_id, .. }
         | ResolveMongoTarget { connection_id, .. }
         | GetTableStructure { connection_id, .. }
         | ListIndexes { connection_id, .. }

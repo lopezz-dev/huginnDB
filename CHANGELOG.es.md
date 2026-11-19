@@ -10,6 +10,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **MCP: `running_queries` y `cancel_query`, para que una IA vea y pare sus
+  propias lecturas.** Cuando el timeout de una lectura decía `still_running`
+  o `unknown`, la lectura seguía cargando el servidor y al modelo solo le
+  quedaba esperar o mandar más trabajo encima.
+  - **`running_queries`** lista las lecturas de IA en curso en una conexión,
+    vengan de cualquier cliente MCP o del panel de IA: cada una con su
+    `query_id`, si está en cola o en marcha, cuánto lleva y el inicio de su
+    SQL.
+  - **`cancel_query`** para una por su `query_id`. Si estaba en cola no llega
+    a enviarse; si estaba en marcha se para en el servidor, igual que cuando
+    se le acaba el tiempo. La llamada que la envió termina diciendo que se
+    paró.
+  - Solo alcanza lecturas de IA de esa conexión, nunca la consulta de una
+    persona ni otra sesión del servidor, así que también funciona en
+    conexiones de solo lectura.
+  - El protocolo del bridge pasa a la versión 9. Véase el ADR #142.
+
 - **MCP: un límite de lecturas de IA a la vez por conexión, y llamadas en
   paralelo que de verdad van en paralelo.** Un servidor MCP enviaba sus
   llamadas a la app de una en una, por una sola conexión. Las lecturas en

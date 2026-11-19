@@ -320,6 +320,16 @@ mod args {
     }
 
     #[derive(Debug, Deserialize, schemars::JsonSchema)]
+    pub struct CancelQuery {
+        /// The connection the read runs on: the same name or id it was sent
+        /// to with `run_query` / `run_queries`.
+        pub connection_id: String,
+        /// The read's `query_id`, from `running_queries`, or from the
+        /// `run_query` / `run_queries` reply or timeout error that named it.
+        pub query_id: String,
+    }
+
+    #[derive(Debug, Deserialize, schemars::JsonSchema)]
     pub struct Tables {
         /// The connection to work on: its **name** as shown in HuginnDB
         /// (matched case-insensitively), or its profile id. Both are reported
@@ -2127,7 +2137,8 @@ impl Huginn {
                       how it ended: `state` is not_started, cancelled, \
                       still_running or unknown. Never re-run one whose state \
                       is still_running or unknown — it is still loading the \
-                      server. A read that times out has a bad plan: check it \
+                      server: see it with `running_queries` and stop it with \
+                      `cancel_query`. A read that times out has a bad plan: check it \
                       with EXPLAIN or `pulse_explain` and make it cheaper \
                       first. Send heavy reads one at a time, not as parallel \
                       calls against the same connection."
@@ -2292,6 +2303,68 @@ impl Huginn {
                 .read_many(&target, &a.connection_id, &a.queries, cap, budget)
                 .await,
         )
+    }
+
+    #[tool(
+        title = "List the AI's reads in flight",
+        annotations(read_only_hint = true, open_world_hint = false),
+        description = "The AI reads in flight on a connection — from any MCP \
+                      client and the HuginnDB AI panel — oldest first: each \
+                      with its `query_id`, `state` (`queued`: waiting for one \
+                      of the connection's read slots; `running`: on the \
+                      server), `elapsed_ms` and the start of its SQL. Use it \
+                      before sending another heavy read, and to find a read \
+                      to stop with `cancel_query` after a call of yours timed \
+                      out with state still_running or unknown. Lists only AI \
+                      reads, never other sessions on the server."
+    )]
+    async fn running_queries(
+        &self,
+        Parameters(a): Parameters<args::Connection>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let connection_id = self.canonical_connection(&a.connection_id)?;
+        let out = self
+            .call(BridgeRequest::ListReads { connection_id }, false)
+            .await
+            .map_err(to_err)?;
+        ok_json(&out)
+    }
+
+    #[tool(
+        title = "Stop one of the AI's reads",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        ),
+        description = "Stop an AI read in flight by its `query_id`: its \
+                      session is closed and the server told to stop the \
+                      statement, and its own call ends with an error saying \
+                      it was stopped. Reaches only AI reads on this \
+                      connection — never a person's query, never another \
+                      session on the server — so it works on read-only \
+                      connections too. Returns `result`: `stopped`, or \
+                      `not_found` when the read already ended (or never \
+                      existed). Stop a read you no longer need instead of \
+                      sending more work on top of it."
+    )]
+    async fn cancel_query(
+        &self,
+        Parameters(a): Parameters<args::CancelQuery>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let connection_id = self.canonical_connection(&a.connection_id)?;
+        let out = self
+            .call(
+                BridgeRequest::CancelRead {
+                    connection_id,
+                    query_id: a.query_id,
+                },
+                false,
+            )
+            .await
+            .map_err(to_err)?;
+        ok_json(&out)
     }
 
     #[tool(
@@ -4221,6 +4294,89 @@ mod tests {
             .starts_with("the read is still running"));
         // The first read spent the call's second: the next is not sent.
         assert!(json[1].get("skipped").is_some(), "{}", json[1]);
+
+        locker.execute("ROLLBACK").await.unwrap();
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// The sidecar's whole loop for a read it no longer wants (ADR #142),
+    /// end to end through `bridge::exec` on the local path: the read is in
+    /// flight, `running_queries` lists it under the id its slot will report,
+    /// `cancel_query` stops it, and its slot says it was stopped. A second
+    /// cancel finds nothing.
+    #[tokio::test]
+    async fn a_read_listed_by_running_queries_is_stopped_by_cancel_query() {
+        use sqlx::{ConnectOptions as _, Executor as _};
+        let id = "t-cancel";
+        let path =
+            std::env::temp_dir().join(format!("huginndb-mcp-cancel-{}.db", std::process::id()));
+        let huginn = huginn_on_sqlite(id, &path).await;
+        let mut locker = sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&path)
+            .connect()
+            .await
+            .unwrap();
+        locker.execute("BEGIN EXCLUSIVE").await.unwrap();
+
+        let queries = ["SELECT id FROM t".to_string()];
+        let reading = huginn.read_many(
+            id,
+            id,
+            &queries,
+            cap(10, crate::state::McpRowCapSource::Connection),
+            ReadBudget::start(60),
+        );
+        let stopping = async {
+            let mut listed = serde_json::Value::Null;
+            for _ in 0..50 {
+                listed = huginn
+                    .call(
+                        BridgeRequest::ListReads {
+                            connection_id: id.into(),
+                        },
+                        false,
+                    )
+                    .await
+                    .unwrap();
+                if listed[0]["state"] == "running" {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            assert_eq!(listed[0]["state"], "running", "{listed}");
+            let query_id = listed[0]["query_id"].as_str().unwrap().to_string();
+            let cancel = |query_id: String| {
+                huginn.call(
+                    BridgeRequest::CancelRead {
+                        connection_id: id.into(),
+                        query_id,
+                    },
+                    false,
+                )
+            };
+            let first = cancel(query_id.clone()).await.unwrap();
+            assert_eq!(first["result"], "stopped");
+            query_id
+        };
+        let (out, query_id) = tokio::join!(reading, stopping);
+
+        let json = serde_json::to_value(&out).unwrap();
+        let error = json[0]["error"].as_str().unwrap();
+        assert!(
+            error.contains(&format!("{query_id} was stopped by cancel_query")),
+            "{error}"
+        );
+        let again = huginn
+            .call(
+                BridgeRequest::CancelRead {
+                    connection_id: id.into(),
+                    query_id,
+                },
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!(again["result"], "not_found", "it already ended");
 
         locker.execute("ROLLBACK").await.unwrap();
         let _ = std::fs::remove_file(&path);

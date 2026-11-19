@@ -132,7 +132,15 @@ async fn start(
     let slow = slow.to_string();
     let read = tokio::spawn(async move {
         let gate = state.read_gates.gate("c", 1);
-        execute_read_bounded(&Quiet, &state, "c", &slow, seconds(secs), "q-live", &gate)
+        let order = crate::commands::query::AiReadOrder {
+            connection_id: "c",
+            profile_id: "c",
+            sql: &slow,
+            timeout: seconds(secs),
+            query_id: "q-live",
+            gate: &gate,
+        };
+        execute_read_bounded(&Quiet, &state, order)
             .await
             .map(|read| read.result)
     });

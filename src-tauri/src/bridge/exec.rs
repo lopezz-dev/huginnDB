@@ -233,6 +233,17 @@ pub async fn execute(
             )
             .await?,
         )?,
+        // The registry of AI reads in flight (ADR #142). In memory and
+        // instant, so no timeout wrapper; no database is touched — a stop
+        // reaches the read through its own future, which closes its session.
+        ListReads { connection_id } => serde_json::to_value(state.runs.ai_reads(connection_id))?,
+        CancelRead {
+            connection_id,
+            query_id,
+        } => serde_json::to_value(serde_json::json!({
+            "query_id": query_id,
+            "result": state.runs.stop_ai_read(connection_id, query_id),
+        }))?,
         PulseIndexUsage { connection_id } => serde_json::to_value(
             crate::error::with_timeout_for(
                 state,
@@ -272,11 +283,14 @@ pub async fn execute(
                     crate::commands::query::execute_read_bounded(
                         sink,
                         state,
-                        connection_id,
-                        sql,
-                        timeout,
-                        &query_id,
-                        &gate,
+                        crate::commands::query::AiReadOrder {
+                            connection_id,
+                            profile_id: policy_id,
+                            sql,
+                            timeout,
+                            query_id: &query_id,
+                            gate: &gate,
+                        },
                     )
                     .await?,
                 )?

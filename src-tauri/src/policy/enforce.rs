@@ -27,6 +27,9 @@ fn needs_of(request: &BridgeRequest) -> Vec<Need> {
     match request {
         // Opening the pool, and the plumbing that only answers about it.
         EnsureConnected { .. } | IsMongo { .. } | ServerVersion { .. } => vec![Need::Endpoint],
+        // The AI's own reads in flight (ADR #142): no data, only the
+        // connection they run on.
+        ListReads { .. } | CancelRead { .. } => vec![Need::Endpoint],
         ResolveMongoTarget { database, .. } => vec![Need::Database(database.clone())],
         // Discovery is allowed and *filtered* ([`filter_databases`],
         // [`filter_tables`]), so the AI never learns a hidden relation's name.

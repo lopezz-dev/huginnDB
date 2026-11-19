@@ -70,7 +70,11 @@ use serde_json::Value;
 /// the 300 s a `7` app applies to a read, and waits only a little past what it
 /// asked for: against a `7` app it would stop waiting while the read still
 /// ran, which is the very gap this version closes.
-pub const PROTOCOL_VERSION: u32 = 8;
+///
+/// `9`: [`BridgeRequest`] gained `ListReads` and `CancelRead` (the
+/// `running_queries` and `cancel_query` tools, ADR #142). A new request
+/// variant, so it bumps the version, as `3` explains.
+pub const PROTOCOL_VERSION: u32 = 9;
 
 /// Opening frame. Sent once, before any request.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,6 +215,19 @@ pub enum BridgeRequest {
     /// first.
     PulseIndexUsage {
         connection_id: String,
+    },
+    /// The AI reads in flight on a connection, queued or running — the
+    /// `running_queries` tool (ADR #142). `connection_id` is the profile,
+    /// which is what reads are registered under.
+    ListReads {
+        connection_id: String,
+    },
+    /// Stop one AI read in flight on a connection — the `cancel_query` tool
+    /// (ADR #142). Only an AI read registered under `connection_id` can be
+    /// reached: never a person's run, never another connection's read.
+    CancelRead {
+        connection_id: String,
+        query_id: String,
     },
     /// Read a view's definition. SQL drivers answer with the body; MongoDB with
     /// `viewOn` plus the stored pipeline as source text.
@@ -429,6 +446,8 @@ impl BridgeRequest {
             | BridgeRequest::PulseStorage { .. }
             | BridgeRequest::PulseSessions { .. }
             | BridgeRequest::PulseIndexUsage { .. }
+            | BridgeRequest::ListReads { .. }
+            | BridgeRequest::CancelRead { .. }
             | BridgeRequest::FetchTableData { .. }
             | BridgeRequest::GetViewDefinition { .. }
             // A dry run executes nothing, so a lost reply costs at most a
@@ -457,6 +476,8 @@ impl BridgeRequest {
             BridgeRequest::PulseStorage { .. } => "pulse_storage",
             BridgeRequest::PulseSessions { .. } => "pulse_sessions",
             BridgeRequest::PulseIndexUsage { .. } => "pulse_index_usage",
+            BridgeRequest::ListReads { .. } => "running_queries",
+            BridgeRequest::CancelRead { .. } => "cancel_query",
             BridgeRequest::RunStatement { .. } => "run_query",
             BridgeRequest::RunWriteBatch { .. } => "run_writes",
             BridgeRequest::RunScript { .. } => "run_script",

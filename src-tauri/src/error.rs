@@ -302,8 +302,9 @@ impl ReadTimeout {
 /// Not `script::TIMEOUT_HINT`: a read takes no `timeout_seconds`. And the
 /// advice matters more than the knob — a read that runs this long usually has
 /// a bad plan, and running it again only loads the server a second time.
-pub const READ_TIMEOUT_HINT: &str = "Do not run it again as it is: look at its plan first \
-     (EXPLAIN, or pulse_explain) and make it cheaper — a narrower filter, an index, a \
+pub const READ_TIMEOUT_HINT: &str = "Do not run it again as it is. If its state is \
+     still_running or unknown, check running_queries and stop it with cancel_query. Then \
+     look at its plan (EXPLAIN, or pulse_explain) and make it cheaper — a narrower filter, an index, a \
      different join. A read's time limit is set by the MCP server (--read-timeout-secs) \
      under this connection's MCP timeout, which only the user can change \
      (HuginnDB → Settings → MCP).";
