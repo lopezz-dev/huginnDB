@@ -131,7 +131,10 @@ async fn start(
     let state = state_with(pool);
     let slow = slow.to_string();
     let read = tokio::spawn(async move {
-        execute_read_bounded(&Quiet, &state, "c", &slow, seconds(secs), "q-live").await
+        let gate = state.read_gates.gate("c", 1);
+        execute_read_bounded(&Quiet, &state, "c", &slow, seconds(secs), "q-live", &gate)
+            .await
+            .map(|read| read.result)
     });
     for _ in 0..20 {
         if watch.probe_is_running().await {

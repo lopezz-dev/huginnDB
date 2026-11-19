@@ -1837,12 +1837,20 @@
         "saveError": "Couldn't save the row limit."
       },
       "timeout": {
-        "hint": "Each connection's second number is the longest, in seconds, a run_script or run_writes call may run on that connection. Blank: 300. It lengthens nothing on its own: a call still gets 300 s unless it asks for more with timeout_seconds. When it runs out, HuginnDB cancels the statement on the server, rolls the transaction back and says whether anything was committed. A run_query read gets the same limit, at most 300 s, and is stopped on the server when it runs out or when the MCP client gives up. Raise it only on work copies where a load may take hours.",
+        "hint": "Each connection's second number is the longest, in seconds, a run_script or run_writes call may run on that connection. Blank: 300. It lengthens nothing on its own: a call still gets 300 s unless it asks for more with timeout_seconds. When it runs out, HuginnDB cancels the statement on the server, rolls the transaction back and says whether anything was committed. A run_query read gets the time the MCP server asks for (180 s by default, --read-timeout-secs) under this same limit, and is stopped on the server when it runs out or when the MCP client gives up. Raise it only on work copies where a load may take hours.",
         "rowLabel": "Longest MCP call on {{name}}, in seconds",
         "rowTitle": "Longest a run_script or run_writes may run on this connection, in seconds. Blank: the default ({{secs}} s).",
         "saved": "{{name}}: up to {{secs}} s per call",
         "clearedSaved": "{{name}}: follows the default ({{secs}} s per call)",
         "saveError": "Couldn't save the time limit."
+      },
+      "concurrentReads": {
+        "hint": "Each connection's third number is how many AI reads (run_query, run_queries, the AI panel) may run on it at once. Blank: 2. The rest wait their turn, and the wait counts against their time: one that does not get in before its time runs out is never sent, and says so. Keep it low against a production server.",
+        "rowLabel": "AI reads at once on {{name}}",
+        "rowTitle": "How many AI reads may run on this connection at once; the rest wait. Blank: the default ({{reads}}).",
+        "saved": "{{name}}: up to {{reads}} AI reads at once",
+        "clearedSaved": "{{name}}: follows the default ({{reads}} AI reads at once)",
+        "saveError": "Couldn't save how many AI reads may run at once."
       },
       "writePolicySaveError": "Couldn't save the write policy.",
       "claudeCodeLabel": "Claude Code",

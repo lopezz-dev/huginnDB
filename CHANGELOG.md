@@ -8,6 +8,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **MCP: a limit on AI reads at once, per connection, and parallel calls
+  that really run in parallel.** An MCP server used to send its calls to the
+  app one at a time, over a single connection. A model's parallel reads
+  queued there, a quick one against one database behind a slow one against
+  another. Across clients nothing was limited at all.
+  - **Each call now has a connection of its own,** up to eight per MCP
+    server.
+  - **The app lets at most two AI reads run at once against a connection,**
+    counting every MCP client and the AI panel together. The rest wait their
+    turn, inside their own time. A read that never gets in comes back
+    `not_started`; one that waited reports `queued_ms`.
+  - **Change the limit per connection in Settings → MCP:** the third number,
+    from 1 to 16. It stays on this machine across a shared-origin sync. See
+    ADR #141.
+
 - **Import a CSV, JSON or Excel file into a table.** A SQL table's
   *Insert* menu (and the table's right-click menu in the schema tree) now
   offers *Import from file (CSV, JSON, Excel)…*. Each table column takes the

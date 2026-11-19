@@ -47,6 +47,7 @@ use std::time::{Duration, Instant};
 use sqlx::pool::PoolConnection;
 use sqlx::{Executor as _, Row as _};
 
+use super::gates::ReadGate;
 use super::types::{with_meta, QueryResult};
 use super::MAX_ADHOC_QUERY_ROWS;
 use crate::db::session::fetch_capped;
@@ -105,6 +106,21 @@ pub(crate) fn mint_read_id() -> String {
     format!("q-{}", &id[..12])
 }
 
+/// An AI read's result, and how long it waited for a slot of its
+/// connection's [`ReadGate`] before it ran (ADR #141).
+#[derive(Debug, serde::Serialize)]
+pub(crate) struct BoundedRead {
+    #[serde(flatten)]
+    pub result: QueryResult,
+    /// Absent when it did not wait.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub queued_ms: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
+}
+
 /// Run `sql`, which the caller has classified as a read, behind the read-only
 /// barrier and the ad-hoc row cap (ADR #127), stopped on the server after
 /// `timeout` or as soon as this future is dropped.
@@ -112,7 +128,12 @@ pub(crate) fn mint_read_id() -> String {
 /// `query_id` names the read in the error it may end with (ADR #140). The
 /// caller mints it, so a sidecar that never gets the reply still knows it.
 ///
-/// Refuses outright a statement that is not even shaped like a read.
+/// It first waits for a slot of `gate`, its connection's limit on AI reads
+/// at once (ADR #141), and the wait counts against `timeout`: a read that
+/// does not get a slot in time is never sent, and says so (`not_started`).
+///
+/// Refuses outright a statement that is not even shaped like a read, before
+/// it takes a slot.
 pub(crate) async fn execute_read_bounded(
     sink: &dyn LogSink,
     state: &AppState,
@@ -120,9 +141,14 @@ pub(crate) async fn execute_read_bounded(
     sql: &str,
     timeout: McpTimeout,
     query_id: &str,
-) -> AppResult<QueryResult> {
+    gate: &ReadGate,
+) -> AppResult<BoundedRead> {
     let pool = state.pool_for(connection_id)?;
-    let log = SqlLog::new(sink, connection_id, pool.driver_name());
+    if !matches!(pool, DbPool::Mongo(_)) && !is_read_only(sql) {
+        return Err(AppError::InvalidInput(
+            "this statement is not a read, and was sent to be run as one".into(),
+        ));
+    }
     let start = Instant::now();
     let ctx = ReadContext {
         query_id,
@@ -131,11 +157,40 @@ pub(crate) async fn execute_read_bounded(
         timeout,
         start,
     };
-    let limit = Duration::from_secs(u64::from(timeout.secs));
-    let deadline = tokio::time::Instant::now() + limit;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(u64::from(timeout.secs));
 
-    if let DbPool::Mongo(conn) = &pool {
-        let run = crate::db::mongo::query::execute_within(conn, sql, Some(limit));
+    let Ok(_slot) = tokio::time::timeout_at(deadline, gate.enter()).await else {
+        return Err(ctx.timed_out(
+            ReadStopState::NotStarted,
+            &format!(
+                "It waited {} s for one of this connection's {} slots for AI reads, all \
+                 taken by other reads, and was never sent. Send heavy reads one at a time.",
+                start.elapsed().as_secs(),
+                gate.limit()
+            ),
+        ));
+    };
+    let queued_ms = start.elapsed().as_millis() as u64;
+    let result = run_read(sink, &pool, &ctx, deadline).await?;
+    Ok(BoundedRead { result, queued_ms })
+}
+
+/// [`execute_read_bounded`] once the read has its slot.
+async fn run_read(
+    sink: &dyn LogSink,
+    pool: &DbPool,
+    ctx: &ReadContext<'_>,
+    deadline: tokio::time::Instant,
+) -> AppResult<QueryResult> {
+    let sql = ctx.sql;
+    let log = SqlLog::new(sink, ctx.connection_id, pool.driver_name());
+    let start = Instant::now();
+
+    if let DbPool::Mongo(conn) = pool {
+        // What is left after the wait for a slot, not the whole limit: the
+        // server's own stop is the one that must land first.
+        let left = deadline.saturating_duration_since(tokio::time::Instant::now());
+        let run = crate::db::mongo::query::execute_within(conn, sql, Some(left));
         let result = match tokio::time::timeout_at(deadline + MONGO_GRACE, run).await {
             Ok(Err(e)) if crate::db::mongo::query::is_max_time_expired(&e) => Err(ctx.timed_out(
                 ReadStopState::Cancelled,
@@ -151,13 +206,7 @@ pub(crate) async fn execute_read_bounded(
         return log.outcome(sql, start, result, |r| r.rows_affected);
     }
 
-    if !is_read_only(sql) {
-        return Err(AppError::InvalidInput(
-            "this statement is not a read, and was sent to be run as one".into(),
-        ));
-    }
-
-    let result = read_sql(&pool, &ctx, deadline)
+    let result = read_sql(pool, ctx, deadline)
         .await
         .map(|(meta, truncated)| {
             let (columns, rows) = meta;
@@ -709,6 +758,65 @@ mod tests {
             "{err}"
         );
         drop(held);
+    }
+
+    struct Quiet;
+    impl LogSink for Quiet {
+        fn log(&self, _: crate::log_bus::LogEntry) {}
+    }
+
+    fn state_on(pool: DbPool) -> AppState {
+        let state = AppState::new();
+        state
+            .connections
+            .write()
+            .insert("c".into(), crate::state::ActivePool::bare(pool));
+        state
+    }
+
+    /// The connection's gate (ADR #141): a read that finds every slot taken
+    /// waits inside its own time, says so when it gets in, and is never sent
+    /// when it does not.
+    #[tokio::test]
+    async fn a_read_waits_for_its_connections_gate_within_its_time() {
+        let state = state_on(pool("gate").await);
+        let gate = state.read_gates.gate("c", 1);
+        let held = gate.enter().await;
+
+        // The only slot is held past this read's second: it never runs.
+        let err = execute_read_bounded(&Quiet, &state, "c", "SELECT 1", seconds(1), "q-a", &gate)
+            .await
+            .expect_err("no slot in time");
+        let t = timeout_of(&err);
+        assert_eq!(t.state, ReadStopState::NotStarted);
+        assert!(t.verdict.contains("1 slots"), "{}", t.verdict);
+
+        // Freed after 300 ms: the next read gets in and says how long it waited.
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            drop(held);
+        });
+        let read = execute_read_bounded(&Quiet, &state, "c", "SELECT 1", seconds(5), "q-b", &gate)
+            .await
+            .expect("a slot came free in time");
+        assert!(read.queued_ms >= 250, "{}", read.queued_ms);
+        assert_eq!(read.result.rows.len(), 1);
+        let json = serde_json::to_value(&read).unwrap();
+        assert!(json.get("queued_ms").is_some() && json.get("rows").is_some());
+    }
+
+    /// A statement that is not a read is refused before it takes a slot, so
+    /// it cannot hold up the reads behind it.
+    #[tokio::test]
+    async fn a_non_read_is_refused_without_taking_a_slot() {
+        let state = state_on(pool("gate_refused").await);
+        let gate = state.read_gates.gate("c", 1);
+        let _held = gate.enter().await;
+        let err =
+            execute_read_bounded(&Quiet, &state, "c", "DELETE FROM t", seconds(5), "q", &gate)
+                .await
+                .expect_err("not a read");
+        assert!(err.to_string().contains("not a read"), "{err}");
     }
 
     #[test]

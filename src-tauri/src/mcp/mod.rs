@@ -1787,9 +1787,11 @@ impl Huginn {
     /// it runs out (ADR #134).
     ///
     /// The time is read off the budget only once it is this read's turn on
-    /// the bridge ([`Self::call_on_turn`]): a model's parallel calls queue
-    /// there, and a read must not ask for time it spent waiting. One whose
-    /// budget ran out in the queue is never sent, and says so.
+    /// the bridge ([`Self::call_on_turn`]): past its in-flight limit a model's
+    /// parallel calls wait there, and a read must not ask for time it spent
+    /// waiting. One whose budget ran out in the wait is never sent, and says
+    /// so. The app then makes it wait for a slot of its connection's gate,
+    /// inside the same time (ADR #141).
     async fn send_read(
         &self,
         target: &str,
@@ -1815,9 +1817,9 @@ impl Huginn {
                         limit_secs: budget.secs,
                         state: crate::error::ReadStopState::NotStarted,
                         verdict: format!(
-                            "It waited {} s behind this MCP server's other calls to the \
-                             HuginnDB app, which run one at a time, and was never sent. Send \
-                             heavy reads one by one rather than as parallel calls.",
+                            "It waited {} s for a free slot behind this MCP server's other \
+                             calls to the HuginnDB app, and was never sent. Send heavy reads \
+                             one by one rather than as parallel calls.",
                             queued.load(std::sync::atomic::Ordering::Relaxed) / 1000
                         ),
                     },
@@ -1832,9 +1834,12 @@ impl Huginn {
             })
         };
         let value = self.call_on_turn(build).await?;
+        // Two waits, one number: for a slot on this side's bridge, and for
+        // one of the connection's read slots in the app (ADR #141).
+        let in_app = value.get("queued_ms").and_then(|v| v.as_u64()).unwrap_or(0);
         Ok(Identified {
             query_id: query_id.clone(),
-            queued_ms: queued.load(std::sync::atomic::Ordering::Relaxed),
+            queued_ms: queued.load(std::sync::atomic::Ordering::Relaxed) + in_app,
             inner: serde_json::from_value(value)?,
         })
     }

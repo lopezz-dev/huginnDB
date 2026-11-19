@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-140 entries: 113 ADRs, 18 gotchas, 9 conventions.
+141 entries: 114 ADRs, 18 gotchas, 9 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -180,4 +180,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 138 | ADR | [every exported file of rows is written by one Rust writer, in the same formats from both grids](adr/adr-138-every-exported-rows-file-is-written-by-one-rust-writer.md) | accepted | 2026-11-17 |
 | 139 | ADR | [a CSV, JSON or Excel file is imported into a SQL table by Rust, through the paste's multi-row insert, all or nothing](adr/adr-139-a-file-is-imported-into-a-table-by-rust-through-the-paste-insert.md) | accepted | 2026-11-17 |
 | 140 | ADR | [An AI read's time belongs to the MCP call, is asked for by the sidecar, and its timeout says how it ended](adr/adr-140-an-ai-reads-time-is-the-mcp-calls-and-its-timeout-says-how-it-ended.md) | accepted | 2026-11-18 |
+| 141 | ADR | [The bridge carries one connection per call in flight, and the app gates AI reads per connection](adr/adr-141-the-bridge-carries-a-connection-per-call-and-the-app-gates-ai-reads-per-connection.md) | accepted | 2026-11-19 |
 <!-- index:end -->

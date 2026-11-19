@@ -708,13 +708,18 @@ anteriores, y cuando se agota, las que quedan vuelven como
 el límite entero, así que cuatro lecturas lentas podían retener al cliente
 cuatro veces más de lo que estaba dispuesto a esperar.
 
-**Las llamadas en paralelo hacen cola.** Las llamadas en paralelo de un modelo
-a un mismo servidor MCP llegan a la app de una en una, por una sola conexión,
-así que una lectura pesada hace esperar a las demás. El tiempo de una lectura
-cuenta desde que llega la llamada, y cuando le toca el turno solo pide lo que
-le queda. Si se le acabó mientras esperaba, no llega a enviarse y vuelve como
-`not_started`. Una lectura que haya esperado lo indica con `queued_ms`. Manda
-las lecturas pesadas de una en una.
+**Lecturas a la vez, por conexión.** Las llamadas en paralelo de un modelo
+llegan a la app a la vez, cada una por una conexión propia. Las lecturas contra
+bases de datos distintas no se esperan entre sí. Contra una misma conexión,
+como mucho **2** lecturas de IA corren a la vez (clientes MCP y panel de IA,
+todos juntos), y las demás esperan su turno. Cambia el límite por conexión en
+Ajustes → MCP (el tercer número, de 1 a 16). Mantenlo bajo contra un servidor
+de producción.
+
+La espera cuenta contra el tiempo de la lectura. Si se le acaba mientras
+espera, no llega a enviarse y vuelve como `not_started`, diciendo cuántos
+huecos tiene la conexión. Una lectura que haya esperado lo indica con
+`queued_ms`. Manda las lecturas pesadas de una en una.
 
 Cada lectura lleva nombre. `run_query` y cada hueco de `run_queries` traen un
 `query_id`. Cuando se acaba el tiempo, el `data` del error (o el `timeout` del
