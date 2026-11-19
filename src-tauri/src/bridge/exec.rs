@@ -263,22 +263,29 @@ pub async fn execute(
         } => {
             let is_read =
                 crate::db::classify::classify_statement(sql) == crate::db::sql::StmtClass::Read;
-            serde_json::to_value(if is_read {
+            if is_read {
                 let query_id = query_id
                     .clone()
                     .unwrap_or_else(crate::commands::query::mint_read_id);
-                crate::commands::query::execute_read_bounded(
-                    sink,
-                    state,
-                    connection_id,
-                    sql,
-                    timeout_for(state, policy_id, *timeout_secs),
-                    &query_id,
-                )
-                .await?
+                let (timeout, gate) = read_limits(state, policy_id, *timeout_secs);
+                serde_json::to_value(
+                    crate::commands::query::execute_read_bounded(
+                        sink,
+                        state,
+                        connection_id,
+                        sql,
+                        timeout,
+                        &query_id,
+                        &gate,
+                    )
+                    .await?,
+                )?
             } else {
-                crate::commands::query::execute_with_state(sink, state, connection_id, sql).await?
-            })?
+                serde_json::to_value(
+                    crate::commands::query::execute_with_state(sink, state, connection_id, sql)
+                        .await?,
+                )?
+            }
         }
         // Bounded by the call's timeout under the connection's own ceiling,
         // resolved here against this side's profiles rather than taken from
@@ -546,6 +553,29 @@ pub(crate) fn timeout_for(
     policy_id: &str,
     requested: Option<u32>,
 ) -> crate::state::McpTimeout {
-    let profiles = crate::store::load_profiles().unwrap_or_else(|_| state.profiles.read().clone());
+    let profiles = fresh_profiles(state);
     crate::state::mcp_timeout(profiles.iter().find(|p| p.id == policy_id), requested)
+}
+
+/// An AI read's two limits, from one read of the profiles: its time
+/// ([`timeout_for`]'s rule) and its connection's gate on reads at once
+/// (ADR #141), both fresh so a change in Settings → MCP applies to the next
+/// read.
+fn read_limits(
+    state: &AppState,
+    policy_id: &str,
+    requested: Option<u32>,
+) -> (crate::state::McpTimeout, crate::commands::query::ReadGate) {
+    let profiles = fresh_profiles(state);
+    let profile = profiles.iter().find(|p| p.id == policy_id);
+    let gate = state
+        .read_gates
+        .gate(policy_id, crate::state::mcp_concurrent_reads(profile));
+    (crate::state::mcp_timeout(profile, requested), gate)
+}
+
+/// `profiles.json` as it is now, else this process's copy — see
+/// [`timeout_for`].
+fn fresh_profiles(state: &AppState) -> Vec<crate::state::ConnectionProfile> {
+    crate::store::load_profiles().unwrap_or_else(|_| state.profiles.read().clone())
 }

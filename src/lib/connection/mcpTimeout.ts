@@ -7,6 +7,8 @@
  * field refuses what it would otherwise silently change.
  */
 
+import { parseMcpLimit } from "./mcpLimit";
+
 export const DEFAULT_MCP_TIMEOUT_SECS = 300;
 export const MIN_MCP_TIMEOUT_SECS = 1;
 export const MAX_MCP_TIMEOUT_SECS = 86_400;
@@ -20,9 +22,5 @@ export const MAX_MCP_TIMEOUT_SECS = 86_400;
  *   alone.
  */
 export function parseMcpTimeoutSecs(raw: string): number | null | undefined {
-  const text = raw.trim();
-  if (text === "") return null;
-  if (!/^\d+$/.test(text)) return undefined;
-  const n = Number.parseInt(text, 10);
-  return n >= MIN_MCP_TIMEOUT_SECS && n <= MAX_MCP_TIMEOUT_SECS ? n : undefined;
+  return parseMcpLimit(raw, MIN_MCP_TIMEOUT_SECS, MAX_MCP_TIMEOUT_SECS);
 }

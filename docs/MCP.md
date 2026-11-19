@@ -684,12 +684,17 @@ left, and once it is spent the rest come back as `{"skipped": "not run: …"}`
 without being sent. Before, each statement had the full limit, so a list of
 four slow reads could hold the client four times longer than it would wait.
 
-**Parallel calls queue.** A model's parallel calls to one MCP server reach
-the app one at a time, over a single connection, so a heavy read makes the
-others wait. A read's time is measured from when the call arrived, and only
-what is left is asked for once its turn comes. A read whose time ran out
-while it waited is never sent: it comes back `not_started`. A read that
-waited says so with `queued_ms`. Send heavy reads one by one.
+**Reads at once, per connection.** A model's parallel calls reach the app
+side by side, each on a connection of its own. Reads against different
+databases do not wait for each other. Against one connection, at most **2**
+AI reads run at once — MCP clients and the AI panel together — and the rest
+wait their turn. Change the limit per connection in Settings → MCP (the third
+number, 1 to 16); keep it low against a production server.
+
+The wait counts against the read's time. A read whose time runs out while it
+waits is never sent: it comes back `not_started`, saying how many slots the
+connection has. A read that waited says so with `queued_ms`. Send heavy reads
+one by one.
 
 Every read is named. `run_query` and each `run_queries` slot carry a
 `query_id`, and when the time runs out the error's `data` (or the slot's

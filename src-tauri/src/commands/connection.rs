@@ -693,6 +693,29 @@ pub fn set_mcp_timeout_secs(
     })
 }
 
+/// Set (or clear, with `None`) how many AI reads may run at once against
+/// several connections (ADR #141).
+///
+/// The write half of `ConnectionProfile::mcp_concurrent_reads`, beside the
+/// timeout in Settings → MCP and local for the same reason. Stored clamped,
+/// so the number shown back is the size of the gate the next read meets.
+#[tauri::command]
+pub fn set_mcp_concurrent_reads(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<String>,
+    reads: Option<u32>,
+) -> AppResult<usize> {
+    let reads = reads.map(|n| n.clamp(1, crate::state::MAX_MCP_CONCURRENT_READS));
+    set_local_flag(app, state, ids, |p| {
+        if p.mcp_concurrent_reads == reads {
+            return false;
+        }
+        p.mcp_concurrent_reads = reads;
+        true
+    })
+}
+
 /// Let the in-app AI panel reach (or stop reaching) several connections.
 ///
 /// The same shape and the same local-only reasoning as the three commands

@@ -10,6 +10,23 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ### Añadido
 
+- **MCP: un límite de lecturas de IA a la vez por conexión, y llamadas en
+  paralelo que de verdad van en paralelo.** Un servidor MCP enviaba sus
+  llamadas a la app de una en una, por una sola conexión. Las lecturas en
+  paralelo de un modelo hacían cola allí: una rápida contra una base de datos
+  esperaba a una lenta contra otra. Y entre clientes distintos no había ningún
+  límite.
+  - **Cada llamada tiene ahora su propia conexión,** hasta ocho por servidor
+    MCP.
+  - **La app deja correr como mucho dos lecturas de IA a la vez contra una
+    conexión,** contando juntos todos los clientes MCP y el panel de IA. Las
+    demás esperan su turno dentro de su propio tiempo. Una lectura que no
+    llega a entrar vuelve como `not_started`; una que esperó informa de su
+    `queued_ms`.
+  - **El límite se cambia por conexión en Ajustes → MCP:** es el tercer
+    número, de 1 a 16. Se queda en esta máquina aunque se sincronice un
+    origen compartido. Véase el ADR #141.
+
 - **Importar un fichero CSV, JSON o Excel a una tabla.** El menú
   *Insertar* de una tabla SQL (y el menú contextual de la tabla en el árbol
   de esquema) ofrece ahora *Importar desde fichero (CSV, JSON, Excel)…*.

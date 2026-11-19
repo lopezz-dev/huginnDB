@@ -216,6 +216,10 @@ export const api = {
     invoke<number>("set_mcp_max_rows", { ids, rows }),
   setMcpTimeoutSecs: (ids: string[], secs: number | null) =>
     invoke<number>("set_mcp_timeout_secs", { ids, secs }),
+  /** How many AI reads may run at once on each of `ids` (ADR #141); `null`
+   *  follows the default (2). The backend clamps to 1..16. */
+  setMcpConcurrentReads: (ids: string[], reads: number | null) =>
+    invoke<number>("set_mcp_concurrent_reads", { ids, reads }),
 
   /**
    * Let the in-app AI panel reach (or stop reaching) several connections in one

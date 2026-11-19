@@ -9,7 +9,8 @@
  * connected from here), no driver badge or host subline (the snippet is built
  * from ids, not endpoints), no keyboard range selection. A row is a checkbox, a
  * name, and the controls that matter here — its write policy, how many rows one
- * MCP call may return from it and how long a script may run on it.
+ * MCP call may return from it, how long a script may run on it and how many AI
+ * reads may run on it at once.
  *
  * Group folds reuse `useConnectionGroupCollapse`, so a folder the user collapsed
  * in the manager opens collapsed here too; section folds are local state, for the
@@ -29,6 +30,7 @@ import type { RailSection } from "@/lib/connection/railSections";
 import { useConnectionGroupCollapse } from "@/lib/connection/useConnectionGroups";
 import type { ConnectionProfile, McpWritePolicy } from "@/types";
 
+import { McpConcurrentReadsInput } from "./McpConcurrentReadsInput";
 import { McpMaxRowsInput } from "./McpMaxRowsInput";
 import { McpTimeoutInput } from "./McpTimeoutInput";
 import { McpWritePolicySelect } from "./McpWritePolicySelect";
@@ -41,6 +43,7 @@ export function McpConnectionTree({
   onSetPolicy,
   onSetMaxRows,
   onSetTimeout,
+  onSetConcurrentReads,
   defaultMaxRows,
   sharedTooltip,
   searching,
@@ -54,6 +57,8 @@ export function McpConnectionTree({
   onSetMaxRows: (id: string, rows: number | null) => void;
   /** `null` clears the connection's own timeout ceiling, back to the default. */
   onSetTimeout: (id: string, secs: number | null) => void;
+  /** `null` clears the connection's own limit on AI reads at once. */
+  onSetConcurrentReads: (id: string, reads: number | null) => void;
   /** The global `connections.mcpMaxRows`, each row's placeholder. */
   defaultMaxRows: number;
   sharedTooltip: (profile: ConnectionProfile) => string;
@@ -96,6 +101,11 @@ export function McpConnectionTree({
           name={p.name}
           value={p.mcp_timeout_secs}
           onChange={(secs) => onSetTimeout(p.id, secs)}
+        />
+        <McpConcurrentReadsInput
+          name={p.name}
+          value={p.mcp_concurrent_reads}
+          onChange={(reads) => onSetConcurrentReads(p.id, reads)}
         />
         <McpWritePolicySelect
           value={p.mcp_write}
