@@ -56,7 +56,7 @@ UNC, una unidad mapeada, una carpeta sincronizada — del que HuginnDB importa
 conexiones, contraseñas incluidas. La idea es que quien se incorpora a un equipo
 no configure nada a mano.
 
-Publicar uno es simplemente «Exportar perfiles…» con passphrase y dejar el
+Publicar uno es simplemente «Exportar perfiles» con passphrase y dejar el
 resultado en la carpeta compartida. Consumirlo se hace en Ajustes → **Orígenes
 compartidos**: se le da la ruta, se escribe la passphrase una vez y las conexiones
 aparecen. La passphrase se queda en tu propio almacén de credenciales, una por
@@ -92,7 +92,7 @@ palabra: el editor prueba la ruta con una escritura real y se abre en modo
 lectura si el recurso la rechaza, en vez de dejarte componer una revisión y
 fallar en el último paso.
 
-A partir de ahí, «Editar el documento…» abre un editor a pantalla completa del
+A partir de ahí, «Editar el documento» abre un editor a pantalla completa del
 propio fichero:
 
 * **Conexiones** — dos columnas: este equipo a la izquierda, el fichero a la

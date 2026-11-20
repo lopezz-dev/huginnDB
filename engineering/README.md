@@ -36,7 +36,7 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 ## Index
 
 <!-- index:start -->
-143 entries: 116 ADRs, 18 gotchas, 9 conventions.
+144 entries: 116 ADRs, 18 gotchas, 10 conventions.
 
 | # | Type | Title | Status | Date |
 | - | ---- | ----- | ------ | ---- |
@@ -183,4 +183,5 @@ Files are named `<type>-NNN-<slug>.md` and live in the folder for their kind. Wh
 | 141 | ADR | [The bridge carries one connection per call in flight, and the app gates AI reads per connection](adr/adr-141-the-bridge-carries-a-connection-per-call-and-the-app-gates-ai-reads-per-connection.md) | accepted | 2026-11-19 |
 | 142 | ADR | [An AI can list and stop its own reads, by query id, and nothing else](adr/adr-142-an-ai-can-list-and-stop-its-own-reads-by-query-id.md) | accepted | 2026-11-19 |
 | 143 | ADR | [A context menu is described as data and drawn by one renderer, which owns its order, headings, colour and width](adr/adr-143-a-context-menu-is-described-as-data-and-drawn-by-one-renderer.md) | accepted | 2026-11-19 |
+| 144 | Convention | ["…" goes on a placeholder, a state in progress or elided text — never on an action](conventions/convention-144-ellipsis-only-on-placeholders-progress-and-elided-text.md) | active | 2026-11-20 |
 <!-- index:end -->

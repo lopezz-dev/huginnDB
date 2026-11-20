@@ -35,8 +35,6 @@ export interface ExportFormatItemsProps {
   onSelect: (format: ResultExportFormat) => void;
   /** Distinguishes two groups of the same formats in one menu. */
   keyPrefix?: string;
-  /** A group whose items open a dialog of their own end in "…". */
-  ellipsis?: boolean;
   title?: string;
 }
 
@@ -44,7 +42,6 @@ export function ExportFormatItems({
   formats,
   onSelect,
   keyPrefix = "",
-  ellipsis = false,
   title,
 }: ExportFormatItemsProps) {
   const { t } = useTranslation();
@@ -56,7 +53,7 @@ export function ExportFormatItems({
           title={title}
           onSelect={() => onSelect(f)}
         >
-          {`${exportFormatLabel(f, t)}${ellipsis ? "…" : ""}`}
+          {exportFormatLabel(f, t)}
         </DropdownMenuItem>
       ))}
     </>

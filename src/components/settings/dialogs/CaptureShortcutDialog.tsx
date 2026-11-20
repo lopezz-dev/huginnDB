@@ -134,7 +134,7 @@ export function CaptureShortcutDialog({
           <DialogTitle>{t(action.labelKey)}</DialogTitle>
           <DialogDescription>
             {armed
-              ? t("settings.shortcuts.pressKey")
+              ? t("settings.shortcuts.pressKeyPlaceholder")
               : t("settings.shortcuts.captureHint")}
           </DialogDescription>
         </DialogHeader>

@@ -291,8 +291,8 @@ export const FkCombobox = React.forwardRef<HTMLButtonElement, FkComboboxProps>(
                 }}
                 placeholder={
                   tooLarge
-                    ? t("dataGrid.fkLookup.search", { table: refTable })
-                    : t("dataGrid.fkLookup.filter", { table: refTable })
+                    ? t("dataGrid.fkLookup.searchPlaceholder", { table: refTable })
+                    : t("dataGrid.fkLookup.filterPlaceholder", { table: refTable })
                 }
                 className="h-7 w-full rounded-sm border border-input bg-background px-2 text-xs focus:outline-none focus:border-brand focus:ring-[3px] focus:ring-brand/20"
               />

@@ -133,7 +133,7 @@ describe("PolicyEditorDialog", () => {
       vi.advanceTimersByTime(600);
     });
     expect(await screen.findByText("unknown variant `selct`")).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Save…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
     // And while the text is not JSON at all, the form says so instead of guessing.
     fireEvent.change(json, { target: { value: "{ nope" } });
     fireEvent.click(screen.getByText("Roles"));
@@ -147,7 +147,7 @@ describe("PolicyEditorDialog", () => {
     renderEditor();
     expect(await screen.findByText(/Access is denied\./)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Add role" })).toBeNull();
-    expect((screen.getByRole("button", { name: "Save…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("keeps the user's text on a conflict instead of overwriting the other save", async () => {
@@ -157,9 +157,9 @@ describe("PolicyEditorDialog", () => {
     fireEvent.click(await screen.findByText("Accounts"));
     fireEvent.change(screen.getByLabelText("Account"), { target: { value: "bob" } });
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     // The confirmation, then the save.
-    const confirm = await screen.findAllByRole("button", { name: "Save…" });
+    const confirm = await screen.findAllByRole("button", { name: "Save" });
     fireEvent.click(confirm[confirm.length - 1]!);
     await waitFor(() => expect(api.policySave).toHaveBeenCalledWith(expect.any(String), "abc"));
     expect(await screen.findByText(/changed on the share since you opened it/)).toBeTruthy();
@@ -178,6 +178,6 @@ describe("PolicyEditorDialog", () => {
     expect(draft.users).toEqual({ ana: "admin" });
     expect(draft.defaultRole).toBe("none");
     // Nowhere to write it yet: Create waits for a path.
-    expect((screen.getByRole("button", { name: "Create…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Create" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

@@ -19,6 +19,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import en from "./locales/en.json";
 import es from "./locales/es.json";
+import { localeEntries } from "./localeEntries";
 
 const SRC = join(process.cwd(), "src");
 
@@ -30,16 +31,9 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-/** Flatten a locale object to the dotted keys i18next resolves. */
-function flatten(value: unknown, prefix = ""): string[] {
-  if (typeof value !== "object" || value === null) return [prefix];
-  return Object.entries(value as Record<string, unknown>).flatMap(([k, v]) =>
-    flatten(v, prefix ? `${prefix}.${k}` : k),
-  );
-}
-
-const EN_KEYS = new Set(flatten(en));
-const ES_KEYS = new Set(flatten(es));
+const keysOf = (locale: unknown) => new Set(localeEntries(locale).map(([key]) => key));
+const EN_KEYS = keysOf(en);
+const ES_KEYS = keysOf(es);
 
 /**
  * i18next resolves a plural key to `<key>_one` / `<key>_other` (and the other

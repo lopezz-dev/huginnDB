@@ -90,7 +90,7 @@ function Panel({
       <div className="border-b border-border p-1.5">
         <Input
           className="h-7 text-xs"
-          placeholder={t("originEditor.filter")}
+          placeholder={t("originEditor.filterPlaceholder")}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />

@@ -251,7 +251,7 @@ export function ShortcutsSection() {
                 </span>
               ) : (
                 <span className="text-muted-foreground">
-                  {t("settings.shortcuts.pressKey")}
+                  {t("settings.shortcuts.pressKeyPlaceholder")}
                 </span>
               )}
             </div>

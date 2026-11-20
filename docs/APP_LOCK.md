@@ -47,7 +47,7 @@ Say this plainly to anyone who relies on it:
 
 ## Turning it on
 
-1. Open **Settings → Security** and choose **Turn on the app lock…**.
+1. Open **Settings → Security** and turn on **Lock HuginnDB with a master password**.
 2. Choose a master password of at least 12 characters. A few unrelated words
    with spaces between them are easier to remember than a short password full
    of symbols, and harder to guess.
@@ -102,9 +102,9 @@ HuginnDB shows the same screen if its vault file is missing or damaged.
 
 In **Settings → Security**:
 
-- **Change master password…** asks for the current password and a new one.
+- **Master password → Change** asks for the current password and a new one.
   Your secrets are not touched.
-- **Turn off…** asks for the master password and puts every secret back in the
+- Turning **Lock HuginnDB with a master password** off asks for the master password and puts every secret back in the
   system keychain, exactly as it was before.
 
 ## On a managed computer

@@ -16,7 +16,7 @@ disco contiene una contraseña en texto plano.
 
 ## Crear una
 
-**Archivo → Nueva conexión…**, o `Nueva conexión` desde la paleta de comandos
+**Archivo → Nueva conexión**, o `Nueva conexión` desde la paleta de comandos
 (`Ctrl+Shift+P`). El diálogo se adapta al driver, porque los cinco no necesitan
 lo mismo:
 
@@ -252,7 +252,7 @@ reenvían a la instancia en ejecución, que conecta en la ventana que ya tienes.
 
 ## Exportar e importar
 
-**Archivo → Exportar perfiles…** escribe un `.json` a partir de una lista de
+**Archivo → Exportar perfiles** escribe un `.json` a partir de una lista de
 conexiones con casillas. **Incluir contraseñas (cifradas)** añade cada secreto —
 tanto la contraseña de la base de datos como el secreto SSH — cifrado con
 AES-256-GCM bajo una clave derivada de tu passphrase (PBKDF2-HMAC-SHA256, 600 000
@@ -260,7 +260,7 @@ iteraciones). Cada secreto lleva su propio salt y nonce, así que una entrada
 corrupta no se lleva por delante el resto del fichero. La passphrase no se guarda
 en ningún sitio y no se puede recuperar.
 
-**Archivo → Importar perfiles…** lo lee de vuelta. Los conflictos se detectan por
+**Archivo → Importar perfiles** lo lee de vuelta. Los conflictos se detectan por
 **id** de perfil, no por nombre — una conexión renombrada en cualquiera de los
 dos lados sigue siendo la misma conexión — y cada uno se resuelve por separado
 como **Sobrescribir**, **Omitir** o **Mantener ambas**. Un perfil importado de un

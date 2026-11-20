@@ -245,7 +245,7 @@ function EnvironmentsPane() {
       <SearchField
         value={query}
         onValueChange={setQuery}
-        placeholder={t("workspacePicker.searchEnvironments")}
+        placeholder={t("workspacePicker.searchEnvironmentsPlaceholder")}
         inputClassName="text-sm"
       />
       {matches.length === 0 ? (

@@ -861,7 +861,7 @@ Lo que sí puede hacer es ahorrarte el tecleo. Pídele que escriba un **fichero
 de importación de perfiles sin secretos** e impórtalo tú:
 
 1. El asistente escribe un fichero `.json` con el formato de abajo.
-2. **Archivo → Importar perfiles…** lo abre. El diálogo muestra lo que va a
+2. **Archivo → Importar perfiles** lo abre. El diálogo muestra lo que va a
    añadir y qué hacer con cualquier perfil que choque con uno que ya tengas.
 3. Cada conexión importada pide su contraseña antes de conectar. Ábrela en el
    diálogo de conexión para ponerla, y también la contraseña SSH o la frase de
