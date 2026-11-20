@@ -42,6 +42,9 @@ export interface TabMenuContext {
   t: TFunction;
   /** The tab's full name (`schema.table`, or the query's title). */
   title: string;
+  /** The tab's connection, the header's tag; `null` while the tab has no
+   *  name for it (a panel that outlived its tab). */
+  connection: string | null;
   /**
    * Whether it is the active tab when the menu opens. `togglePinTab` and
    * `closeTab` act on the active tab (`App.tsx`), so their keys describe this
@@ -61,10 +64,9 @@ export interface TabMenuContext {
 export function tabMenu(ctx: TabMenuContext): MenuSpec {
   const { t, actions: a } = ctx;
   return {
-    // The title alone. The connection was its tag, but a header tag does not
-    // shrink (`ContextMenuHeader`), so a long connection name pushed the title
-    // out of the menu entirely; the tab's tooltip already names it.
-    header: { title: ctx.title },
+    // The connection as the tag. A long one is cut, not the title: the
+    // header's tags give up their room first (`ContextMenuHeader`).
+    header: { title: ctx.title, tags: [ctx.connection] },
     entries: [
       { id: "color", section: "edit", kind: "custom", render: ctx.renderColor },
       {

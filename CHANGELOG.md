@@ -289,6 +289,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Changed
 
+- **A tab's right-click menu names its connection again, and a long name no
+  longer hides what the menu is about.** The tags beside a context menu's
+  title (a connection, a column's type) used to keep their full length, so a
+  long connection name pushed the title out of the menu and stretched it to
+  its widest; that is why the tab's menu had dropped its connection. A tag is
+  now capped and is the first thing cut, with its full text on hover, so the
+  title stays readable — and the tab's menu shows its connection beside the
+  tab's name.
+  - Internally, a contract in `uiContracts.test.ts` now refuses a context
+    menu put together by hand: outside the shared renderer, nothing may
+    import the menu primitives, so every menu goes through the one
+    description (ADR #143). The primitives' unused exports are gone.
+
 - **The explorer's right-click menus share one layout.** The connection,
   database, schema and table/view/collection menus are now drawn by the same
   renderer as the grid's (ADR #143): each opens with a header naming what it

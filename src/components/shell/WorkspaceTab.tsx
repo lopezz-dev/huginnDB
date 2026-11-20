@@ -369,6 +369,7 @@ export function WorkspaceTab(props: IDockviewPanelHeaderProps) {
         tabMenu({
           t,
           title: qualified,
+          connection: connName || null,
           // Read at the moment of the right-click, not from this render: the
           // keys of "pin" and "close" act on the active tab (`App.tsx`), so
           // the menu shows them only when that is this one.

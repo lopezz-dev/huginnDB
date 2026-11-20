@@ -319,6 +319,21 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Cambiado
 
+- **El menú contextual de una pestaña vuelve a nombrar su conexión, y un
+  nombre largo ya no oculta de qué trata el menú.** Las etiquetas junto al
+  título de un menú contextual (una conexión, el tipo de una columna)
+  conservaban toda su longitud, así que un nombre de conexión largo sacaba el
+  título del menú y lo ensanchaba al máximo; por eso el menú de la pestaña
+  había dejado de mostrar su conexión. Ahora la etiqueta tiene un ancho máximo
+  y es lo primero que se recorta, con el texto completo al pasar el ratón, de
+  modo que el título sigue legible, y el menú de la pestaña muestra su conexión
+  junto al nombre de la pestaña.
+  - Internamente, un contrato en `uiContracts.test.ts` rechaza ahora un menú
+    contextual montado a mano: fuera del renderizador común, nada puede
+    importar las primitivas del menú, así que todo menú pasa por la misma
+    descripción (ADR #143). Se han quitado los exports sin uso de las
+    primitivas.
+
 - **Los menús contextuales del explorador comparten una misma disposición.**
   Los menús de conexión, base de datos, esquema y tabla/vista/colección los
   dibuja ahora el mismo renderizador que el de la rejilla (ADR #143): cada uno

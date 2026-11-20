@@ -15,6 +15,7 @@ function ctx(over: Partial<TabMenuContext> = {}): TabMenuContext {
   return {
     t,
     title: "public.orders",
+    connection: "Analytics PG",
     isActive: true,
     isPinned: false,
     hasOthers: true,
@@ -60,9 +61,16 @@ describe("tabMenu", () => {
     expect(arranged.sections.every((s) => s.showLabel)).toBe(true);
   });
 
-  it("names the tab in the header, without the connection as a tag", () => {
-    // A header tag does not shrink: a long connection name hid the title.
-    expect(tabMenu(ctx()).header).toEqual({ title: "public.orders" });
+  it("names the tab in the header, with its connection as the tag", () => {
+    expect(tabMenu(ctx()).header).toEqual({
+      title: "public.orders",
+      tags: ["Analytics PG"],
+    });
+  });
+
+  it("draws no tag while the tab has no connection name", () => {
+    // `ContextMenuHeader` skips a null tag, so no empty chip.
+    expect(tabMenu(ctx({ connection: null })).header.tags).toEqual([null]);
   });
 
   it("gives every action an icon", () => {
