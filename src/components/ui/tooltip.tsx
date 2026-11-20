@@ -1,5 +1,6 @@
 import * as React from "react";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
+import { Slot } from "@radix-ui/react-slot";
 import { cn } from "@/lib/utils";
 
 /**
@@ -110,7 +111,9 @@ TooltipContent.displayName = TooltipPrimitive.Content.displayName;
  * looks plausible, but the trigger's `asChild` clones onto `SimpleTooltip`'s
  * own `TooltipTrigger` wrapper rather than the underlying button, and the
  * context/dropdown menu silently never opens (confirmed against
- * `EnvironmentRail`'s right-click menu). What it is NOT for is a tooltip
+ * `EnvironmentRail`'s right-click menu). Where the trigger is out of reach —
+ * `ContextActionMenu` owns its own — use `SimpleTooltipSlot` below as the
+ * menu's child, which keeps this order for you. What it is NOT for is a tooltip
  * nested *inside* open menu content (a DropdownMenuItem or a swatch inside
  * DropdownMenuContent): there the Radix tooltip fights the menu's own hover/
  * portal handling, so those spots keep a native `title=""` — a plain OS
@@ -140,5 +143,37 @@ export function SimpleTooltip({
   );
   return hasProvider ? tooltip : <TooltipProvider>{tooltip}</TooltipProvider>;
 }
+
+/**
+ * `SimpleTooltip` as the child of another trigger's `asChild` — the element
+ * handed to `ContextActionMenu`, whose `ContextMenuTrigger asChild` lives
+ * inside it where the call site cannot reach it to put `SimpleTooltip` outside.
+ *
+ * It does what the note above asks for by construction: the ref and props the
+ * outer trigger gives it go straight through to its own child (a `Slot`), and
+ * `SimpleTooltip` still wraps that child from outside. Both triggers end up on
+ * the same DOM element, which is the arrangement that works; a bare
+ * `SimpleTooltip` in that position swallows the props and the menu never
+ * opens.
+ */
+const SimpleTooltipSlot = React.forwardRef<
+  HTMLElement,
+  React.HTMLAttributes<HTMLElement> & {
+    label: React.ReactNode;
+    side?: React.ComponentPropsWithoutRef<typeof TooltipContent>["side"];
+    delayDuration?: number;
+    /** One element that forwards its ref and spreads its props. */
+    children: React.ReactElement;
+  }
+>(({ label, side, delayDuration, children, ...props }, ref) => (
+  <SimpleTooltip label={label} side={side} delayDuration={delayDuration}>
+    <Slot ref={ref} {...props}>
+      {children}
+    </Slot>
+  </SimpleTooltip>
+));
+SimpleTooltipSlot.displayName = "SimpleTooltipSlot";
+
+export { SimpleTooltipSlot };
 
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
