@@ -42,6 +42,7 @@ import { DialogActions } from "@/components/ui/dialog-actions";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 import { useAsyncSubmit } from "@/lib/useAsyncSubmit";
 import { api } from "@/lib/tauri";
 import {
@@ -109,7 +110,9 @@ export function InsertRowsDialog({
     submitRef.current = submit;
   }, [submit]);
 
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
   const handleMount = useCallback((rawEditor: unknown, monaco: Monaco) => {
+    attachMenuEditor(rawEditor);
     const editor = rawEditor as {
       addCommand: (keybinding: number, handler: () => void) => string | null;
     };
@@ -117,7 +120,7 @@ export function InsertRowsDialog({
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () => {
       submitRef.current();
     });
-  }, []);
+  }, [attachMenuEditor]);
 
   const editorOptions = useEditorOptions(
     () => ({
@@ -144,7 +147,13 @@ export function InsertRowsDialog({
               pixels, and a flex-stretched box inside the `panel` tier's
               scrolling body would hand it a height that isn't settled until
               layout, which Monaco does not react to on its own. */}
-          <div className="overflow-hidden rounded-md border border-border">
+          {/* No Format in the menu: this editor has no formatter of its own. */}
+          <EditorContextMenu
+            className="overflow-hidden rounded-md border border-border"
+            editor={menuEditor}
+            header={{ title: table }}
+            width="sm"
+          >
             <Editor
               height={280}
               language="json"
@@ -154,7 +163,7 @@ export function InsertRowsDialog({
               onMount={handleMount}
               options={editorOptions}
             />
-          </div>
+          </EditorContextMenu>
 
           {/* Above the footer, not in a toast: a rejected paste names a row, a
               column or a parse position, and it has to be readable next to the

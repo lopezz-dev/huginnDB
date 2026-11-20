@@ -4100,7 +4100,15 @@
     "paste": "Pegar",
     "selectAll": "Seleccionar todo",
     "changeAll": "Cambiar todas las apariciones",
-    "format": "Formatear"
+    "format": "Formatear",
+    "subject": {
+      "cell": "Celda",
+      "newView": "Vista nueva",
+      "pipeline": "Pipeline",
+      "stage": "Etapa",
+      "policy": "Política",
+      "consoleEntry": "Entrada de la consola"
+    }
   },
   "extensions": {
     "searchPlaceholder": "Buscar temas…",

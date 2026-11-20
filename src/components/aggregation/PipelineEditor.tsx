@@ -16,6 +16,11 @@
  * through a ref for the same reason `onRun` is: the registered entry's
  * closures live as long as the model does and must never freeze on the first
  * render's data.
+ *
+ * The right-click menu (`EditorContextMenu`) is wired here too, for the same
+ * reason: each of the three callers (a stage card, the text mode, the insert
+ * document dialog) only says what the editor holds (`menuHeader`) and, where
+ * there is one, how to format it (`onFormat`).
  */
 
 import { useCallback, useEffect, useRef } from "react";
@@ -33,6 +38,8 @@ import { useCommandPalette } from "@/stores/dialogs/commandPalette";
 import { useTabSwitcher } from "@/components/shell/TabSwitcher";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
+import type { MenuHeader } from "@/lib/menu/menuSpec";
 
 interface Props {
   value: string;
@@ -48,6 +55,10 @@ interface Props {
    *  Omitted entirely, the editor still works — it just falls back to the
    *  static operator/constructor suggestions `monacoMongo.ts` always offers. */
   completion?: MongoCompletionEntry;
+  /** What the right-click menu says it is about: the stage, the pipeline. */
+  menuHeader: MenuHeader;
+  /** The menu's Format, where the caller has a formatter for this text. */
+  onFormat?: () => void;
 }
 
 export function PipelineEditor({
@@ -58,7 +69,10 @@ export function PipelineEditor({
   readOnly,
   lineNumbers = false,
   completion,
+  menuHeader,
+  onFormat,
 }: Props) {
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
   const editorPrefs = usePreferences(selectEditorPrefs);
   // Resolved through the hook, not the bare function: an imported
   // theme's definition arrives after first paint, and only a store
@@ -93,6 +107,7 @@ export function PipelineEditor({
   }, []);
 
   function handleMount(rawEditor: unknown, monaco: Monaco) {
+    attachMenuEditor(rawEditor);
     const editor = rawEditor as {
       addCommand: (keybinding: number, handler: () => void) => string | null;
       onKeyDown: (
@@ -174,17 +189,26 @@ export function PipelineEditor({
   );
 
   return (
-    <Editor
-      height={height}
-      language={MONGO_PIPELINE_LANGUAGE}
-      // See the note in `ViewEditorTab`: this marks Monaco's focus area for
-      // the window-level dispatcher.
-      wrapperProps={{ "data-kb-scope": "editor" }}
-      theme={monacoTheme}
-      value={value}
-      onChange={handleEditorChange}
-      onMount={handleMount}
-      options={editorOptions}
-    />
+    <EditorContextMenu
+      // The caller's height goes on the wrapper, and the editor fills it.
+      style={{ height }}
+      editor={menuEditor}
+      header={menuHeader}
+      width="sm"
+      format={onFormat && { run: onFormat }}
+    >
+      <Editor
+        height="100%"
+        language={MONGO_PIPELINE_LANGUAGE}
+        // See the note in `ViewEditorTab`: this marks Monaco's focus area for
+        // the window-level dispatcher.
+        wrapperProps={{ "data-kb-scope": "editor" }}
+        theme={monacoTheme}
+        value={value}
+        onChange={handleEditorChange}
+        onMount={handleMount}
+        options={editorOptions}
+      />
+    </EditorContextMenu>
   );
 }

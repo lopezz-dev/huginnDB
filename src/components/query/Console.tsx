@@ -45,6 +45,7 @@ import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import type { LogEntry } from "@/types";
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 
 /** `HH:MM:SS.mmm` — fixed-width clock used by every console row so the
  *  column stays vertically aligned. */
@@ -146,6 +147,7 @@ export function Console() {
   const selectedDetailValue =
     selected?.sql ?? selected?.message ?? selected?.error ?? "";
 
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
   const detailEditorOptions = useEditorOptions(
     () => ({
       ...readOnlyEditorOptions(editorPrefs),
@@ -324,15 +326,23 @@ export function Console() {
               {selected.error}
             </div>
           )}
-          <div className="flex-1">
+          {/* Read-only (`readOnlyEditorOptions`): the menu is Copy and
+              Select all. */}
+          <EditorContextMenu
+            className="flex-1"
+            editor={menuEditor}
+            header={{ title: t("editorMenu.subject.consoleEntry") }}
+            width="sm"
+          >
             <Editor
               height="100%"
               language={selected.kind === "sql" ? "sql" : "plaintext"}
               theme={monacoTheme}
               value={selectedDetailValue}
+              onMount={attachMenuEditor}
               options={detailEditorOptions}
             />
-          </div>
+          </EditorContextMenu>
         </div>
       )}
     </div>

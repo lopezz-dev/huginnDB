@@ -69,9 +69,8 @@ import type { LineRange } from "@/lib/query/statementTabs";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { QueryEditorToolbar } from "@/components/query/QueryEditorToolbar";
 import { QueryResultsArea } from "@/components/query/results/QueryResultsArea";
-import { EditorContextMenu } from "@/components/menus/EditorContextMenu";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 import { driverLabel } from "@/components/common/DriverBadge";
-import type { CommandEditor } from "@/lib/monaco/editorCommands";
 import { parentConnectionId, sqliteFileLabel } from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
@@ -357,7 +356,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
   /** The mounted editor, for the context menu (`EditorContextMenu`); `null`
    *  until `onMount`. State rather than a ref because the menu wrapper needs
    *  to know when it can open. */
-  const [menuEditor, setMenuEditor] = useState<CommandEditor | null>(null);
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
 
   // A tab opened with `openQueryTab(…, { run: true })` (the history panel's
   // Run) runs its whole buffer once, through this tab's own runner — so a
@@ -530,7 +529,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     // live data (read through the existing refs) and keep the disposer for
     // unmount — registering the providers per editor is what produced the
     // duplicate "▶ Run" lenses when several query tabs were open.
-    setMenuEditor(_editor as CommandEditor);
+    attachMenuEditor(_editor);
 
     // Both language families are installed unconditionally. They are global
     // per Monaco instance and idempotent, so the cost is one registration
@@ -593,8 +592,6 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     () => ({
       ...editorOptionsFromPrefs(editorPrefs),
       formatOnPaste: editorPrefs.formatOnPaste,
-      // HuginnDB's menu replaces Monaco's (`EditorContextMenu`).
-      contextmenu: false,
     }),
     [editorPrefs],
   );
@@ -642,7 +639,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
             {/* Monaco redispatches `editor`-scoped bindings itself (gotcha #9);
                 the attribute is what tells the window listener that focus in
                 here is *not* in the grid or the tree. The right-click menu is
-                HuginnDB's (`contextmenu: false` in the options below); it
+                HuginnDB's (`contextmenu: false` in `editorOptionsFromPrefs`); it
                 offers no Run entries — running is the toolbar's, the keys'
                 and each statement's ▶ Run. */}
             <EditorContextMenu

@@ -71,6 +71,7 @@ import { useFullscreenToggle } from "@/lib/useFullscreenToggle";
 import { Kbd } from "@/components/ui/kbd";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 
 interface Props {
   open: boolean;
@@ -105,6 +106,7 @@ export function CellEditorBody({
   surface,
   binding,
   editorKey,
+  subject,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -129,6 +131,8 @@ export function CellEditorBody({
    * NOT change this (only `value` does), so in-session undo still works.
    */
   editorKey?: string | number;
+  /** What the right-click menu says it is about: the column's name. */
+  subject: string;
 }) {
   const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
@@ -182,6 +186,7 @@ export function CellEditorBody({
     (v: string | undefined) => onChange(v ?? ""),
     [onChange],
   );
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
   const editorOptions = useEditorOptions(
     () => ({
       ...editorOptionsFromPrefs(editorPrefs),
@@ -237,9 +242,19 @@ export function CellEditorBody({
           className="ml-auto"
         />
       </div>
-      <div
+      <EditorContextMenu
         className="min-h-0 flex-1 overflow-hidden rounded-md border border-border"
         data-kb-scope="editor"
+        editor={menuEditor}
+        header={{ title: subject || t("editorMenu.subject.cell") }}
+        width="sm"
+        // The Format button's formatter; plain text has none, and a read-only
+        // cell drops the entry on its own (`editorMenu`).
+        format={
+          language === "plaintext"
+            ? undefined
+            : { run: () => onChange(tryFormat(value, language, driver)) }
+        }
       >
         <Editor
           key={editorKey}
@@ -250,6 +265,7 @@ export function CellEditorBody({
           theme={monacoTheme}
           onChange={handleEditorChange}
           onMount={(editor, monacoNs) => {
+            attachMenuEditor(editor);
             const save = () => onSubmitRef.current?.();
             editor.addCommand(
               monacoNs.KeyMod.CtrlCmd | monacoNs.KeyCode.KeyS,
@@ -262,7 +278,7 @@ export function CellEditorBody({
           }}
           options={editorOptions}
         />
-      </div>
+      </EditorContextMenu>
     </div>
   );
 }
@@ -479,6 +495,7 @@ export function CellEditor({
             surface="modal"
             binding={binding}
             editorKey={editorKey}
+            subject={columnName ?? ""}
           />
         </div>
         {saveError && (

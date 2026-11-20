@@ -19,6 +19,7 @@ import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import type { EditorPrefs } from "@/types";
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 
 interface Props {
   /** Section label, e.g. "DDL preview". */
@@ -43,6 +44,7 @@ export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
   // Hoisted out of the JSX because the editor sits behind the `error`
   // branch — a hook cannot be called from one side of a ternary.
   const monacoTheme = useMonacoTheme(prefs.theme);
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
 
   return (
     <div className="flex h-48 flex-col border-t border-border">
@@ -58,13 +60,22 @@ export function DdlPreviewPane({ title, ddl, error, warning, prefs }: Props) {
       {error ? (
         <div className="px-3 py-2 text-xs text-destructive">{error}</div>
       ) : (
-        <Editor
-          height="100%"
-          value={ddl}
-          language="sql"
-          theme={monacoTheme}
-          options={editorOptions}
-        />
+        // Read-only (`readOnlyEditorOptions`): the menu is Copy and Select all.
+        <EditorContextMenu
+          className="min-h-0 flex-1"
+          editor={menuEditor}
+          header={{ title }}
+          width="sm"
+        >
+          <Editor
+            height="100%"
+            value={ddl}
+            language="sql"
+            theme={monacoTheme}
+            onMount={attachMenuEditor}
+            options={editorOptions}
+          />
+        </EditorContextMenu>
       )}
     </div>
   );

@@ -405,6 +405,7 @@ export function SideEditorPanel() {
         surface="side"
         binding={target?.binding}
         editorKey={editorKey}
+        subject={target?.columnName ?? ""}
       />
       {saveError && (
         <div className="px-1 text-2xs text-destructive">{saveError}</div>

@@ -35,6 +35,10 @@ export function editorOptionsFromPrefs(prefs: EditorPrefs) {
     // reads as content in a short pane.
     scrollBeyondLastLine: false,
     automaticLayout: true,
+    // Monaco's own right-click menu is off in every editor: the menu is
+    // HuginnDB's (`components/menus/EditorContextMenu`, ADR #143), and
+    // Monaco's Paste would go through the webview clipboard (ADR #63).
+    contextmenu: false,
   };
 }
 

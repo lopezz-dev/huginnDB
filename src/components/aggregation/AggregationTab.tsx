@@ -487,6 +487,21 @@ export function AggregationTab({
     }
   }
 
+  /** One stage's body, from its card's right-click menu: the toolbar's
+   *  Format does every stage, which is not what a menu opened on one card
+   *  is about. */
+  async function formatStage(id: string) {
+    const body = stages.find((s) => s.id === id)?.body;
+    if (body === undefined) return;
+    try {
+      const formatted = await api.formatMongoPipeline({ stages: [body] });
+      const next = formatted.stages[0];
+      if (next !== undefined) updateStage(id, next);
+    } catch (e) {
+      notify.error(t("aggregation.formatFailed", { message: String(e) }));
+    }
+  }
+
   // ---------------------------------------------------------------------
   // Export / save
   // ---------------------------------------------------------------------
@@ -743,6 +758,7 @@ export function AggregationTab({
                   dropIndex === i && dragIndex !== null && dragIndex !== i
                 }
                 onChange={(body) => updateStage(stage.id, body)}
+                onFormat={() => void formatStage(stage.id)}
                 onToggleEnabled={() =>
                   setStages((prev) =>
                     prev.map((s) =>
@@ -820,6 +836,8 @@ export function AggregationTab({
               height="100%"
               lineNumbers
               completion={completion}
+              menuHeader={{ title: t("editorMenu.subject.pipeline") }}
+              onFormat={() => void formatPipeline()}
             />
           </Panel>
           {showPreview && (

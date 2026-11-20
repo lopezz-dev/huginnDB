@@ -69,6 +69,7 @@ import type { JsonSchemaBinding, JsonSchemaMatch } from "@/types";
 import { pickJsonFile } from "@/lib/dialogs";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 
 export function JsonSchemasSection() {
   const { t } = useTranslation();
@@ -269,6 +270,12 @@ export function JsonSchemasSection() {
     setBody(v ?? "");
     setBodyDirty(true);
   }, []);
+  /** The Format button and the editor menu's Format. */
+  const formatBody = () => {
+    setBody(tryFormat(body, "json"));
+    setBodyDirty(true);
+  };
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
   const bodyEditorOptions = useEditorOptions(
     () => ({
       ...editorOptionsFromPrefs(editorPrefs),
@@ -449,10 +456,7 @@ export function JsonSchemasSection() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => {
-                          setBody(tryFormat(body, "json"));
-                          setBodyDirty(true);
-                        }}
+                        onClick={formatBody}
                       >
                         {t("jsonSchemas.detail.format")}
                       </Button>
@@ -488,11 +492,15 @@ export function JsonSchemasSection() {
                       </div>
                     </div>
 
-                    <div
+                    <EditorContextMenu
                       className={cn(
                         "overflow-hidden rounded-md border border-border",
                         fullscreen ? "min-h-0 flex-1" : "h-[180px]",
                       )}
+                      editor={menuEditor}
+                      header={{ title: selected.name }}
+                      width="sm"
+                      format={{ run: formatBody }}
                     >
                       <Editor
                         height="100%"
@@ -503,9 +511,10 @@ export function JsonSchemasSection() {
                         theme={monacoTheme}
                         value={body}
                         onChange={handleBodyChange}
+                        onMount={attachMenuEditor}
                         options={bodyEditorOptions}
                       />
-                    </div>
+                    </EditorContextMenu>
 
                     {bodyError && (
                       <p className="text-2xs text-destructive">

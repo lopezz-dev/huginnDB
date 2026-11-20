@@ -356,6 +356,22 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   - El menú es un componente reutilizable, para que los demás editores Monaco
     de la app lo adopten a continuación.
   - En todos los menús contextuales, una etiqueta larga ya no toca su atajo.
+- **El resto de editores Monaco también usa el menú del clic derecho de
+  HuginnDB,** así que ninguno muestra ya el nativo de Monaco: el editor de
+  celda (en diálogo y en el panel lateral), el de vistas, el pipeline de
+  agregación (en modo texto y en cada etapa), los diálogos de insertar
+  documento y pegar filas, Ajustes → Esquemas JSON y el JSON de la política
+  gestionada. Cada menú lleva arriba lo que se está editando —la columna, la
+  vista, el operador de la etapa, la tabla, el esquema— y ofrece *Cortar*,
+  *Copiar*, *Pegar* y *Cambiar todas las apariciones*; Pegar lee el
+  portapapeles en Rust, como en el editor de consultas.
+  - **Formatear** solo aparece donde el editor ya tenía formateador: la celda
+    (JSON, XML o SQL; no en texto plano), el SQL de la vista, el pipeline y,
+    en la tarjeta de una etapa, solo esa etapa, y el cuerpo del esquema JSON.
+  - **Los editores de solo lectura llevan Copiar y Seleccionar todo:** la
+    vista previa del DDL, el CREATE de una tabla, el detalle de la Consola,
+    una celda de solo lectura y una política impuesta.
+  - Los bloques SQL del panel de IA siguen sin menú, como hasta ahora.
 - **La barra de menús y todos los desplegables usan la densidad del menú
   contextual.** Archivo, Ventana, Ver y Ayuda, y el resto de desplegables de
   la app (el desbordamiento de la barra de la rejilla, las conexiones de la
