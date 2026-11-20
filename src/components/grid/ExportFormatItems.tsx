@@ -33,8 +33,6 @@ export function exportFormatLabel(
 export interface ExportFormatItemsProps {
   formats: readonly ResultExportFormat[];
   onSelect: (format: ResultExportFormat) => void;
-  /** The overflow menu's items are smaller than the bar's. */
-  className?: string;
   /** Distinguishes two groups of the same formats in one menu. */
   keyPrefix?: string;
   /** A group whose items open a dialog of their own end in "…". */
@@ -45,7 +43,6 @@ export interface ExportFormatItemsProps {
 export function ExportFormatItems({
   formats,
   onSelect,
-  className,
   keyPrefix = "",
   ellipsis = false,
   title,
@@ -56,7 +53,6 @@ export function ExportFormatItems({
       {formats.map((f) => (
         <DropdownMenuItem
           key={`${keyPrefix}${f}`}
-          className={className}
           title={title}
           onSelect={() => onSelect(f)}
         >

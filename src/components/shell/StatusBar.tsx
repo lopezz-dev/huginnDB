@@ -208,7 +208,6 @@ function DensityMenu() {
             key={d.key}
             onSelect={() => updateGrid({ rowHeight: d.rowHeight })}
             className={cn(
-              "text-xs",
               rowHeight === d.rowHeight && "font-semibold text-brand",
             )}
           >

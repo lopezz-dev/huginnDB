@@ -125,7 +125,7 @@ export function SortByMenuItems({
     <>
       <DropdownMenuLabel>{t("dataGrid.sort.menuTitle")}</DropdownMenuLabel>
       {fields.length === 0 && (
-        <DropdownMenuItem className="text-xs" disabled>
+        <DropdownMenuItem disabled>
           {t("dataGrid.sort.noFields")}
         </DropdownMenuItem>
       )}
@@ -134,7 +134,7 @@ export function SortByMenuItems({
         const Arrow = level?.desc ? ArrowDown : ArrowUp;
         return (
           <DropdownMenuSub key={f.path}>
-            <DropdownMenuSubTrigger className="text-xs">
+            <DropdownMenuSubTrigger>
               <span className="flex min-w-0 flex-1 items-center gap-3">
                 <span className="truncate font-mono">{f.path}</span>
                 <span className="ml-auto flex shrink-0 items-center gap-0.5 pr-1">
@@ -159,7 +159,6 @@ export function SortByMenuItems({
             </DropdownMenuSubTrigger>
             <DropdownMenuSubContent>
               <DropdownMenuCheckboxItem
-                className="text-xs"
                 checked={level !== null && !level.desc}
                 onSelect={() => onChange(upsertSortLevel(sort, f.path, false))}
               >
@@ -167,7 +166,6 @@ export function SortByMenuItems({
                 {t("dataGrid.sort.ascending")}
               </DropdownMenuCheckboxItem>
               <DropdownMenuCheckboxItem
-                className="text-xs"
                 checked={level !== null && level.desc}
                 onSelect={() => onChange(upsertSortLevel(sort, f.path, true))}
               >
@@ -178,7 +176,6 @@ export function SortByMenuItems({
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    className="text-xs"
                     onSelect={() => onChange(removeSortLevel(sort, f.path))}
                   >
                     <X className="mr-2 h-3.5 w-3.5" />
@@ -193,7 +190,7 @@ export function SortByMenuItems({
       {sort.length > 0 && (
         <>
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="text-xs" onSelect={() => onChange([])}>
+          <DropdownMenuItem onSelect={() => onChange([])}>
             <X className="mr-2 h-3.5 w-3.5" />
             {t("dataGrid.sort.clear")}
           </DropdownMenuItem>

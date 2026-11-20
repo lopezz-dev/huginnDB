@@ -52,24 +52,21 @@ describe("floating menu chrome", () => {
     sameClasses(`${MENU_PANEL} min-w-[8rem]`, INHERITED_PANEL_8REM);
   });
 
-  it("MENU_ITEM plus a type scale matches both menus' rows", () => {
+  // Until ADR #143 the type scale was the call site's (`text-sm` in the
+  // dropdown, `text-xs` in the context menu). Both menus now share the context
+  // menu's row, so the fragment carries the scale and these match what
+  // `context-menu.tsx` had before the change — the dropdown's `text-sm` rows
+  // are the deliberate change, not a drift.
+  it("MENU_ITEM matches the context menu's row, type scale included", () => {
     sameClasses(
-      `${MENU_ITEM} text-sm`,
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-    );
-    sameClasses(
-      `${MENU_ITEM} text-xs`,
+      MENU_ITEM,
       "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
     );
   });
 
-  it("MENU_SUBTRIGGER plus a type scale matches both menus' submenu rows", () => {
+  it("MENU_SUBTRIGGER matches the context menu's submenu row, type scale included", () => {
     sameClasses(
-      `${MENU_SUBTRIGGER} text-sm`,
-      "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent",
-    );
-    sameClasses(
-      `${MENU_SUBTRIGGER} text-xs`,
+      MENU_SUBTRIGGER,
       "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent",
     );
   });

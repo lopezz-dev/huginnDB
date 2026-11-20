@@ -380,7 +380,7 @@ export function MongoIndexesTab({ connectionId, schema, collection }: Props) {
                         />
                       </DropdownMenuTrigger>
                     </PolicyLockHint>
-                    <DropdownMenuContent align="end" className="text-xs">
+                    <DropdownMenuContent align="end">
                       <DropdownMenuItem
                         onSelect={() => {
                           setEditing(index);

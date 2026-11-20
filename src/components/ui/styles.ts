@@ -12,13 +12,14 @@
  * primitives that consume them, following the norm `segmented.tsx` records
  * (create on first adoption, never in advance).
  *
- * Two things are deliberately NOT extracted, because extracting them would
- * erase a decision rather than share one:
+ * One thing is deliberately NOT extracted, because extracting it would erase
+ * a decision rather than share one: `min-w-*` is not part of `MENU_PANEL`. A
+ * context menu sizes itself by its `width` tier (`10`/`14`/`18rem`) while a
+ * dropdown's floor is `8rem` and its consumer sets the rest.
  *
- * - `min-w-*` is not part of `MENU_PANEL`. A context menu is denser than a menu
- *   bar dropdown (`10rem` vs `8rem`), and that gap is intentional.
- * - Type scale is not part of `MENU_ITEM` / `MENU_SUBTRIGGER`. The dropdown is
- *   `text-sm` and the context menu `text-xs`, same reason.
+ * The type scale used to be on that list too — the dropdown was `text-sm` on
+ * 32px rows "by design". ADR #143 retired that: every menu row is now 12px on
+ * 28px, so the scale lives in `MENU_ITEM` / `MENU_SUBTRIGGER`.
  */
 
 /** Where a field's focus treatment hangs. See `fieldFocus`. */
@@ -96,18 +97,22 @@ export const CONTROL_FOCUS_TIGHT =
 export const MENU_PANEL =
   "z-50 max-h-[var(--radix-popper-available-height)] overflow-y-auto overflow-x-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-elevation-3 duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-[0.98]";
 
-/** A selectable row inside a menu panel. Pass your own type scale. */
+/**
+ * A selectable row inside a menu panel. `text-xs` with `py-1.5` is the one
+ * menu density — 12px type on a 28px row — for context menus and dropdowns
+ * alike (ADR #143).
+ */
 export const MENU_ITEM =
-  "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+  "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 /**
  * A menu row that opens a submenu. Not `MENU_ITEM` plus a modifier: it stays
  * highlighted while its submenu is open (`data-[state=open]:bg-accent`) and
  * carries no disabled treatment, since Radix's SubTrigger has no disabled
- * state to style. Pass your own type scale.
+ * state to style. Same density as `MENU_ITEM`.
  */
 export const MENU_SUBTRIGGER =
-  "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent";
+  "flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-xs outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent";
 
 /**
  * An action that appears on hover of its container. `focus-visible` is in there
