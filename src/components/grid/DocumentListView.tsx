@@ -53,15 +53,11 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { notify } from "@/lib/notify";
 import {
-  ArrowDown,
-  ArrowUp,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   Copy,
-  Filter,
-  FilterX,
   Inbox,
   Maximize2,
   Plus,
@@ -70,17 +66,9 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
-import {
-  ContextMenu,
-  ContextMenuAction,
-  ContextMenuContent,
-  ContextMenuHeader,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import { ViewAsDateAction } from "@/components/epoch/ViewAsDateAction";
-import { detectEpoch } from "@/lib/epoch/epoch";
+import { ContextActionMenu } from "@/components/menus/ContextActionMenu";
+import { fieldMenu, type FieldMenuActions } from "@/components/grid/fieldMenu";
+import i18n from "@/lib/i18n";
 import { IconButton } from "@/components/ui/icon-button";
 import {
   DraftCellControl,
@@ -807,7 +795,7 @@ interface DraftState {
  * argument instead of closing over one particular field — that's what lets
  * every `FieldRow` share the exact same, stable `actionsRef` object.
  */
-interface FieldRowActions {
+interface FieldRowActions extends FieldMenuActions {
   openTypeMenu: (key: string) => void;
   closeTypeMenu: () => void;
   toggleFold: (key: string) => void;
@@ -819,10 +807,6 @@ interface FieldRowActions {
   deleteField: (f: DocField) => void;
   addAfter: (f: DocField) => void;
   expandField: (f: DocField) => void;
-  sortBy: (f: DocField, desc: boolean) => void;
-  unsort: (f: DocField) => void;
-  filterBy: (f: DocField, exclude: boolean) => void;
-  copyValue: (f: DocField) => void;
 }
 
 const DocumentCard = memo(function DocumentCard({
@@ -1620,107 +1604,30 @@ const FieldRow = memo(function FieldRow({
   // belongs to the text field (paste, select all), not to the document.
   if (editing) return row;
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <FieldMenuItems
-          field={f}
-          sortable={sortable}
-          sortDesc={sortDesc}
-          filterable={filterable}
-          actionsRef={actionsRef}
-        />
-      </ContextMenuContent>
-    </ContextMenu>
+    <ContextActionMenu
+      width="md"
+      // Translated through the i18n instance, at the moment the menu opens,
+      // rather than a `useTranslation()` here: this runs once per field row,
+      // and a live subscription per row is what `DocumentListView`'s `labels`
+      // exist to avoid.
+      menu={() =>
+        fieldMenu(
+          {
+            t: i18n.t.bind(i18n),
+            language: i18n.language,
+            sortable,
+            sortDesc,
+            filterable,
+            actions: actionsRef.current,
+          },
+          f,
+        )
+      }
+    >
+      {row}
+    </ContextActionMenu>
   );
 });
-
-/**
- * A field's context menu. Its own component so its `useTranslation()` (the
- * labels interpolate the field's path) is paid only while a menu is open —
- * Radix mounts the content lazily — rather than once per field row.
- *
- * Sorting here *replaces* the sort, like a plain header click in the table
- * view; building a multi-level sort is the toolbar's "Sort by" menu's job (see
- * `lib/grid/sortSpec.ts`).
- */
-function FieldMenuItems({
-  field: f,
-  sortable,
-  sortDesc,
-  filterable,
-  actionsRef,
-}: {
-  field: DocField;
-  sortable: boolean;
-  sortDesc: boolean | null;
-  filterable: boolean;
-  actionsRef: MutableRefObject<FieldRowActions>;
-}) {
-  const { t } = useTranslation();
-  const field = pathKey(f.path);
-  const isNull = f.value === null || f.value === undefined;
-  return (
-    <>
-      <ContextMenuHeader title={field} tags={[f.type, f.trimmed, !f.trimmed && isNull && "NULL"]} />
-      <ContextMenuSeparator />
-      {/* Same order as the table grid's menu: what touches nothing first. */}
-      <ContextMenuLabel>{t("contextMenu.section.copy")}</ContextMenuLabel>
-      <ContextMenuAction
-        icon={Copy}
-        label={t("dataGrid.ctxCopy")}
-        onSelect={() => actionsRef.current.copyValue(f)}
-      />
-      {/* The driver is left to the panel's fallback — the workspace's current
-          connection, which is the one this document came from. */}
-      {!f.trimmed && detectEpoch(f.value) && (
-        <>
-          <ContextMenuLabel>{t("contextMenu.section.view")}</ContextMenuLabel>
-          <ViewAsDateAction value={f.value} source={{ column: field }} />
-        </>
-      )}
-      {sortable && (
-        <>
-          <ContextMenuLabel>{t("contextMenu.section.sort")}</ContextMenuLabel>
-          <ContextMenuAction
-            icon={ArrowUp}
-            label={t("dataGrid.sort.byAsc", { field })}
-            disabled={sortDesc === false}
-            onSelect={() => actionsRef.current.sortBy(f, false)}
-          />
-          <ContextMenuAction
-            icon={ArrowDown}
-            label={t("dataGrid.sort.byDesc", { field })}
-            disabled={sortDesc === true}
-            onSelect={() => actionsRef.current.sortBy(f, true)}
-          />
-          {sortDesc !== null && (
-            <ContextMenuAction
-              icon={X}
-              label={t("dataGrid.sort.removeField", { field })}
-              onSelect={() => actionsRef.current.unsort(f)}
-            />
-          )}
-        </>
-      )}
-      {filterable && (
-        <>
-          <ContextMenuLabel>{t("contextMenu.section.filter")}</ContextMenuLabel>
-          <ContextMenuAction
-            icon={Filter}
-            label={t("dataGrid.ctxFilterBy")}
-            onSelect={() => actionsRef.current.filterBy(f, false)}
-          />
-          <ContextMenuAction
-            icon={FilterX}
-            label={t("dataGrid.ctxFilterExcluding")}
-            onSelect={() => actionsRef.current.filterBy(f, true)}
-          />
-        </>
-      )}
-    </>
-  );
-}
 
 /** The "new field" form row: key, type and value, committed as one `$set`. */
 function DraftRow({

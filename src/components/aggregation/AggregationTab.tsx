@@ -606,13 +606,11 @@ export function AggregationTab({
               </PolicyLockHint>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  className="text-xs"
                   onSelect={() => void saveView(boundView)}
                 >
                   {t("aggregation.saveView.submitUpdate")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-xs"
                   onSelect={() => setSaveOpen(true)}
                 >
                   {t("aggregation.saveView.titleCreate")}

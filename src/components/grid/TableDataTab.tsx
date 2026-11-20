@@ -792,7 +792,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         ),
         menu: (
           <DropdownMenuItem
-            className="text-xs"
             disabled={loading}
             onSelect={reloadAll}
           >
@@ -853,7 +852,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         ),
         menu: (
           <DropdownMenuItem
-            className="text-xs"
             onSelect={toggleQueryPanel}
           >
             <ListFilter
@@ -911,7 +909,7 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         // `DropdownMenuSubTrigger`.
         menu: (
           <DropdownMenuSub onOpenChange={setSortMenuOpen}>
-            <DropdownMenuSubTrigger className="text-xs">
+            <DropdownMenuSubTrigger>
               <ArrowUpDown
                 className={cn(
                   "mr-2 h-3.5 w-3.5",
@@ -1017,19 +1015,17 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
      * selects in every format a result offers (ADR #138, the same items as
      * the query results' menu); a collection keeps its two JSON exports.
      */
-    const exportItems = (className?: string) =>
+    const exportItems = () =>
       isMongo
         ? [
             <DropdownMenuItem
               key="full"
-              className={className}
               onSelect={() => void exportFull()}
             >
               {t("schema.exportCollection.title")}
             </DropdownMenuItem>,
             <DropdownMenuItem
               key="rows"
-              className={className}
               onSelect={() => void exportFiltered("json")}
             >
               {t("tableData.exportData.queryResults")}
@@ -1038,7 +1034,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         : [
             <DropdownMenuItem
               key="full"
-              className={className}
               onSelect={() => void exportFull()}
             >
               {t("tableData.exportData.table")}
@@ -1050,7 +1045,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
             <ExportFormatItems
               key="rows-formats"
               formats={EXPORT_FORMATS}
-              className={className}
               onSelect={(f) => void exportFiltered(f)}
             />,
           ];
@@ -1086,12 +1080,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         // submenu with the very same choices.
         menu: (
           <DropdownMenuSub>
-            <DropdownMenuSubTrigger className="text-xs" disabled={!!exportLock}>
+            <DropdownMenuSubTrigger disabled={!!exportLock}>
               <Download className="mr-2 h-3.5 w-3.5" />
               {t("tableData.exportData.label")}
               {exportLock && <Lock className="ml-2 h-3 w-3 opacity-70" />}
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>{exportItems("text-xs")}</DropdownMenuSubContent>
+            <DropdownMenuSubContent>{exportItems()}</DropdownMenuSubContent>
           </DropdownMenuSub>
         ),
       },
@@ -1113,7 +1107,6 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
               ),
               menu: (
                 <DropdownMenuItem
-                  className="text-xs"
                   onSelect={() => setBulkUpdateOpen(true)}
                 >
                   <ReplaceAll className="mr-2 h-3.5 w-3.5" />
@@ -1175,14 +1168,12 @@ export function TableDataTab({ tabId, connectionId, schema, table }: Props) {
         menu: (
           <>
             <DropdownMenuCheckboxItem
-              className="text-xs"
               checked={documentViewMode === "table"}
               onSelect={() => setDocumentViewMode("table")}
             >
               {t("dataGrid.viewModeTable")}
             </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem
-              className="text-xs"
               checked={documentViewMode === "list"}
               onSelect={() => setDocumentViewMode("list")}
             >
