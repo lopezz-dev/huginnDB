@@ -1420,6 +1420,7 @@ export function DataGrid({
           grid body (not the toolbar). */}
       <div className="relative flex-1 overflow-hidden">
         <GridBlankMenu
+          tableName={tableName}
           onInsertRow={onInsertRow}
           insertBlocked={insertBlocked}
           insertAlternatives={insertAlternatives}

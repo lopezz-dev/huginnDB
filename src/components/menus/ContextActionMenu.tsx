@@ -16,7 +16,7 @@
  * row (`GridRowCallbacks.selectedRows`).
  */
 
-import { Fragment, type ReactElement } from "react";
+import { Fragment, type MouseEvent, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -46,6 +46,7 @@ export function ContextActionMenu({
   menu,
   width,
   onOpenChange,
+  onContextMenu,
   children,
 }: {
   /** Called each time the menu opens, never while it is closed. */
@@ -54,13 +55,31 @@ export function ContextActionMenu({
   width: ContextMenuWidth;
   /** E.g. to keep the targeted row looking targeted while the menu is open. */
   onOpenChange?: (open: boolean) => void;
+  /**
+   * Runs on the right-click itself, before the menu opens — the one moment a
+   * caller still knows *where* the click landed. Two uses:
+   *
+   * - **Decline:** `event.preventDefault()` keeps the menu shut (Radix opens
+   *   only on an event nobody has handled). The grid's blank-space menu wraps
+   *   the whole scroll area and declines anything that is not blank.
+   * - **Aim:** act on the click's position before `menu()` reads the state —
+   *   an editor moving its cursor to the click, say.
+   *
+   * A prop rather than the child's own `onContextMenu` (which Radix's `Slot`
+   * would also run first): the caller may not own the child — the grid hands
+   * this menu its scroll area — and cloning a child to graft a handler on is
+   * what this renderer exists to stop.
+   */
+  onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
   /** The element that opens the menu (Radix `asChild`): it must forward its
    *  ref and spread the props it is given. */
   children: ReactElement;
 }) {
   return (
     <ContextMenu onOpenChange={onOpenChange}>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
+      <ContextMenuTrigger asChild onContextMenu={onContextMenu}>
+        {children}
+      </ContextMenuTrigger>
       <ContextMenuContent width={width}>
         <MenuBody menu={menu} />
       </ContextMenuContent>
