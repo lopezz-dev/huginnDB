@@ -441,7 +441,7 @@ function ModelPicker({
               key={id}
               checked={id === model}
               onCheckedChange={() => onPick(id)}
-              className="font-mono text-xs"
+              className="font-mono"
             >
               {id}
             </DropdownMenuCheckboxItem>

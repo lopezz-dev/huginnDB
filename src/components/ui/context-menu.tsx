@@ -23,7 +23,7 @@ const ContextMenuSubTrigger = React.forwardRef<
 >(({ className, inset, children, ...props }, ref) => (
   <ContextMenuPrimitive.SubTrigger
     ref={ref}
-    className={cn(MENU_SUBTRIGGER, "text-xs", inset && "pl-8", className)}
+    className={cn(MENU_SUBTRIGGER, inset && "pl-8", className)}
     {...props}
   >
     {children}
@@ -99,7 +99,7 @@ const ContextMenuItem = React.forwardRef<
 >(({ className, inset, ...props }, ref) => (
   <ContextMenuPrimitive.Item
     ref={ref}
-    className={cn(MENU_ITEM, "text-xs", inset && "pl-8", className)}
+    className={cn(MENU_ITEM, inset && "pl-8", className)}
     {...props}
   />
 ));

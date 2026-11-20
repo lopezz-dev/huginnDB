@@ -245,18 +245,16 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
-                <DropdownMenuItem className="text-xs" onSelect={() => onRun("statement")}>
+                <DropdownMenuItem onSelect={() => onRun("statement")}>
                   {t("query.runStatementItem")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-xs"
                   disabled={!hasSelection}
                   onSelect={() => onRun("selection")}
                 >
                   {t("query.runSelectionItem")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  className="text-xs"
                   title={t("query.runAllTitle")}
                   onSelect={() => onRun("all")}
                 >
@@ -323,7 +321,6 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
                     a.pressed === undefined ? (
                       <DropdownMenuItem
                         key={a.id}
-                        className="text-xs"
                         disabled={a.disabled}
                         onSelect={a.run}
                       >
@@ -334,7 +331,6 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
                     ) : (
                       <DropdownMenuCheckboxItem
                         key={a.id}
-                        className="text-xs"
                         checked={a.pressed}
                         onCheckedChange={a.run}
                       >
@@ -346,7 +342,7 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
                   <>
                     {!iconsInBar && <DropdownMenuSeparator />}
                     <DropdownMenuSub>
-                      <DropdownMenuSubTrigger className="text-xs">
+                      <DropdownMenuSubTrigger>
                         <Database className="mr-2 h-3.5 w-3.5" />
                         {t("query.database")}
                       </DropdownMenuSubTrigger>
@@ -360,7 +356,6 @@ export const QueryEditorToolbar = forwardRef<QueryTimerHandle, Props>(
                         ].map((o) => (
                           <DropdownMenuCheckboxItem
                             key={o.value}
-                            className="text-xs"
                             checked={(databases.selectedDb ?? DEFAULT_DB) === o.value}
                             onCheckedChange={() => void databases.switchDatabase(o.value)}
                           >

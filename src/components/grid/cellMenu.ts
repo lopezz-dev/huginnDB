@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 
 import type { GridRowCallbacks } from "@/components/grid/GridRow";
-import { rowLabel, viewAsDateEntry } from "@/components/epoch/ViewAsDateAction";
+import { rowLabel, viewAsDateEntry } from "@/components/epoch/viewAsDate";
 import {
   sqlLiteral,
   toJson as rowToJson,

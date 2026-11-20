@@ -251,17 +251,17 @@ export function TerminalPanel({ visible }: { visible: boolean }) {
           <DropdownMenuContent align="start">
             {offerMongosh && !mongoshMissing && (
               <DropdownMenuItem disabled={!canMongosh} onSelect={openMongosh}>
-                <Database className="mr-2 h-4 w-4" />
+                <Database className="mr-2 h-3.5 w-3.5" />
                 {mongoshLabel}
               </DropdownMenuItem>
             )}
             <DropdownMenuItem disabled={!canShell} onSelect={openShell}>
-              <SquareTerminal className="mr-2 h-4 w-4" />
+              <SquareTerminal className="mr-2 h-3.5 w-3.5" />
               {shellLabel}
             </DropdownMenuItem>
             {canDownload && (
               <DropdownMenuItem disabled={downloading} onSelect={() => void startDownload()}>
-                <Download className="mr-2 h-4 w-4" />
+                <Download className="mr-2 h-3.5 w-3.5" />
                 {t(downloading ? "terminal.download.running" : "terminal.download.button")}
               </DropdownMenuItem>
             )}

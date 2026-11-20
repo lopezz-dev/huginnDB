@@ -305,6 +305,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   database or schema and **"New query on this table"** on a table (in Spanish,
   «Nueva consulta aquí» and «Nueva consulta sobre esta tabla», replacing «Nueva
   query aquí» and «Consultar esta tabla…»).
+
+- **The menu bar and every dropdown use the context menu's density.** File,
+  Window, View and Help, and the app's other dropdowns (the grid toolbar's
+  overflow, the status bar's connections, sort, export, the terminal's new
+  session), had 14px text on 32px rows while every right-click menu had 12px
+  on 28px. They now share the context menu's scale, so a menu reads the same
+  whichever way it was opened (ADR #143).
+  - The scale lives once, in the menu row shared by both kinds of menu,
+    instead of each call site choosing its own.
+  - The overflow menu no longer has to shrink the export choices it borrows
+    from the bar: both were already meant to be the same rows.
+  - View's check marks and the terminal's icons drop to the 14px used by
+    every other menu icon.
+
 - **The grid's right-click menu shows its shortcut and gives new rows their
   own section.** *Copy* now shows Ctrl+C, the key that already does the same,
   and *Insert row* and *Duplicate row* sit under a **Create** heading above
@@ -314,6 +328,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   environment's menus follow. Separately, a locked action's policy reason now
   wraps inside the menu instead of stretching it to the reason's length — a
   locked table menu was 363 px wide for a nine-letter label.
+
+- **The grid's blank-space menu names its table and shows F5 on Reload.**
+  Right-clicking below a table's rows (or on an empty table) opens a menu
+  headed by the table's name, with *Reload* — now showing F5, the key that
+  already reloads it — under **View** above *Insert row* under **Create**.
+  A blocked insert is still listed, locked with its reason. The list view's
+  field menu looks the same as before; both now go through the shared
+  renderer (ADR #143).
 
 - **A cut result says so where it is shown and where it is exported.** A
   query that returns more than 50 000 rows shows only the first 50 000. Its

@@ -767,14 +767,14 @@ function ProjectionEditor({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="max-w-[22rem]">
                 {pickable.length === 0 ? (
-                  <DropdownMenuItem className="text-xs" disabled>
+                  <DropdownMenuItem disabled>
                     {t("tableData.query.noMoreFields")}
                   </DropdownMenuItem>
                 ) : (
                   pickable.map((path) => (
                     <DropdownMenuItem
                       key={path}
-                      className="font-mono text-xs"
+                      className="font-mono"
                       onSelect={() =>
                         onChange({ ...value, fields: [...value.fields, path] })
                       }

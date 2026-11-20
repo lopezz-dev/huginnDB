@@ -274,7 +274,6 @@ export function GridToolbar({
                 {alternatives.map((a) => (
                   <DropdownMenuItem
                     key={a.id}
-                    className="text-xs"
                     onSelect={a.onSelect}
                   >
                     <a.icon className="mr-2 h-3.5 w-3.5" />
@@ -301,14 +300,13 @@ export function GridToolbar({
         // third level for three rows.
         menu: (
           <>
-            <DropdownMenuItem className="text-xs" onSelect={onInsertRow}>
+            <DropdownMenuItem onSelect={onInsertRow}>
               <Plus className="mr-2 h-3.5 w-3.5" />
               {t("dataGrid.insertNewRow")}
             </DropdownMenuItem>
             {alternatives.map((a) => (
               <DropdownMenuItem
                 key={a.id}
-                className="text-xs"
                 onSelect={a.onSelect}
               >
                 <a.icon className="mr-2 h-3.5 w-3.5" />
@@ -341,7 +339,7 @@ export function GridToolbar({
           // A disabled menu row gets no hover either, so the reason is a
           // second line under the label, as `ContextMenuAction` does.
           menu: (
-            <DropdownMenuItem className="items-start text-xs" disabled>
+            <DropdownMenuItem className="items-start" disabled>
               <Lock className="mr-2 mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span className="flex flex-col">
                 <span>{t("dataGrid.insertNewRow")}</span>
