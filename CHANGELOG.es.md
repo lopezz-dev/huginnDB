@@ -319,6 +319,24 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Cambiado
 
+- **Los menús contextuales del explorador comparten una misma disposición.**
+  Los menús de conexión, base de datos, esquema y tabla/vista/colección los
+  dibuja ahora el mismo renderizador que el de la rejilla (ADR #143): cada uno
+  empieza con una cabecera que dice de qué trata (la conexión o la base de
+  datos con su motor, la tabla con su tipo), y sus acciones van bajo los mismos
+  encabezados y en el mismo orden: *Navegar*, *Copiar*, *Ver*, *Filtrar*,
+  *Crear*, *Editar*, *Transferir*, *Sesión* y, al final, lo que no se puede
+  deshacer. El menú de una conexión muestra *Editar conexión* antes de
+  *Conectar* / *Abrir en una ventana nueva* esté conectada o no (antes los dos
+  órdenes no coincidían), y *Seguridad* sube arriba como sitio al que ir.
+  **Vaciar tabla pasa a ser roja**, junto a *Eliminar tabla*, porque tampoco se
+  puede deshacer. Actualizar y *Buscar solo aquí* muestran su atajo en la
+  conexión seleccionada, que es sobre la que actúan esas teclas. Y la acción
+  que abre una pestaña de consulta tiene un solo nombre: **«Nueva consulta
+  aquí»** en una base de datos o un esquema y **«Nueva consulta sobre esta
+  tabla»** en una tabla, en lugar de «Nueva query aquí» y «Consultar esta
+  tabla…» (en inglés, «New query here» y «New query on this table»).
+
 - **El menú del clic derecho del editor de consultas es el de HuginnDB.** El
   de Monaco era el único menú de la app en inglés, sin iconos y con los
   colores del editor en vez de los de la app. El nuevo se dibuja como los

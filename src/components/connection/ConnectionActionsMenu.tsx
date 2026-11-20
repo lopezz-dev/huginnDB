@@ -32,28 +32,10 @@
 
 import { cloneElement, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  AppWindow,
-  DatabaseZap,
-  Download,
-  ListFilter,
-  Pencil,
-  Plug,
-  PlugZap,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-  Upload,
-} from "lucide-react";
 import { notify } from "@/lib/notify";
 
-import {
-  ContextMenu,
-  ContextMenuAction,
-  ContextMenuContent,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
+import { connectionMenu } from "@/components/connection/connectionMenu";
+import { ContextActionMenu } from "@/components/menus/ContextActionMenu";
 import { CreateDatabaseDialog } from "@/components/schema/dialogs/CreateDatabaseDialog";
 import { DatabaseVisibilityDialog } from "@/components/schema/dialogs/DatabaseVisibilityDialog";
 import {
@@ -65,7 +47,6 @@ import {
   type ImportScope,
 } from "@/components/schema/dialogs/ImportSqlDialog";
 import { isServerWide } from "@/lib/connectionLabel";
-import { supportsCreateDatabase, supportsSqlDump } from "@/lib/db/driver";
 import { profileIntent } from "@/lib/cli/startupArgs";
 import { usePolicyLocker } from "@/lib/policy/access";
 import { pickAndSplitSqlFile } from "@/lib/sql/pickSqlFile";
@@ -76,6 +57,7 @@ import { useConnectionDialog } from "@/stores/dialogs/connectionDialog";
 import { useConnections } from "@/stores/session/connections";
 import { useSchema } from "@/stores/session/schema";
 import { useTreeSearch } from "@/stores/session/treeSearch";
+import { useUi } from "@/stores/session/ui";
 
 export function ConnectionActionsMenu({
   connectionId,
@@ -163,13 +145,6 @@ export function ConnectionActionsMenu({
 
   const driver = profile?.driver;
   const isMultiDb = isServerWide(profile);
-  const canCreateDatabase = supportsCreateDatabase(driver);
-  // Whole-database `.sql` export/import used to require single-DB mode
-  // (nothing to pick a database *from* otherwise); the export/import
-  // dialogs now handle multi-DB themselves — a database picker for export,
-  // a target-database dropdown for import — so this is SQL-only, not also
-  // single-DB-only.
-  const canDumpSql = supportsSqlDump(driver);
   const databases = cs?.databases ?? [];
   const exportScope: ExportScope = isMultiDb
     ? { kind: "multi", parentId: connectionId, databases: databases.map((d) => d.name) }
@@ -180,147 +155,55 @@ export function ConnectionActionsMenu({
 
   return (
     <>
-      <ContextMenu onOpenChange={setMenuOpen}>
-        <ContextMenuTrigger asChild>
-          {cloneElement(children, {
-            className: cn(
-              children.props.className,
-              menuOpen && "ring-1 ring-inset ring-ring",
-            ),
-          })}
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-56">
-          {isActive ? (
-            <>
-              <ContextMenuAction
-                icon={RefreshCw}
-                label={t("schema.refresh")}
-                // `refreshTree`, not `refresh`: on a multi-DB connection the
-                // tables under this row live in the per-database child slices,
-                // and refreshing only the profile id left every one of them
-                // stale (see the store's note on `refreshTree`).
-                onSelect={() => void refreshTree(connectionId)}
-              />
-              {canCreateDatabase && (
-                <ContextMenuAction
-                  icon={DatabaseZap}
-                  label={t("schema.createDatabase.title")}
-                  locked={lock("ddl")}
-                  onSelect={() => setCreateDbOpen(true)}
-                />
-              )}
-              {isMultiDb && (
-                <ContextMenuAction
-                  icon={ListFilter}
-                  // Nothing to choose from until the database list has loaded.
-                  disabled={databases.length === 0}
-                  label={t("schema.selectDatabases.title")}
-                  onSelect={() => setDbPickerOpen(true)}
-                />
-              )}
-              {/* Narrowing the tree's search to this connection. Deliberately
-                  next to "Databases to show": both answer "I only care about
-                  this much of the server right now", one for the search and one
-                  for the tree. The difference is that this one is a modifier on
-                  a needle and evaporates with it, while that one is a persisted
-                  per-environment filter. */}
-              <ContextMenuAction
-                icon={Search}
-                label={t("connectionsTree.filter.scopeHere")}
-                onSelect={() => {
-                  const search = useTreeSearch.getState();
-                  search.narrowTo({ kind: "connection", connectionId });
-                  search.requestFocus();
-                }}
-              />
-              {canDumpSql && (
-                <>
-                  <ContextMenuSeparator />
-                  <ContextMenuAction
-                    icon={Download}
-                    label={t("schema.exportDatabase.title")}
-                    locked={lock("export")}
-                    onSelect={() => setExportOpen(true)}
-                  />
-                  <ContextMenuAction
-                    icon={Upload}
-                    label={t("schema.importSql.title")}
-                    // A .sql file runs as a batch of free statements.
-                    locked={lock("freeSql")}
-                    onSelect={() =>
-                      void pickAndSplitSqlFile(t, driver).then((statements) => {
-                        if (statements) setImportStatements(statements);
-                      })
-                    }
-                  />
-                </>
-              )}
-              <ContextMenuSeparator />
-              <ContextMenuAction
-                icon={ShieldCheck}
-                label={t("security.title")}
-                locked={lock("monitor")}
-                onSelect={() => openSecurityTab(connectionId, t("security.title"))}
-              />
-              {/* Tail group: where this connection *lives*, rather than what
-                  it contains. "Open in new window" and "Disconnect" are both
-                  lifecycle/placement actions, so they share one separator
-                  instead of earning a third. */}
-              <ContextMenuSeparator />
-              {/* Grouped with the placement actions rather than with the
-                  content ones above: this edits the connection *itself*, not
-                  anything inside it. */}
-              <ContextMenuAction
-                icon={Pencil}
-                label={t("connectionsTree.editConnection")}
-                onSelect={editConnection}
-              />
-              <ContextMenuAction
-                icon={AppWindow}
-                label={t("connectionsTree.openInNewWindow")}
-                onSelect={openInNewWindow}
-              />
-              {onDisconnect && (
-                <ContextMenuAction
-                  icon={PlugZap}
-                  label={t("statusBar.disconnect")}
-                  onSelect={onDisconnect}
-                />
-              )}
-            </>
-          ) : (
-            <>
-              {onConnect && (
-                <ContextMenuAction
-                  icon={Plug}
-                  label={t("connectionsTree.connect")}
-                  // A connection the role may not use, or any while the
-                  // policy is broken, refuses to open (`guard::endpoint`).
-                  locked={lock("connect")}
-                  onSelect={onConnect}
-                />
-              )}
-              {/* Offered while disconnected too, and this is the primary case:
-                  "open this server in its own window without disturbing the one
-                  I have". Until now that branch offered only "Connect", which
-                  is exactly the gap. */}
-              <ContextMenuAction
-                icon={AppWindow}
-                label={t("connectionsTree.openInNewWindow")}
-                onSelect={openInNewWindow}
-              />
-              {/* Offered while disconnected too, and this branch is where it
-                  is needed most: a connection that will not open is exactly
-                  the one whose host, port or username you want to correct. */}
-              <ContextMenuAction
-                icon={Pencil}
-                label={t("connectionsTree.editConnection")}
-                onSelect={editConnection}
-              />
-            </>
-          )}
-        </ContextMenuContent>
-      </ContextMenu>
+      <ContextActionMenu
+        width="md"
+        onOpenChange={setMenuOpen}
+        menu={() =>
+          connectionMenu({
+            t,
+            name: profile?.name ?? connectionId,
+            driver,
+            isActive,
+            isMultiDb,
+            hasDatabases: databases.length > 0,
+            isSelected: useUi.getState().selectedConnectionId === connectionId,
+            lock,
+            actions: {
+              // `refreshTree`, not `refresh`: on a multi-DB connection the
+              // tables under this row live in the per-database child slices,
+              // and refreshing only the profile id left every one of them
+              // stale (see the store's note on `refreshTree`).
+              refresh: () => void refreshTree(connectionId),
+              createDatabase: () => setCreateDbOpen(true),
+              chooseDatabases: () => setDbPickerOpen(true),
+              // A modifier on the search's needle, which evaporates with it —
+              // unlike "Databases to show", a persisted per-environment filter.
+              scopeSearchHere: () => {
+                const search = useTreeSearch.getState();
+                search.narrowTo({ kind: "connection", connectionId });
+                search.requestFocus();
+              },
+              exportDatabase: () => setExportOpen(true),
+              importSql: () =>
+                void pickAndSplitSqlFile(t, driver).then((statements) => {
+                  if (statements) setImportStatements(statements);
+                }),
+              openSecurity: () => openSecurityTab(connectionId, t("security.title")),
+              editConnection,
+              openInNewWindow,
+              connect: onConnect,
+              disconnect: onDisconnect,
+            },
+          })
+        }
+      >
+        {cloneElement(children, {
+          className: cn(
+            children.props.className,
+            menuOpen && "ring-1 ring-inset ring-ring",
+          ),
+        })}
+      </ContextActionMenu>
 
       {createDbOpen && (
         <CreateDatabaseDialog

@@ -289,6 +289,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Changed
 
+- **The explorer's right-click menus share one layout.** The connection,
+  database, schema and table/view/collection menus are now drawn by the same
+  renderer as the grid's (ADR #143): each opens with a header naming what it
+  is about (the connection or database with its engine, the table with its
+  kind), and its actions sit under the same headings in the same order —
+  *Navigate*, *Copy*, *View*, *Filter*, *Create*, *Edit*, *Transfer*,
+  *Session*, then what cannot be undone. A connection's menu now lists *Edit
+  connection* before *Connect* / *Open in a new window* whether it is
+  connected or not (the two orders used to differ), and *Security* moves to the
+  top as a place to go. **Empty table is now red**, beside *Drop table*, since
+  it cannot be undone either. Refresh and *Search only here* show their keys on
+  the connection that is selected, which is the one those keys act on. And the
+  action that opens a query tab has one name: **"New query here"** on a
+  database or schema and **"New query on this table"** on a table (in Spanish,
+  «Nueva consulta aquí» and «Nueva consulta sobre esta tabla», replacing «Nueva
+  query aquí» and «Consultar esta tabla…»).
+
 - **The query editor's right-click menu is HuginnDB's own.** Monaco's menu
   was the one menu in the app in English, without icons and in the editor's
   colours rather than the app's. The new one is drawn like every other

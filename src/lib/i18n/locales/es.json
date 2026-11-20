@@ -425,10 +425,10 @@
     },
     "context": {
       "open": "Abrir en pestaña",
-      "newQueryHere": "Nueva query aquí",
+      "newQueryHere": "Nueva consulta aquí",
       "copyName": "Copiar nombre",
       "copySelect": "Copiar sentencia SELECT",
-      "queryTableHere": "Consultar esta tabla…",
+      "newQueryOnTable": "Nueva consulta sobre esta tabla",
       "refresh": "Actualizar",
       "editStructure": "Editar estructura…",
       "newTable": "Nueva tabla…",
@@ -442,7 +442,12 @@
       "dropView": "Eliminar vista…",
       "newAggregation": "Nueva agregación…",
       "manageIndexes": "Índices…",
-      "editViewPipeline": "Editar pipeline…"
+      "editViewPipeline": "Editar pipeline…",
+      "kind": {
+        "table": "tabla",
+        "view": "vista",
+        "collection": "colección"
+      }
     },
     "rename": {
       "title": "Renombrar tabla",

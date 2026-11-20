@@ -10,27 +10,14 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ChevronDown,
-  ChevronRight,
-  Database,
-  Eye,
-  RefreshCw,
-  SquareTerminal,
-  Table2,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Database } from "lucide-react";
 
+import { ContextActionMenu } from "@/components/menus/ContextActionMenu";
+import { schemaMenu } from "@/components/schema/databaseMenu";
 import { DatabaseNodeMenu } from "@/components/schema/DatabaseNodeMenu";
-import {
-  ContextMenu,
-  ContextMenuAction,
-  ContextMenuContent,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import { TreeRow } from "@/components/ui/tree-row";
 import { confirmIrreversible } from "@/lib/confirmDestructive";
-import { supportsDropDatabase, supportsViewEditing } from "@/lib/db/driver";
+import { supportsDropDatabase } from "@/lib/db/driver";
 import { notify } from "@/lib/notify";
 import { usePolicyLocker } from "@/lib/policy/access";
 import { DATABASE_NODE_KEY, type FlatRow } from "@/lib/schema/flatTree";
@@ -186,52 +173,39 @@ export function SchemaHeaderRow({
   }
 
   return (
-    <ContextMenu onOpenChange={setMenuOpen}>
-      <ContextMenuTrigger asChild>{header}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuAction
-          icon={RefreshCw}
-          label={t("schema.refresh")}
-          onSelect={() => void refresh()}
-        />
-        <ContextMenuSeparator />
-        <ContextMenuAction
-          icon={Table2}
-          label={t("schema.context.newTable")}
-          locked={lock("ddl")}
-          onSelect={() =>
-            openTab({
-              kind: "structure",
-              structureMode: "new",
-              title: t("schema.context.newTable"),
-              connectionId,
-              schema,
-            })
-          }
-        />
-        {supportsViewEditing(driver) && (
-          <ContextMenuAction
-            icon={Eye}
-            label={t("schema.context.newView")}
-            locked={lock("ddl") ?? lock("freeSql")}
-            onSelect={() =>
+    <ContextActionMenu
+      width="sm"
+      onOpenChange={setMenuOpen}
+      menu={() =>
+        schemaMenu({
+          t,
+          schema,
+          driver,
+          lock,
+          actions: {
+            refresh: () => void refresh(),
+            newTable: () =>
+              openTab({
+                kind: "structure",
+                structureMode: "new",
+                title: t("schema.context.newTable"),
+                connectionId,
+                schema,
+              }),
+            newView: () =>
               openTab({
                 kind: "view",
                 viewMode: "new",
                 title: t("schema.context.newView"),
                 connectionId,
                 schema,
-              })
-            }
-          />
-        )}
-        <ContextMenuAction
-          icon={SquareTerminal}
-          label={t("schema.context.newQueryHere")}
-          locked={lock("freeSql")}
-          onSelect={() => openQueryTab(connectionId)}
-        />
-      </ContextMenuContent>
-    </ContextMenu>
+              }),
+            newQuery: () => openQueryTab(connectionId),
+          },
+        })
+      }
+    >
+      {header}
+    </ContextActionMenu>
   );
 }

@@ -61,7 +61,7 @@ describe("selectSnippet", () => {
     );
   });
 
-  // The limited form is what the schema tree's "Query this table…" runs, as
+  // The limited form is what the schema tree's "New query on this table" runs, as
   // opposed to what "Copy SELECT statement" puts on the clipboard.
   describe("with a limit", () => {
     it("appends LIMIT on the three drivers that have it", () => {
