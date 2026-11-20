@@ -319,6 +319,25 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Cambiado
 
+- **El menú del clic derecho del editor de consultas es el de HuginnDB.** El
+  de Monaco era el único menú de la app en inglés, sin iconos y con los
+  colores del editor en vez de los de la app. El nuevo se dibuja como los
+  demás menús contextuales (ADR #143): arriba, el nombre de la pestaña y el
+  motor; después, **Navegar** (*Paleta de comandos*, la de la app y no la de
+  Monaco), **Copiar** (*Cortar*, *Copiar*, *Pegar*), **Ver** y **Editar**
+  (*Cambiar todas las apariciones*, *Formatear*), cada una con su tecla.
+  - **Pegar ya no hace que WebView2 pida acceso al portapapeles.** Lo lee en
+    Rust, como el Ctrl+V de la rejilla (ADR #63); Cortar y Copiar escriben en
+    el portapapeles del sistema del mismo modo.
+  - **Las preguntas a la IA solo aparecen donde la IA está activa para la
+    conexión,** y *Explicar esta sentencia* pierde el punto final.
+  - **Sin entradas de Ejecutar:** se ejecuta desde la barra, los atajos y el
+    ▶ Run de cada sentencia.
+  - Un clic derecho fuera de la selección lleva antes el cursor a ese punto;
+    dentro de ella, la respeta. **Mayús+F10** abre el menú junto al cursor.
+  - El menú es un componente reutilizable, para que los demás editores Monaco
+    de la app lo adopten a continuación.
+  - En todos los menús contextuales, una etiqueta larga ya no toca su atajo.
 - **La barra de menús y todos los desplegables usan la densidad del menú
   contextual.** Archivo, Ventana, Ver y Ayuda, y el resto de desplegables de
   la app (el desbordamiento de la barra de la rejilla, las conexiones de la

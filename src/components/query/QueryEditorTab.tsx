@@ -66,10 +66,12 @@ import { formatSql, sqlDialectFor } from "@/lib/sql/formatSql";
 import { useAiReachable } from "@/lib/ai/useAiReachable";
 import { runTarget, type EditorSnapshot, type RunScope } from "@/lib/query/runTarget";
 import type { LineRange } from "@/lib/query/statementTabs";
-import i18n from "@/lib/i18n";
 import { SaveQueryDialog } from "@/components/query/dialogs/SaveQueryDialog";
 import { QueryEditorToolbar } from "@/components/query/QueryEditorToolbar";
 import { QueryResultsArea } from "@/components/query/results/QueryResultsArea";
+import { EditorContextMenu } from "@/components/menus/EditorContextMenu";
+import { driverLabel } from "@/components/common/DriverBadge";
+import type { CommandEditor } from "@/lib/monaco/editorCommands";
 import { parentConnectionId, sqliteFileLabel } from "@/lib/connectionLabel";
 import { keywordsFor } from "@/lib/sql/sqlKeywords";
 import { buildCompletions } from "@/lib/sql/sqlCompletions";
@@ -95,11 +97,8 @@ interface Props {
   connectionId: string;
 }
 
-/** The AI entries of the editor's context menu, in menu order. */
-const AI_CONTEXT_ACTIONS = [
-  { task: "explainQuery" as const, key: "ai.task.explainQuery", order: 1.5 },
-  { task: "explainSlow" as const, key: "ai.task.explainSlow", order: 1.6 },
-];
+/** The editor menu's Command palette entry: the app's palette, not Monaco's. */
+const toggleCommandPalette = () => useCommandPalette.getState().toggle();
 
 export function QueryEditorTab({ tabId, connectionId }: Props) {
   const { t } = useTranslation();
@@ -128,13 +127,6 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
    *  its own splitter dialect. */
   const isMongo = driver === "mongodb";
   const dialect: SqlDialect = isMongo ? "mongo" : "sql";
-  /** `handleMount` registers its editor actions once, in a closure that
-   *  outlives every re-render — same long-lived-closure reason as
-   *  `runQueryRef` below. */
-  const dialectRef = useRef(dialect);
-  useEffect(() => {
-    dialectRef.current = dialect;
-  }, [dialect]);
 
   /**
    * Wall-clock run timer, isolated behind a ref on purpose: `QueryTimer`
@@ -225,18 +217,6 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     onKeyDown: (fn: (e: { browserEvent: KeyboardEvent }) => void) => {
       dispose: () => void;
     };
-    /** Editor-scoped, unlike the language providers — see `handleMount`. */
-    addAction: (action: {
-      id: string;
-      label: string;
-      contextMenuGroupId?: string;
-      contextMenuOrder?: number;
-      run: (editor: {
-        getModel: () => { getValue: () => string; getValueInRange: (range: unknown) => string } | null;
-        getSelection: () => { isEmpty: () => boolean; startLineNumber: number } | null;
-        getPosition: () => { lineNumber: number } | null;
-      }) => void;
-    }) => { dispose: () => void };
   } | null>(null);
 
   /** Disposer returned by `registerSqlEditor`; removes this editor's entry
@@ -374,8 +354,10 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     runAtRef.current = runAt;
   }, [runAt]);
   const [hasSelection, setHasSelection] = useState(false);
-  /** Set once Monaco has mounted: what the context-menu effect waits for. */
-  const [editorReady, setEditorReady] = useState(false);
+  /** The mounted editor, for the context menu (`EditorContextMenu`); `null`
+   *  until `onMount`. State rather than a ref because the menu wrapper needs
+   *  to know when it can open. */
+  const [menuEditor, setMenuEditor] = useState<CommandEditor | null>(null);
 
   // A tab opened with `openQueryTab(…, { run: true })` (the history panel's
   // Run) runs its whole buffer once, through this tab's own runner — so a
@@ -426,14 +408,17 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     formatRef.current = format;
   }, [format]);
 
-  /** Explain (AI) on the toolbar: the selection, else the statement under
-   *  the caret — the editor's context-menu action, offered only where the AI
-   *  is on for this connection (ADR #136). */
+  /** Ask the AI about the selection, else the statement under the caret —
+   *  for the toolbar's Explain and the editor menu's two questions. Offered
+   *  only where the AI is on for this connection (ADR #136): `undefined`
+   *  otherwise, so neither surface shows it. The menu reads it each time it
+   *  opens, so its entries follow the AI with no effect to add or remove
+   *  them. */
   const aiReachable = useAiReachable(connectionId);
-  const explain = useMemo(
+  const askAi = useMemo(
     () =>
       aiReachable
-        ? () => {
+        ? (task: "explainQuery" | "explainSlow") => {
             const editor = editorRef.current;
             if (!editor) return;
             const target = runTarget(snapshotOf(editor, dialect), "cursor");
@@ -443,52 +428,12 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
               });
               return;
             }
-            void runAiTask({
-              task: "explainQuery",
-              connection: connectionId,
-              statement: target.text,
-            });
+            void runAiTask({ task, connection: connectionId, statement: target.text });
           }
         : undefined,
     [aiReachable, dialect, connectionId, t],
   );
-
-  /**
-   * The two assisted-mode entries in the editor's own right-click menu
-   * ("Explain query", "Why is it slow"), offered only where the AI is on for
-   * this connection, like the toolbar's Explain (ADR #136): a connection
-   * without AI does not offer AI. They used to be added once at mount and
-   * stay, so a connection with the AI off showed them and the backend
-   * refused them.
-   *
-   * `addAction` is scoped to this editor, unlike the language providers, so
-   * N tabs give N menus rather than one menu with N duplicates (not gotcha
-   * #9's shape). The disposers take the entries away when the AI goes off,
-   * the connection changes or the tab unmounts. The label is resolved when
-   * they are added; a language switch mid-session leaves it stale until the
-   * next add, as with every Monaco action.
-   */
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (!editorReady || !editor || !aiReachable) return;
-    const added = AI_CONTEXT_ACTIONS.map((entry) =>
-      editor.addAction({
-        id: `huginndb.ai.${entry.task}`,
-        label: i18n.t(entry.key),
-        contextMenuGroupId: "huginndb",
-        contextMenuOrder: entry.order,
-        run: (ed) => {
-          // The selection when there is one, else the statement the caret is
-          // in — the same rule `runQuery` follows (`lib/query/runTarget`).
-          const statement = runTarget(snapshotOf(ed, dialectRef.current), "cursor")?.text;
-          if (!statement) return;
-          void runAiTask({ task: entry.task, connection: connectionId, statement });
-        },
-      }),
-    );
-    return () => added.forEach((d) => d.dispose());
-    // `editorRef` and `dialectRef` are refs, read when an entry runs.
-  }, [editorReady, aiReachable, connectionId]);
+  const explain = useMemo(() => askAi && (() => askAi("explainQuery")), [askAi]);
 
   /**
    * Ref to the live completion list for the same reason as `runQueryRef`:
@@ -585,9 +530,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     // live data (read through the existing refs) and keep the disposer for
     // unmount — registering the providers per editor is what produced the
     // duplicate "▶ Run" lenses when several query tabs were open.
-    // The assisted-mode entries in the right-click menu are added by the
-    // `aiReachable` effect, not here: they come and go with the AI.
-    setEditorReady(true);
+    setMenuEditor(_editor as CommandEditor);
 
     // Both language families are installed unconditionally. They are global
     // per Monaco instance and idempotent, so the cost is one registration
@@ -650,6 +593,8 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
     () => ({
       ...editorOptionsFromPrefs(editorPrefs),
       formatOnPaste: editorPrefs.formatOnPaste,
+      // HuginnDB's menu replaces Monaco's (`EditorContextMenu`).
+      contextmenu: false,
     }),
     [editorPrefs],
   );
@@ -696,8 +641,28 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
           <div className="flex flex-1 overflow-hidden">
             {/* Monaco redispatches `editor`-scoped bindings itself (gotcha #9);
                 the attribute is what tells the window listener that focus in
-                here is *not* in the grid or the tree. */}
-            <div className="flex-1" data-kb-scope="editor">
+                here is *not* in the grid or the tree. The right-click menu is
+                HuginnDB's (`contextmenu: false` in the options below); it
+                offers no Run entries — running is the toolbar's, the keys'
+                and each statement's ▶ Run. */}
+            <EditorContextMenu
+              className="flex-1"
+              data-kb-scope="editor"
+              editor={menuEditor}
+              header={{
+                title: tab?.title ?? "",
+                tags: [driver && driverLabel(driver)],
+              }}
+              width="md"
+              format={format && { run: format, shortcut: { action: "formatQuery" } }}
+              ai={
+                askAi && {
+                  explainQuery: () => askAi("explainQuery"),
+                  explainSlow: () => askAi("explainSlow"),
+                }
+              }
+              commandPalette={toggleCommandPalette}
+            >
               <Editor
                 height="100%"
                 // `@monaco-editor/react` resolves a changed `language` with
@@ -715,7 +680,7 @@ export function QueryEditorTab({ tabId, connectionId }: Props) {
                 onMount={handleMount}
                 options={editorOptions}
               />
-            </div>
+            </EditorContextMenu>
           </div>
 
           {/* Editor info bar (ADR #137): run shortcut · database · Ln, Col ·

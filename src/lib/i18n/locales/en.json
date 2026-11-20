@@ -4080,13 +4080,22 @@
     },
     "task": {
       "writeSql": "Write SQL",
-      "explainQuery": "Explain this statement.",
+      "explainQuery": "Explain this statement",
       "explainSlow": "Why is this statement slow?",
       "documentRelation": "Document {{relation}}.",
       "writeSqlHint": "Write SQL for this — reads the schema and drafts the statement",
       "explainSlowHint": "Ask why this statement is slow",
       "documentRelationAction": "Document with AI"
     }
+  },
+  "editorMenu": {
+    "commandPalette": "Command palette",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select all",
+    "changeAll": "Change all occurrences",
+    "format": "Format"
   },
   "extensions": {
     "searchPlaceholder": "Search themes…",

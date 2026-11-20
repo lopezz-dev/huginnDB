@@ -72,8 +72,6 @@ const h = vi.hoisted(() => ({
     moveCaret: (_line: number, _column: number) => {},
   },
   aiTask: vi.fn(),
-  /** Ids of the editor's own context-menu actions currently registered. */
-  contextActions: new Set<string>(),
 }));
 
 vi.mock("@/lib/tauri", () => ({ api: h.api }));
@@ -107,15 +105,19 @@ vi.mock("@monaco-editor/react", () => ({
           range === "FULL" ? h.editor.value : (h.editor.selection ?? ""),
         getLineMaxColumn: () => 80,
         getFullModelRange: () => "FULL",
+        getEOL: () => "\n",
         uri: { toString: () => "inmemory://model/1" },
       };
+      const selection = () => ({
+        isEmpty: () => h.editor.selection === null,
+        startLineNumber: h.editor.line,
+        containsPosition: () => false,
+      });
       onMount(
         {
           getModel: () => model,
-          getSelection: () => ({
-            isEmpty: () => h.editor.selection === null,
-            startLineNumber: h.editor.line,
-          }),
+          getSelection: selection,
+          getSelections: () => [selection()],
           setSelection: (r: unknown) => {
             h.editor.selected = r;
           },
@@ -136,10 +138,11 @@ vi.mock("@monaco-editor/react", () => ({
           onDidChangeModelContent: () => ({ dispose: () => {} }),
           onKeyDown: () => ({ dispose: () => {} }),
           addCommand: () => null,
-          addAction: (action: { id: string }) => {
-            h.contextActions.add(action.id);
-            return { dispose: () => h.contextActions.delete(action.id) };
-          },
+          // What the context menu (`EditorContextMenu`) reads and calls.
+          setPosition: () => {},
+          getTargetAtClientPoint: () => null,
+          getAction: () => ({ isSupported: () => true, run: () => Promise.resolve() }),
+          getRawOptions: () => ({}),
         },
         {},
       );
@@ -1248,31 +1251,38 @@ describe("toolbar", () => {
     }));
   });
 
-  it("the editor's AI context-menu entries come and go with the connection's AI", () => {
-    h.contextActions.clear();
-    seed("SELECT 1");
+  it("the editor's right-click menu is HuginnDB's, without Run, and its AI entries come and go with the connection's AI", () => {
+    seed("SELECT 1;\nSELECT 2");
+    const { unmount } = renderTab();
+    const openMenu = () => fireEvent.contextMenu(screen.getByLabelText("editor"));
+    const items = () => screen.getAllByRole("menuitem").map((el) => el.textContent ?? "");
+
+    openMenu();
+    expect(items().some((x) => x.includes("editorMenu.paste"))).toBe(true);
+    expect(items().some((x) => x.includes("editorMenu.format"))).toBe(true);
+    expect(items().some((x) => x.includes("ai.task.explainQuery"))).toBe(false);
+    expect(items().some((x) => /run/i.test(x))).toBe(false);
+    act(() => fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" }));
+    unmount();
+
+    usePreferences.setState((s) => ({
+      prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: true } },
+    }));
+    useConnections.setState({
+      profiles: [{ ...profile(CONN, "postgres"), ai_enabled: true }],
+    });
     renderTab();
-    expect([...h.contextActions]).toEqual([]);
-
-    act(() => {
-      usePreferences.setState((s) => ({
-        prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: true } },
-      }));
-      useConnections.setState({
-        profiles: [{ ...profile(CONN, "postgres"), ai_enabled: true }],
-      });
+    h.editor.line = 2;
+    openMenu();
+    act(() => fireEvent.click(screen.getByRole("menuitem", { name: /ai\.task\.explainSlow/ })));
+    expect(h.aiTask).toHaveBeenCalledWith({
+      task: "explainSlow",
+      connection: CONN,
+      statement: "SELECT 2",
     });
-    expect([...h.contextActions].sort()).toEqual([
-      "huginndb.ai.explainQuery",
-      "huginndb.ai.explainSlow",
-    ]);
-
-    act(() => {
-      usePreferences.setState((s) => ({
-        prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: false } },
-      }));
-    });
-    expect([...h.contextActions]).toEqual([]);
+    usePreferences.setState((s) => ({
+      prefs: { ...s.prefs, ai: { ...s.prefs.ai, enabled: false } },
+    }));
   });
 });
 

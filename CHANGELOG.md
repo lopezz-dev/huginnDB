@@ -289,6 +289,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Changed
 
+- **The query editor's right-click menu is HuginnDB's own.** Monaco's menu
+  was the one menu in the app in English, without icons and in the editor's
+  colours rather than the app's. The new one is drawn like every other
+  context menu (ADR #143): the tab's name and engine on top, then
+  **Navigate** (*Command palette* — the app's, not Monaco's), **Copy** (*Cut*,
+  *Copy*, *Paste*), **View** and **Edit** (*Change all occurrences*,
+  *Format*), each with its key.
+  - **Paste no longer makes WebView2 ask for clipboard access.** It reads the
+    clipboard in Rust, like the grid's Ctrl+V (ADR #63); Cut and Copy write
+    to the system clipboard the same way.
+  - **The AI questions appear only where the AI is on for the connection,**
+    and *Explain this statement* lost its trailing full stop.
+  - **No Run entries:** running stays on the toolbar, the keys and each
+    statement's ▶ Run.
+  - A right-click outside the selection moves the caret there first; one
+    inside it keeps the selection. **Shift+F10** opens the menu at the caret.
+  - The menu is one reusable component, so the app's other Monaco editors can
+    take it next.
+  - In every context menu, a long label no longer touches its shortcut.
 - **The menu bar and every dropdown use the context menu's density.** File,
   Window, View and Help, and the app's other dropdowns (the grid toolbar's
   overflow, the status bar's connections, sort, export, the terminal's new
