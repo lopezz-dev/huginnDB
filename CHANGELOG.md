@@ -306,6 +306,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   «Nueva consulta aquí» and «Nueva consulta sobre esta tabla», replacing «Nueva
   query aquí» and «Consultar esta tabla…»).
 
+- **The query editor's right-click menu is HuginnDB's own.** Monaco's menu
+  was the one menu in the app in English, without icons and in the editor's
+  colours rather than the app's. The new one is drawn like every other
+  context menu (ADR #143): the tab's name and engine on top, then
+  **Navigate** (*Command palette* — the app's, not Monaco's), **Copy** (*Cut*,
+  *Copy*, *Paste*), **View** and **Edit** (*Change all occurrences*,
+  *Format*), each with its key.
+  - **Paste no longer makes WebView2 ask for clipboard access.** It reads the
+    clipboard in Rust, like the grid's Ctrl+V (ADR #63); Cut and Copy write
+    to the system clipboard the same way.
+  - **The AI questions appear only where the AI is on for the connection,**
+    and *Explain this statement* lost its trailing full stop.
+  - **No Run entries:** running stays on the toolbar, the keys and each
+    statement's ▶ Run.
+  - A right-click outside the selection moves the caret there first; one
+    inside it keeps the selection. **Shift+F10** opens the menu at the caret.
+  - The menu is one reusable component, so the app's other Monaco editors can
+    take it next.
+  - In every context menu, a long label no longer touches its shortcut.
 - **The menu bar and every dropdown use the context menu's density.** File,
   Window, View and Help, and the app's other dropdowns (the grid toolbar's
   overflow, the status bar's connections, sort, export, the terminal's new
@@ -336,6 +355,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   A blocked insert is still listed, locked with its reason. The list view's
   field menu looks the same as before; both now go through the shared
   renderer (ADR #143).
+
+- **The tab and environment menus look like the rest.** Both are now drawn by
+  the shared context-menu renderer (ADR #143). The tab's menu names the tab
+  at its top, gives every action an icon (only *Pin* had one), shows Ctrl+W
+  beside *Close tab* when it is the active tab — the key closes the active
+  tab, so on any other it would be a promise the key does not keep — and
+  puts the colour swatches under an **Edit** heading above a **Session**
+  section with pin, split, float and the five close actions; closing stays
+  plain rather than red, since it destroys nothing. The environment's menu
+  names the environment, is no longer a fixed 192 px that wrapped *Open
+  environment in new window* onto two lines, and its *Delete* now gets the
+  red hover tint every other destructive action has.
 
 - **A cut result says so where it is shown and where it is exported.** A
   query that returns more than 50 000 rows shows only the first 50 000. Its
