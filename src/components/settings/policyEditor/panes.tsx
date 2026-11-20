@@ -16,6 +16,7 @@ import { SearchField } from "@/components/ui/search-field";
 import { Segmented } from "@/components/ui/segmented";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import {
   duplicateUsers,
@@ -220,8 +221,10 @@ export function JsonPane({
   readOnly: boolean;
   onChange: (next: string) => void;
 }) {
+  const { t } = useTranslation();
   const editorPrefs = usePreferences(selectEditorPrefs);
   const theme = useMonacoTheme(editorPrefs.theme);
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
   const options = useEditorOptions(
     () => ({
       ...editorOptionsFromPrefs(editorPrefs),
@@ -232,16 +235,24 @@ export function JsonPane({
     [editorPrefs, readOnly],
   );
   return (
-    <div className="min-h-0 flex-1 overflow-hidden rounded-md border border-border">
+    // No Format: the policy JSON has no formatter of its own. A read-only
+    // document (`readOnly`) gets the read-only menu.
+    <EditorContextMenu
+      className="min-h-0 flex-1 overflow-hidden rounded-md border border-border"
+      editor={menuEditor}
+      header={{ title: t("editorMenu.subject.policy") }}
+      width="sm"
+    >
       <Editor
         height="100%"
         language="json"
         theme={theme}
         value={text}
         onChange={(v) => onChange(v ?? "")}
+        onMount={attachMenuEditor}
         options={options}
       />
-    </div>
+    </EditorContextMenu>
   );
 }
 

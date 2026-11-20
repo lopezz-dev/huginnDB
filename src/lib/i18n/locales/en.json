@@ -4100,7 +4100,15 @@
     "paste": "Paste",
     "selectAll": "Select all",
     "changeAll": "Change all occurrences",
-    "format": "Format"
+    "format": "Format",
+    "subject": {
+      "cell": "Cell",
+      "newView": "New view",
+      "pipeline": "Pipeline",
+      "stage": "Stage",
+      "policy": "Policy",
+      "consoleEntry": "Console entry"
+    }
   },
   "extensions": {
     "searchPlaceholder": "Search themes…",

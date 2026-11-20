@@ -52,6 +52,8 @@ import { DdlPreviewPane } from "@/components/schema/DdlPreviewPane";
 import { joinStatements } from "@/lib/sql/formatStatements";
 import { editorOptionsFromPrefs } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { formatSql, sqlDialectFor } from "@/lib/sql/formatSql";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 
 interface Props {
   tabId: string;
@@ -263,6 +265,7 @@ export function ViewEditorTab({
   }
 
   function handleMount(_editor: unknown, monaco: Monaco) {
+    attachMenuEditor(_editor);
     const editor = _editor as {
       addCommand: (keybinding: number, handler: () => void) => string | null;
       getModel: () => { uri: { toString: () => string } } | null;
@@ -312,6 +315,7 @@ export function ViewEditorTab({
     (v: string | undefined) => setQuery(v ?? ""),
     [],
   );
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
   const editorOptions = useEditorOptions(
     () => ({
       ...editorOptionsFromPrefs(editorPrefs),
@@ -381,19 +385,29 @@ export function ViewEditorTab({
       <div className="flex min-h-0 flex-1 flex-col">
         <PanelGroup direction="vertical" className="min-h-0 flex-1">
           <Panel defaultSize={55} minSize={20}>
-            <Editor
-              height="100%"
-              language="sql"
-              // Monaco redispatches `editor`-scoped bindings itself (gotcha
-              // #9); the attribute is what tells the window listener that
-              // focus in here is *not* in the grid or the tree.
-              wrapperProps={{ "data-kb-scope": "editor" }}
-              theme={monacoTheme}
-              value={query}
-              onChange={handleEditorChange}
-              onMount={handleMount}
-              options={editorOptions}
-            />
+            {/* Format is the query tab's SQL formatter over the whole body —
+                the view editor had no Format of its own before the menu. */}
+            <EditorContextMenu
+              className="h-full"
+              editor={menuEditor}
+              header={{ title: name.trim() || t("editorMenu.subject.newView") }}
+              width="sm"
+              format={{ run: () => setQuery((q) => formatSql(q, sqlDialectFor(driver))) }}
+            >
+              <Editor
+                height="100%"
+                language="sql"
+                // Monaco redispatches `editor`-scoped bindings itself (gotcha
+                // #9); the attribute is what tells the window listener that
+                // focus in here is *not* in the grid or the tree.
+                wrapperProps={{ "data-kb-scope": "editor" }}
+                theme={monacoTheme}
+                value={query}
+                onChange={handleEditorChange}
+                onMount={handleMount}
+                options={editorOptions}
+              />
+            </EditorContextMenu>
           </Panel>
           <PanelResizeHandle className="h-1 bg-border hover:bg-primary/30" />
           <Panel defaultSize={45} minSize={15}>

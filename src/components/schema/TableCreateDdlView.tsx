@@ -26,6 +26,7 @@ import { notify } from "@/lib/notify";
 import { useMonacoTheme } from "@/lib/monaco/useMonacoTheme";
 import { readOnlyEditorOptions } from "@/lib/monaco/editorOptions";
 import { useEditorOptions } from "@/lib/monaco/useEditorOptions";
+import { EditorContextMenu, useMenuEditor } from "@/components/menus/EditorContextMenu";
 import type { EditorPrefs } from "@/types";
 
 interface Props {
@@ -59,6 +60,7 @@ export function TableCreateDdlView({
     [prefs],
   );
   const monacoTheme = useMonacoTheme(prefs.theme);
+  const [menuEditor, attachMenuEditor] = useMenuEditor();
 
   useEffect(() => {
     let cancelled = false;
@@ -108,15 +110,22 @@ export function TableCreateDdlView({
         </div>
       )}
       {state.status === "ready" && (
-        <div className="min-h-0 flex-1">
+        // Read-only (`readOnlyEditorOptions`): the menu is Copy and Select all.
+        <EditorContextMenu
+          className="min-h-0 flex-1"
+          editor={menuEditor}
+          header={{ title: table }}
+          width="sm"
+        >
           <Editor
             height="100%"
             value={state.ddl}
             language="sql"
             theme={monacoTheme}
+            onMount={attachMenuEditor}
             options={editorOptions}
           />
-        </div>
+        </EditorContextMenu>
       )}
     </div>
   );

@@ -135,3 +135,33 @@ describe("editorMenu", () => {
     }
   });
 });
+
+/**
+ * The menu each of the other editors gets, as its call site configures it:
+ * none of them hands over the AI or the palette, and Format only where the
+ * editor already had a formatter.
+ */
+describe("editorMenu in the other editors", () => {
+  const header = { title: "email" };
+
+  it("with a formatter (cell, view, pipeline and stage, JSON Schema): clipboard, Change all, Format without a key", () => {
+    const spec = editorMenu(input({ header, format: { run: vi.fn() } }));
+    expect(layout(spec)).toEqual(["copy:cut,copy,paste", "edit:changeAll,format"]);
+    expect(entry(spec, "format")?.shortcut).toBeUndefined();
+    expect(spec.header).toEqual(header);
+  });
+
+  it("without one (insert rows, insert document, policy JSON, a plain-text cell): no Format", () => {
+    expect(layout(editorMenu(input({ header })))).toEqual([
+      "copy:cut,copy,paste",
+      "edit:changeAll",
+    ]);
+  });
+
+  it("read-only (DDL preview, CREATE statement, Console entry, a read-only cell or policy)", () => {
+    const readOnly = { hasSelection: true, readOnly: true, canChangeAll: false };
+    const spec = editorMenu(input({ header, state: readOnly, format: { run: vi.fn() } }));
+    expect(layout(spec)).toEqual(["copy:copy,selectAll"]);
+    expect(entry(spec, "copy")?.disabled).toBe(false);
+  });
+});

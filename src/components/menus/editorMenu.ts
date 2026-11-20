@@ -36,7 +36,8 @@ import type { MenuHeader, MenuShortcut, MenuSpec } from "@/lib/menu/menuSpec";
  * means the editor can do it, and carries what doing it takes.
  */
 export interface EditorMenuCapabilities {
-  /** Format the selection, else the buffer. `shortcut` only where the key
+  /** Format the editor's text with the formatter it already has (the query
+   *  tab: the selection, else the buffer). `shortcut` only where the key
    *  really formats *this* editor (the query tab's `formatQuery`). */
   format?: { run: () => void; shortcut?: MenuShortcut };
   /** The assisted-mode questions about the statement under the caret.

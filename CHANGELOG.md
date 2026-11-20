@@ -338,6 +338,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   - The menu is one reusable component, so the app's other Monaco editors can
     take it next.
   - In every context menu, a long label no longer touches its shortcut.
+- **Every other Monaco editor gets HuginnDB's right-click menu too,** so none
+  shows Monaco's native one any more: the cell editor (dialog and side panel),
+  the view editor, the aggregation pipeline (text mode and each stage), the
+  insert-document and paste-rows dialogs, Settings → JSON Schemas and the
+  managed policy's JSON. Each menu is headed by what is being edited — the
+  column, the view, the stage's operator, the table, the schema — and offers
+  *Cut*, *Copy*, *Paste* and *Change all occurrences*, with Paste reading the
+  clipboard in Rust as in the query editor.
+  - **Format** appears only where the editor already had a formatter: the
+    cell (JSON, XML or SQL — not plain text), the view's SQL, the pipeline
+    and, on a stage card, that stage alone, and the JSON Schema body.
+  - **Read-only editors get Copy and Select all:** the DDL preview, a table's
+    CREATE statement, the Console's detail pane, a read-only cell and a
+    policy that is enforced.
+  - The AI panel's SQL blocks stay without a menu, as before.
 - **The menu bar and every dropdown use the context menu's density.** File,
   Window, View and Help, and the app's other dropdowns (the grid toolbar's
   overflow, the status bar's connections, sort, export, the terminal's new

@@ -29,7 +29,11 @@ vi.mock("@monaco-editor/react", () => ({
     <textarea aria-label="json" value={value} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
-const clipboard = vi.hoisted(() => ({ copyToClipboard: vi.fn(async () => {}) }));
+// `readFromClipboard` because the JSON pane's editor menu imports it.
+const clipboard = vi.hoisted(() => ({
+  copyToClipboard: vi.fn(async () => {}),
+  readFromClipboard: vi.fn(async () => null),
+}));
 vi.mock("@/lib/clipboard", () => clipboard);
 const confirm = vi.hoisted(() => ({ confirmDestructive: vi.fn(async (_message: string) => true) }));
 vi.mock("@/lib/confirmDestructive", () => confirm);

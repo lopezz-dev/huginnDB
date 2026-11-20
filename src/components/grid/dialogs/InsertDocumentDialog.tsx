@@ -125,6 +125,8 @@ export function InsertDocumentDialog({
               height={280}
               lineNumbers
               completion={completion}
+              // The collection the document goes into, as the title says.
+              menuHeader={{ title: collection }}
             />
           </div>
 

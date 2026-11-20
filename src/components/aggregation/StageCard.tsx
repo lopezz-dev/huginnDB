@@ -84,6 +84,8 @@ interface Props {
   onDuplicate: () => void;
   onDelete: () => void;
   onRun: () => void;
+  /** Format this stage's body (the right-click menu's Format). */
+  onFormat: () => void;
   onDragStart: () => void;
   onDragOver: () => void;
   onDragEnd: () => void;
@@ -115,6 +117,7 @@ export function StageCard({
   onDuplicate,
   onDelete,
   onRun,
+  onFormat,
   onDragStart,
   onDragOver,
   onDragEnd,
@@ -268,6 +271,8 @@ export function StageCard({
                 onRun={onRun}
                 height="100%"
                 completion={completion}
+                menuHeader={{ title: operator ?? t("editorMenu.subject.stage") }}
+                onFormat={onFormat}
               />
             </Panel>
             {showPreview && (
