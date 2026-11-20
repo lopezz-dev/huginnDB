@@ -393,6 +393,83 @@ describe("K — a DataGrid is given a box with a definite height", () => {
   });
 });
 
+describe("L — a context menu is described, not composed", () => {
+  /**
+   * ADR #143: a context menu is a `MenuSpec` drawn by `ContextActionMenu`,
+   * which alone decides order, headings, separators, width, shortcuts and the
+   * destructive colour. Before it, eleven menus composed the primitives by
+   * hand, and the inventory found two ways to write an item, three width
+   * rules and a red that one menu forgot to paint on hover.
+   *
+   * So outside `ui/context-menu.tsx` and the renderer, nothing may import a
+   * *value* from `ui/context-menu` or Radix's context menu. A type is fine:
+   * `ContextMenuWidth` is part of the renderer's own props, and an editor
+   * menu that forwards a width names it. That also keeps
+   * `ContextMenuAction.destructive` the renderer's to set: no one else can
+   * reach the component to pass it.
+   *
+   * Imports rather than JSX, because a JSX rule is beaten by an alias
+   * (`import { ContextMenuItem as Item }`). Test files are out of scope as
+   * everywhere here (`walk` skips them): `PolicyLock.test.tsx` renders a bare
+   * `ContextMenuAction` to check the locked row.
+   */
+  const RENDERER = join(ROOT, "menus", "ContextActionMenu.tsx");
+  const PRIMITIVES = join(UI, "context-menu.tsx");
+
+  /** Every value (non-type) binding a file imports from `module`. */
+  function valueImports(src: string, module: RegExp): string[] {
+    const found: string[] = [];
+    const re = /import\s+(type\s+)?([^;]*?)\s+from\s+"([^"]+)"/gs;
+    for (const m of src.matchAll(re)) {
+      if (!module.test(m[3]) || m[1]) continue;
+      const clause = m[2];
+      // `import X from` / `import * as X from` are values outright.
+      const named = /\{([^}]*)\}/.exec(clause);
+      const outside = clause.replace(/\{[^}]*\}/, "").replace(/[\s,]/g, "");
+      if (outside) found.push(outside);
+      for (const spec of named?.[1].split(",") ?? []) {
+        const name = spec.trim();
+        if (name && !name.startsWith("type ")) found.push(name);
+      }
+    }
+    return found;
+  }
+
+  it("nothing but the renderer imports a context-menu primitive", () => {
+    const bad: string[] = [];
+    for (const file of ALL) {
+      if (file === RENDERER || file === PRIMITIVES) continue;
+      const names = valueImports(
+        code(file),
+        /^@\/components\/ui\/context-menu$|^@radix-ui\/react-context-menu$/,
+      );
+      if (names.length) bad.push(`${file}: ${names.join(", ")}`);
+    }
+    expect(bad).toEqual([]);
+  });
+
+  it("the guard sees through aliases, defaults and namespaces", () => {
+    // The rule above passes vacuously if `valueImports` reads nothing, so it
+    // is checked against the shapes it has to catch — and the one it must not.
+    const mod = /^@\/components\/ui\/context-menu$/;
+    expect(
+      valueImports(
+        'import {\n  ContextMenuItem as Item,\n  type ContextMenuWidth,\n} from "@/components/ui/context-menu";',
+        mod,
+      ),
+    ).toEqual(["ContextMenuItem as Item"]);
+    expect(
+      valueImports('import * as Menu from "@/components/ui/context-menu";', mod),
+    ).toEqual(["*asMenu"]);
+    expect(
+      valueImports(
+        'import type { ContextMenuWidth } from "@/components/ui/context-menu";',
+        mod,
+      ),
+    ).toEqual([]);
+  });
+});
+
 /**
  * Rules considered and rejected, so the next session does not re-litigate them:
  *

@@ -6,9 +6,7 @@ import { MENU_ITEM, MENU_PANEL, MENU_SUBTRIGGER } from "@/components/ui/styles";
 
 const ContextMenu = ContextMenuPrimitive.Root;
 const ContextMenuTrigger = ContextMenuPrimitive.Trigger;
-const ContextMenuGroup = ContextMenuPrimitive.Group;
 const ContextMenuSub = ContextMenuPrimitive.Sub;
-const ContextMenuPortal = ContextMenuPrimitive.Portal;
 
 /**
  * Trigger for a nested submenu. Visually mirrors `ContextMenuItem` so the
@@ -17,13 +15,11 @@ const ContextMenuPortal = ContextMenuPrimitive.Portal;
  */
 const ContextMenuSubTrigger = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.SubTrigger>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger> & {
-    inset?: boolean;
-  }
->(({ className, inset, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger>
+>(({ className, children, ...props }, ref) => (
   <ContextMenuPrimitive.SubTrigger
     ref={ref}
-    className={cn(MENU_SUBTRIGGER, inset && "pl-8", className)}
+    className={cn(MENU_SUBTRIGGER, className)}
     {...props}
   >
     {children}
@@ -93,13 +89,11 @@ ContextMenuContent.displayName = ContextMenuPrimitive.Content.displayName;
 
 const ContextMenuItem = React.forwardRef<
   React.ElementRef<typeof ContextMenuPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Item> & {
-    inset?: boolean;
-  }
->(({ className, inset, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.Item>
+>(({ className, ...props }, ref) => (
   <ContextMenuPrimitive.Item
     ref={ref}
-    className={cn(MENU_ITEM, inset && "pl-8", className)}
+    className={cn(MENU_ITEM, className)}
     {...props}
   />
 ));
@@ -212,6 +206,13 @@ ContextMenuLabel.displayName = ContextMenuPrimitive.Label.displayName;
  * each section below it. Before this, the subject *was* a `ContextMenuLabel`,
  * so a column called `operation` read `OPERATION` and looked like one more
  * section heading.
+ *
+ * The title wins the room. A tag is capped at 12rem, so a long one (a
+ * connection's name) cannot stretch the menu to its own length, and it
+ * shrinks first and harder than the title, so it is cut rather than pushing
+ * the title out of the menu. A cut tag keeps its full text in a native
+ * `title`, which is the right tooltip inside open menu content
+ * (`tooltip.tsx`).
  */
 const ContextMenuHeader = ({
   title,
@@ -233,7 +234,8 @@ const ContextMenuHeader = ({
       .map((tag) => (
         <span
           key={tag}
-          className="shrink-0 rounded-sm border border-border px-1 font-mono text-3xs text-muted-foreground"
+          title={tag}
+          className="min-w-0 max-w-[12rem] shrink-[100] truncate rounded-sm border border-border px-1 font-mono text-3xs text-muted-foreground"
         >
           {tag}
         </span>
@@ -270,6 +272,10 @@ const ContextMenuShortcut = ({
 );
 ContextMenuShortcut.displayName = "ContextMenuShortcut";
 
+// Exactly what `menus/ContextActionMenu` composes, and nothing else: it is
+// the one consumer outside tests (ADR #143, rule L in `uiContracts.test.ts`).
+// `ContextMenuShortcut` stays private to `ContextMenuAction`, the only
+// thing that draws a key.
 export {
   ContextMenu,
   ContextMenuTrigger,
@@ -278,11 +284,8 @@ export {
   ContextMenuAction,
   ContextMenuLabel,
   ContextMenuHeader,
-  ContextMenuGroup,
   ContextMenuSeparator,
-  ContextMenuShortcut,
   ContextMenuSub,
   ContextMenuSubTrigger,
   ContextMenuSubContent,
-  ContextMenuPortal,
 };

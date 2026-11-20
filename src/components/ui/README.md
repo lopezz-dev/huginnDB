@@ -79,7 +79,7 @@ It gives an objective answer to the question that used to be settled by feel:
 | `dialog.tsx`          | `Dialog*`                              | Radix; `DialogContent` supplies the overlay and the close button                                            |
 | `dialog-actions.tsx`  | `DialogActions`                        | the Cancel/confirm footer pair; separate file so Dialog's consumers don't pull in `Button`                  |
 | `dropdown.tsx`        | `DropdownMenu*`                        | Radix; the menu density (12px on 28px rows, from `styles.ts`), `min-w-[8rem]`                               |
-| `context-menu.tsx`    | `ContextMenu*`, `ContextMenuAction`    | Radix; same density as the dropdown; `width` is a minimum tier (`sm`/`md`/`lg`). Draw a menu through `menus/ContextActionMenu` (ADR #143), not by composing these |
+| `context-menu.tsx`    | `ContextMenu*`, `ContextMenuAction`    | Radix; same density as the dropdown; `width` is a minimum tier (`sm`/`md`/`lg`); a header tag is capped and shrinks before the title. Only `menus/ContextActionMenu` may import a value from here (ADR #143, rule L in `uiContracts.test.ts`): describe a menu as a `MenuSpec` |
 | `tooltip.tsx`         | `Tooltip*`, `SimpleTooltip`            | read its docstring before replacing a native `title=`                                                       |
 | `nav-rail.tsx`        | `NavRailItem`                          | a workbench rail entry: icon, label, description, 2px edge when active                                      |
 | `styles.ts`           | class fragments                        | strings and lookups only, no `cva`, no JSX                                                                  |
