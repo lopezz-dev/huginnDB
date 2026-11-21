@@ -826,7 +826,7 @@ What it can do is save you the typing. Ask it to write a **profile import file
 without secrets**, then import that file yourself:
 
 1. The assistant writes a `.json` file in the format below.
-2. **File → Import profiles…** opens it. The dialog shows what it is about to
+2. **File → Import profiles** opens it. The dialog shows what it is about to
    add, and how to handle any profile that collides with one you already have.
 3. Each imported connection asks for its password before it connects. Open it
    in the connection dialog to set the password, and the SSH password or key

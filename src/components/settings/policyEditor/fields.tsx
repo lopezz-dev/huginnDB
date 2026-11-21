@@ -239,7 +239,7 @@ export function EndpointField({
                     <span className="truncate">{match.name}</span>
                   </DriverOption>
                 ) : (
-                  <span className="text-muted-foreground">{t("policyEditor.rule.pickConnection")}</span>
+                  <span className="text-muted-foreground">{t("policyEditor.rule.pickConnectionPlaceholder")}</span>
                 )}
               </SelectTrigger>
               <SelectContent>
@@ -573,8 +573,8 @@ export function NamePicker({
                     size="xs"
                     value={filter}
                     onValueChange={setFilter}
-                    placeholder={t("policyEditor.rule.searchCatalog", { source: catalogSource ?? "" })}
-                    aria-label={t("policyEditor.rule.searchCatalog", { source: catalogSource ?? "" })}
+                    placeholder={t("policyEditor.rule.searchCatalogPlaceholder", { source: catalogSource ?? "" })}
+                    aria-label={t("policyEditor.rule.searchCatalogPlaceholder", { source: catalogSource ?? "" })}
                     onClear={() => setFilter("")}
                     clearLabel={t("common.clear")}
                   />

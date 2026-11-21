@@ -56,7 +56,7 @@ origin** is a file on a path your machine already reaches — a UNC share, a map
 drive, a synced folder — that HuginnDB imports connections from, passwords
 included. The point is that somebody joining a team configures nothing by hand.
 
-Publishing one is just "Export profiles…" with a passphrase, dropped on the
+Publishing one is just "Export profiles" with a passphrase, dropped on the
 share. Consuming it is Settings → **Shared origins**: give it the path, enter the
 passphrase once, and the connections appear. The passphrase is kept in your own
 keychain, per origin, and never written to disk. The registry is **global**, not
@@ -89,7 +89,7 @@ grants it. Your OS still has the last word: the editor probes the path with a
 real write and opens read-only if the share refuses, rather than letting you
 compose a revision and failing at the last step.
 
-Then "Edit the document…" opens a full-screen editor for the file itself:
+Then "Edit the document" opens a full-screen editor for the file itself:
 
 * **Connections** — two columns, this machine on the left and the file on the
   right. Nothing you do here touches your own connections; moving one across

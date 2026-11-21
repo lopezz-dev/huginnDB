@@ -45,7 +45,7 @@ export function MongoshDownload({
     const stepText = status.cancelling
       ? t("terminal.download.cancelling")
       : status.attached
-        ? t("terminal.download.elsewhere")
+        ? t("terminal.download.downloadingElsewhere")
         : status.step === "downloading"
         ? t(status.total ? "terminal.download.downloading" : "terminal.download.downloadingUnknown", {
             version: status.version ?? "",

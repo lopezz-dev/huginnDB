@@ -319,6 +319,26 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   
 ### Cambiado
 
+- **Las acciones ya no terminan en «…».** Los elementos de menú, los botones y
+  los títulos de diálogo pierden los puntos suspensivos que indicaban «esto
+  abre un diálogo»: se ponían a mano y se habían desajustado, así que una misma
+  acción podía llevarlos en un menú y no en el siguiente. «…» solo aparece
+  donde sigue significando algo: el texto de ejemplo de un campo («Filtrar
+  conexiones…»), una tarea en curso («Cargando…», «Exportando…») y un texto
+  recortado. Las guías citan las etiquetas tal como las muestra ahora la app.
+  - Internamente, la convención #144 recoge la regla y
+    `src/lib/i18n/ellipsis.test.ts` la hace cumplir a partir del nombre de cada
+    clave: la de un texto de ejemplo termina en `placeholder`, la de una tarea
+    en curso tiene una palabra en `-ing` (o `pending` / `progress`), y ninguna
+    otra puede terminar en «…». Diez claves se renombraron para decir cuál son
+    (`dataGrid.filterRows` → `dataGrid.filterRowsPlaceholder`,
+    `terminal.download.elsewhere` → `terminal.download.downloadingElsewhere`,
+    …). La prop `ellipsis` del menú de exportación desaparece.
+- **En español se dice «consulta», no «query».** «Nueva query» pasa a «Nueva
+  consulta», una pestaña nueva se llama `consulta.sql`, y los ajustes del
+  historial y dos entradas de Novedades siguen el mismo criterio, como ya
+  hacían el explorador y la paleta de comandos. Un test mantiene el anglicismo
+  fuera de `es.json`.
 - **El menú contextual de una pestaña vuelve a nombrar su conexión, y un
   nombre largo ya no oculta de qué trata el menú.** Las etiquetas junto al
   título de un menú contextual (una conexión, el tipo de una columna)

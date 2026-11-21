@@ -531,13 +531,15 @@ describe("QueryResultGrid — export", () => {
     expect(view.getByText("query.export.rowsShown")).toBeTruthy();
   });
 
-  it("a cut result also offers “Everything, from the server…”, which re-runs its statement", async () => {
+  it("a cut result also offers “Everything, from the server”, which re-runs its statement", async () => {
     h.api.exportQueryRows.mockResolvedValue("/tmp/out.csv");
     await mount(SQL, { ...RESULT, truncated: true });
     const view = await openExportMenu();
     expect(view.getByText("query.export.fromServer")).toBeTruthy();
     await act(async () => {
-      fireEvent.click(view.getByText("query.export.csvComma…"));
+      // The server group comes second; its labels match the shown group's,
+      // told apart by the group heading above them.
+      fireEvent.click(view.getAllByText("query.export.csvComma")[1]);
     });
     expect(h.api.exportQueryRows).toHaveBeenCalledWith("c1", SQL, "csv", undefined);
   });
@@ -547,7 +549,7 @@ describe("QueryResultGrid — export", () => {
     await mount(SQL, { ...RESULT, truncated: true });
     const view = await openExportMenu();
     await act(async () => {
-      fireEvent.click(view.getByText("SQL INSERT…"));
+      fireEvent.click(view.getAllByText("SQL INSERT")[1]);
     });
     // `SELECT id, price AS p, price * 2 AS doubled, shop_id FROM shop.items`
     expect(h.api.exportQueryRows).toHaveBeenCalledWith("c1", SQL, "sql", {

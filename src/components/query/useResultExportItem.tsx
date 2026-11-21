@@ -137,7 +137,6 @@ export function useResultExportItem(
               keyPrefix="server-"
               formats={formats}
               title={t("query.export.fromServerHint")}
-              ellipsis
               onSelect={runFromServer}
             />,
           ]

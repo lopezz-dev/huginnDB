@@ -53,8 +53,8 @@ Díselo claramente a quien dependa de él:
 
 ## Activarlo
 
-1. Abre **Ajustes → Seguridad** y elige **Activar el bloqueo de la
-   app…**.
+1. Abre **Ajustes → Seguridad** y activa **Bloquear HuginnDB con una contraseña
+   maestra**.
 2. Elige una contraseña maestra de al menos 12 caracteres. Unas cuantas
    palabras sin relación entre sí, separadas por espacios, se recuerdan mejor
    que una contraseña corta llena de símbolos, y cuestan más de adivinar.
@@ -110,9 +110,9 @@ dañado.
 
 En **Ajustes → Seguridad**:
 
-- **Cambiar la contraseña maestra…** pide la contraseña actual y una nueva.
+- **Contraseña maestra → Cambiar** pide la contraseña actual y una nueva.
   Tus secretos no cambian.
-- **Desactivar…** pide la contraseña maestra y devuelve todos los secretos al
+- Desactivar **Bloquear HuginnDB con una contraseña maestra** pide la contraseña maestra y devuelve todos los secretos al
   llavero del sistema, tal como estaban.
 
 ## En un equipo gestionado

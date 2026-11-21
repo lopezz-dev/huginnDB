@@ -47,7 +47,7 @@ export function GridSearchInput({
         // DataGrid and GridToolbar to reach it.
         data-grid-search
         className="w-full min-w-0 flex-1 bg-transparent px-2 text-xs focus:outline-none"
-        placeholder={t("dataGrid.filterRows")}
+        placeholder={t("dataGrid.filterRowsPlaceholder")}
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
         onKeyDown={(e) => {

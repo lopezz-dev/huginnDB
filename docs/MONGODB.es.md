@@ -289,8 +289,8 @@ escrituras por campo que usa esta vista.
 ## Pipelines de agregación y vistas
 
 Una vista de MongoDB *es* un pipeline de agregación guardado, así que no hay un
-editor de vistas aparte: **Nueva agregación…** sobre una colección y **Editar
-pipeline…** sobre una vista abren la misma superficie.
+editor de vistas aparte: **Nueva agregación** sobre una colección y **Editar
+pipeline** sobre una vista abren la misma superficie.
 
 - El modo **Etapas** da una tarjeta por etapa: eliges el operador, escribes el
   cuerpo, arrastras para reordenar y puedes desactivar una etapa sin borrarla. El
@@ -304,7 +304,7 @@ pipeline…** sobre una vista abren la misma superficie.
 - **`$out` y `$merge` se rechazan**, tanto en la vista previa como en vistas
   guardadas. La previa corre mientras escribes; una etapa de escritura
   sobrescribiría una colección real a media edición.
-- **Guardar como vista…** guarda el pipeline como vista (`create`), y volver a
+- **Guardar como vista** guarda el pipeline como vista (`create`), y volver a
   guardar una vista abierta la actualiza (`collMod`). La salida de la previa es de
   solo lectura: un documento calculado no tiene `_id` por el que escribir de
   vuelta.
@@ -316,7 +316,7 @@ pipeline…** sobre una vista abren la misma superficie.
 
 ## Índices
 
-**Índices…** sobre una colección abre un gestor de índices dedicado. MongoDB es
+**Índices** sobre una colección abre un gestor de índices dedicado. MongoDB es
 el único driver que tiene uno, y no porque los demás no tengan índices: los suyos
 viven dentro del editor de estructura, diferenciados en `CREATE INDEX` /
 `DROP INDEX` junto con el resto de la tabla. MongoDB no tiene DDL que comparar.
@@ -345,7 +345,7 @@ viven dentro del editor de estructura, diferenciados en `CREATE INDEX` /
 
 ## Renombrar y mover una colección
 
-**Renombrar…** funciona sobre colecciones (`renameCollection` en la base
+**Renombrar** funciona sobre colecciones (`renameCollection` en la base
 `admin`), que es también la forma de *mover* una: renómbrala a `otraBase.nombre`
 y los documentos se copian en el servidor. Eso tarda lo que la colección sea
 grande y necesita privilegios en las dos bases, así que el diálogo lo advierte.
@@ -362,7 +362,7 @@ Una **vista** no se puede renombrar — recréala con el nombre nuevo.
 | Superficie | Estado |
 | --- | --- |
 | Editor de estructura (estilo `ALTER TABLE`) | No aplica. No hay esquema que alterar; los campos se crean al escribirlos. La estructura es de solo lectura y los índices tienen su propio gestor. |
-| Exportar / importar `.sql` | No aplica. Una colección se exporta e importa como **JSON** (**Exportar colección (JSON)…** en su menú contextual). |
+| Exportar / importar `.sql` | No aplica. Una colección se exporta e importa como **JSON** (**Exportar colección (JSON)** en su menú contextual). |
 | Editor del validador `$jsonSchema` | Abierto en el roadmap. Leer y escribir el validador de una colección vía `collMod`. |
 | Transacciones multi-documento | Abierto. Necesita una `ClientSession` explícita a través de los helpers de CRUD; y un replica set en el servidor. |
 | `_id` con tipo garantizado | Abierto. Un `_id` de 24 caracteres hexadecimales se trata como `ObjectId`; un `_id` que sea una *cadena* de 24 hex es el único caso ambiguo. |

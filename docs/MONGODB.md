@@ -273,7 +273,7 @@ atomic document-level update rather than the per-field writes this view uses.
 ## Aggregation pipelines and views
 
 A MongoDB view *is* a stored aggregation pipeline, so there is no separate view
-editor: **New aggregation…** on a collection and **Edit pipeline…** on a view
+editor: **New aggregation** on a collection and **Edit pipeline** on a view
 open the same surface.
 
 - **Stages** mode gives one card per stage: pick the operator, write the body,
@@ -288,7 +288,7 @@ open the same surface.
 - **`$out` and `$merge` are refused**, in previews and in saved views alike. The
   preview runs while you type; a write stage would overwrite a real collection
   mid-edit.
-- **Save as view…** stores the pipeline as a view (`create`), and re-saving an
+- **Save as view** stores the pipeline as a view (`create`), and re-saving an
   open view updates it (`collMod`). Preview output is read-only — a computed
   document has no `_id` to write back through.
 - Pipeline text is parsed by the same parser the query editor uses, so
@@ -299,7 +299,7 @@ open the same surface.
 
 ## Indexes
 
-**Indexes…** on a collection opens a dedicated index manager. MongoDB is the
+**Indexes** on a collection opens a dedicated index manager. MongoDB is the
 only driver with one, and not because the others lack indexes: theirs live
 inside the structure editor, diffed into `CREATE INDEX` / `DROP INDEX` along
 with the rest of the table. MongoDB has no DDL to diff.
@@ -327,7 +327,7 @@ with the rest of the table. MongoDB has no DDL to diff.
 
 ## Renaming and moving a collection
 
-**Rename…** works on collections (`renameCollection` on the `admin` database),
+**Rename** works on collections (`renameCollection` on the `admin` database),
 which is also how a collection *moves*: rename it to `otherDb.name` and the
 documents are copied server-side. That takes as long as the collection is big
 and needs privileges on both databases, so the dialog says so. Renaming onto an
@@ -344,7 +344,7 @@ A **view** can't be renamed — recreate it under the new name.
 | Surface | State |
 | --- | --- |
 | Structure editor (`ALTER TABLE`-style) | Not applicable. There is no schema to alter; fields are created by writing them. Structure is read-only, indexes have their own manager. |
-| `.sql` export / import | Not applicable. A collection exports and imports as **JSON** instead (**Export collection (JSON)…** in its context menu). |
+| `.sql` export / import | Not applicable. A collection exports and imports as **JSON** instead (**Export collection (JSON)** in its context menu). |
 | `$jsonSchema` validator editor | Open on the roadmap. Read/write a collection's validator via `collMod`. |
 | Multi-document transactions | Open. Needs an explicit `ClientSession` threaded through the CRUD helpers; a replica set is required server-side. |
 | Typed `_id` round-trip | Open. A 24-hex-character `_id` is treated as an `ObjectId`; a genuine 24-hex *string* `_id` is the one ambiguous case. |

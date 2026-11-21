@@ -12,7 +12,7 @@ writes to disk contains a password in plaintext.
 
 ## Creating one
 
-**File → New connection…**, or `New connection` from the command palette
+**File → New connection**, or `New connection` from the command palette
 (`Ctrl+Shift+P`). The dialog adapts to the driver, because the five of them
 don't need the same things:
 
@@ -242,7 +242,7 @@ to the running instance, which connects in the window you already have.
 
 ## Export and import
 
-**File → Export profiles…** writes a `.json` bundle from a checklist of
+**File → Export profiles** writes a `.json` bundle from a checklist of
 connections. **Include passwords (encrypted)** adds each secret — database
 password and SSH secret alike — encrypted with AES-256-GCM under a key derived
 from your passphrase (PBKDF2-HMAC-SHA256, 600 000 iterations). Each secret
@@ -250,7 +250,7 @@ carries its own salt and nonce, so one corrupted entry doesn't take the rest
 of the file with it. The passphrase is not stored anywhere and cannot be
 recovered.
 
-**File → Import profiles…** reads one back. Conflicts are matched by profile
+**File → Import profiles** reads one back. Conflicts are matched by profile
 **id**, not by name — a connection renamed on either side is still the same
 connection — and each one is resolved individually as **Overwrite**, **Skip**
 or **Keep both**. A profile imported from a file exported *without* passwords

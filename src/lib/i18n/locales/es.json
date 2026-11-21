@@ -39,13 +39,13 @@
     "defaultName": "Predeterminado",
     "switching": "Cambiando a «{{name}}»…",
     "switcherTooltip": "Entorno — las conexiones en juego y su sesión",
-    "create": "Nuevo entorno…",
+    "create": "Nuevo entorno",
     "createTitle": "Nuevo entorno",
     "rename": "Renombrar",
     "openInNewWindow": "Abrir entorno en una ventana nueva",
     "renameTitle": "Renombrar entorno",
-    "imageUpload": "Subir una imagen…",
-    "imageReplace": "Cambiar la imagen…",
+    "imageUpload": "Subir una imagen",
+    "imageReplace": "Cambiar la imagen",
     "imageRemove": "Quitar la imagen",
     "imagePickTitle": "Elegir una imagen de avatar",
     "imageError": "No se pudo usar esa imagen: {{error}}",
@@ -59,7 +59,7 @@
     "replicateFrom": "Partir de «{{name}}»",
     "replicateConnections": "Reabrir las mismas conexiones y sus pestañas",
     "replicateLayout": "Reutilizar la distribución de paneles",
-    "export": "Exportar…",
+    "export": "Exportar",
     "mirroredCosmeticsHint": "Este entorno viene de un origen compartido — el nombre, color, icono y tema de abajo se guardan solo en este equipo y no se sobrescribirán en la próxima sincronización.",
     "clearLocalOverride": "Volver a seguir al origen",
     "loadFailed": "No se pudieron cargar los entornos",
@@ -86,18 +86,18 @@
   "menu": {
     "file": {
       "label": "Archivo",
-      "newConnection": "Nueva conexión…",
-      "manageConnections": "Gestionar conexiones…",
+      "newConnection": "Nueva conexión",
+      "manageConnections": "Gestionar conexiones",
       "sectionProfiles": "Perfiles",
-      "importProfiles": "Importar perfiles…",
-      "exportProfiles": "Exportar perfiles…",
+      "importProfiles": "Importar perfiles",
+      "exportProfiles": "Exportar perfiles",
       "sectionEnvironments": "Entornos",
-      "exportEnvironments": "Exportar entornos…",
-      "importEnvironment": "Importar entornos…",
+      "exportEnvironments": "Exportar entornos",
+      "importEnvironment": "Importar entornos",
       "disconnectAll": "Desconectar todas",
       "sectionJsonSchemas": "Esquemas JSON",
-      "exportJsonSchemas": "Exportar esquemas JSON…",
-      "importJsonSchemas": "Importar esquemas JSON…"
+      "exportJsonSchemas": "Exportar esquemas JSON",
+      "importJsonSchemas": "Importar esquemas JSON"
     },
     "window": {
       "label": "Ventana",
@@ -112,7 +112,7 @@
       "metricHide": "Ocultar métrica de tabla",
       "metricRowCount": "Mostrar nº de filas",
       "metricSize": "Mostrar tamaño de tabla",
-      "preferences": "Preferencias…",
+      "preferences": "Preferencias",
       "help": "Los recuentos y tamaños son estimaciones del motor.",
       "metricBoth": "Ambos"
     },
@@ -137,7 +137,7 @@
   "connectionsTree": {
     "empty": "Aún no hay conexiones guardadas. Añade una desde Archivo → Nueva conexión.",
     "connect": "Conectar",
-    "editConnection": "Editar conexión…",
+    "editConnection": "Editar conexión",
     "openInNewWindow": "Abrir en una ventana nueva",
     "selectConnections": {
       "action": "Conexiones a mostrar",
@@ -174,7 +174,7 @@
   "workspacePicker": {
     "connectionsTab": "Conexiones",
     "environmentsTab": "Entornos",
-    "searchEnvironments": "Buscar entornos…"
+    "searchEnvironmentsPlaceholder": "Buscar entornos…"
   },
   "connections": {
     "scope": {
@@ -288,7 +288,7 @@
       "sshPassword": "Contraseña SSH",
       "privateKeyPath": "Fichero de clave privada",
       "privateKeyPathPlaceholder": "C:\\Users\\tu-usuario\\.ssh\\id_ed25519",
-      "browse": "Examinar…",
+      "browse": "Examinar",
       "passphrase": "Passphrase de la clave",
       "passphraseKeepHint": "(en blanco para mantener la actual)",
       "localPort": "Puerto local",
@@ -335,7 +335,7 @@
     "fromOriginNamed": "Esta conexión viene del origen compartido «{{origin}}», así que aquí es de solo lectura: la próxima sincronización sobrescribiría cualquier cambio. Para adaptarla, duplícala: la copia es tuya.",
     "fromOriginNotPulled": "Este origen ya no se trae conexiones, así que esta entrada se queda como está y no se actualizará. En Ajustes → Orígenes puedes volver a activarlo o liberarla como tuya.",
     "fromOriginEditable": "Esta conexión viene del origen compartido «{{origin}}», que tú publicas — al guardar se escribe el cambio en este equipo y después se te ofrece publicarlo, para que los demás lo reciban en su próxima sincronización.",
-    "editAtOrigin": "Editar en el origen…",
+    "editAtOrigin": "Editar en el origen",
     "mongoFold": {
       "title": "¿Volver al formulario?",
       "description": "La cadena de conexión que has escrito no se puede describir con el formulario. Al volver se conservan el host, el puerto, la base de datos, el usuario y las opciones que sí puede leer, y se descarta el resto.",
@@ -369,7 +369,7 @@
     "cancel": "Cancelar"
   },
   "feedback": {
-    "menuEntry": "Reportar / sugerir…",
+    "menuEntry": "Reportar / sugerir",
     "title": "Reportar o sugerir",
     "description": "Crea un bug o una sugerencia de feature en el tracker de GitHub del proyecto.",
     "kindBug": "Bug",
@@ -430,19 +430,19 @@
       "copySelect": "Copiar sentencia SELECT",
       "newQueryOnTable": "Nueva consulta sobre esta tabla",
       "refresh": "Actualizar",
-      "editStructure": "Editar estructura…",
-      "newTable": "Nueva tabla…",
-      "rename": "Renombrar…",
-      "empty": "Vaciar tabla…",
-      "drop": "Eliminar tabla…",
-      "dropDatabase": "Eliminar base de datos…",
-      "editView": "Editar vista…",
-      "newView": "Nueva vista…",
-      "renameView": "Renombrar vista…",
-      "dropView": "Eliminar vista…",
-      "newAggregation": "Nueva agregación…",
-      "manageIndexes": "Índices…",
-      "editViewPipeline": "Editar pipeline…",
+      "editStructure": "Editar estructura",
+      "newTable": "Nueva tabla",
+      "rename": "Renombrar",
+      "empty": "Vaciar tabla",
+      "drop": "Eliminar tabla",
+      "dropDatabase": "Eliminar base de datos",
+      "editView": "Editar vista",
+      "newView": "Nueva vista",
+      "renameView": "Renombrar vista",
+      "dropView": "Eliminar vista",
+      "newAggregation": "Nueva agregación",
+      "manageIndexes": "Índices",
+      "editViewPipeline": "Editar pipeline",
       "kind": {
         "table": "tabla",
         "view": "vista",
@@ -541,7 +541,7 @@
       "failed": "No se ha podido eliminar la base de datos {{name}}"
     },
     "exportDatabase": {
-      "title": "Exportar base de datos…",
+      "title": "Exportar base de datos",
       "success": "Base de datos exportada a {{path}}"
     },
     "exportDatabaseDialog": {
@@ -554,13 +554,13 @@
       "dataModeTruncateInsert": "Borrar filas existentes e insertar",
       "destPath": "Archivo de salida",
       "destPathPlaceholder": "Elige un archivo de destino…",
-      "browse": "Examinar…",
+      "browse": "Examinar",
       "export": "Exportar",
       "exporting": "Exportando…",
       "progress": "{{done}} de {{total}} filas · SQL"
     },
     "importSql": {
-      "title": "Importar .sql…",
+      "title": "Importar .sql",
       "pickTitle": "Importar fichero SQL",
       "confirm": "¿Ejecutar {{count}} sentencia(s) de este fichero? Esto puede modificar o borrar datos y no se puede deshacer.",
       "success": "Importación terminada — se ejecutaron {{count}} sentencia(s).",
@@ -572,10 +572,10 @@
       "running": "Ejecutando…"
     },
     "exportCollection": {
-      "title": "Exportar colección (JSON)…"
+      "title": "Exportar colección (JSON)"
     },
     "importCollection": {
-      "title": "Importar JSON…",
+      "title": "Importar JSON",
       "pickTitle": "Importar fichero JSON",
       "confirm": "¿Insertar los documentos de este fichero en \"{{collection}}\"? Si existen documentos con el mismo _id la importación se detendrá.",
       "success": "Importación terminada — se insertaron {{count}} documento(s)."
@@ -644,8 +644,8 @@
     "ctxCopyRowAs": "Copiar fila como",
     "ctxFilterBy": "Filtrar por este valor",
     "ctxFilterExcluding": "Filtrar excluyendo este valor",
-    "ctxInsertRow": "Insertar fila…",
-    "ctxDuplicateRow": "Duplicar fila…",
+    "ctxInsertRow": "Insertar fila",
+    "ctxDuplicateRow": "Duplicar fila",
     "ctxDeleteRow": "Eliminar fila",
     "ctxRowsSelected": "{{count}} filas seleccionadas",
     "ctxCopyRowsAs": "Copiar {{count}} filas como",
@@ -653,7 +653,7 @@
     "ctxFilterInSelected": "Filtrar {{column}} por los {{count}} valores seleccionados",
     "ctxFilterNotInSelected": "Excluir los {{count}} valores seleccionados de {{column}}",
     "filterValueCount": "{{count}} valores",
-    "filterRows": "Filtrar filas… (Enter)",
+    "filterRowsPlaceholder": "Filtrar filas… (Enter)",
     "clearFilter": "Borrar filtro",
     "recentSearches": "Búsquedas recientes en esta conexión",
     "serverSideFilter": "Filtro del servidor",
@@ -676,7 +676,7 @@
     "fitColumnsToWidth": "Ajustar todas las columnas al ancho visible",
     "insertMore": "Otras formas de añadir datos",
     "insertRows": {
-      "action": "Pegar filas como JSON…",
+      "action": "Pegar filas como JSON",
       "title": "Pegar filas en {{table}}",
       "hint": "Un objeto JSON es una fila; pega un array para insertar varias de una vez. Todas las filas tienen que nombrar las mismas columnas — una columna omitida toma el valor por defecto de la base de datos, y null escribe un NULL de SQL. Todo entra en una única transacción.",
       "confirm": "Insertar",
@@ -684,12 +684,12 @@
       "failed": "No se pudo insertar: {{message}}"
     },
     "importFile": {
-      "action": "Importar desde fichero (CSV, JSON, Excel)…",
+      "action": "Importar desde fichero (CSV, JSON, Excel)",
       "pickTitle": "Importar un fichero CSV, JSON o Excel",
       "title": "Importar en {{table}}",
       "hint": "Cada columna de la tabla toma la columna del fichero con el mismo nombre; cambia las que quieras abajo. Las que se quedan en «no se importa» toman su valor por defecto. Todas las filas entran en una sola transacción: si una falla, no se importa nada.",
       "summary": "{{format}} · {{count}} filas",
-      "changeFile": "Cambiar fichero…",
+      "changeFile": "Cambiar fichero",
       "delimiter": "Separador",
       "delimiterAuto": "Detectar ({{detected}})",
       "tab": "Tabulador",
@@ -708,7 +708,7 @@
       "failed": "No se pudo importar: {{message}}"
     },
     "insertDocument": {
-      "action": "Nuevo documento…",
+      "action": "Nuevo documento",
       "title": "Nuevo documento en {{collection}}",
       "hint": "Escribe el documento en sintaxis de shell: se aceptan ObjectId(…), ISODate(…), claves sin comillas y comentarios. Pega un array para insertar varios de una vez.",
       "confirm": "Insertar",
@@ -809,8 +809,8 @@
     "fkLookup": {
       "loading": "Cargando…",
       "noMatches": "Sin coincidencias",
-      "search": "Buscar en {{table}}…",
-      "filter": "Filtrar {{table}}…",
+      "searchPlaceholder": "Buscar en {{table}}…",
+      "filterPlaceholder": "Filtrar {{table}}…",
       "showingFirst": "Mostrando las primeras {{count}} filas · escribe para buscar en todas",
       "unavailable": "Búsqueda de clave foránea no disponible: {{message}}"
     },
@@ -989,7 +989,7 @@
     },
     "bulkUpdate": {
       "toolbarTitle": "Actualizar varias filas/documentos a la vez",
-      "toolbarLabel": "Actualización masiva…",
+      "toolbarLabel": "Actualización masiva",
       "expressionIgnored": "La expresión escrita a mano de la consulta no se aplica aquí: solo cuentan las condiciones de abajo. Revisa el recuento de la vista previa antes de actualizar.",
       "titleRows": "Actualizar filas que coincidan",
       "titleDocuments": "Actualizar documentos que coincidan",
@@ -1040,7 +1040,7 @@
       "name": "Nombre",
       "namePlaceholder": "nombre_columna",
       "type": "Tipo",
-      "customType": "Personalizado…",
+      "customType": "Personalizado",
       "customTypePlaceholder": "tipo en bruto, ej. varchar(40)",
       "length": "Longitud/Conjunto",
       "unsigned": "Sin signo",
@@ -1141,7 +1141,7 @@
       "disabledHint": "Etapa desactivada: no se ejecuta aquí ni en una vista guardada."
     },
     "saveView": {
-      "titleCreate": "Guardar como vista…",
+      "titleCreate": "Guardar como vista",
       "titleUpdate": "Actualizar vista",
       "description": "Una vista de MongoDB guarda este pipeline y lo ejecuta sobre la colección de origen cada vez que se consulta.",
       "name": "Nombre de la vista",
@@ -1172,7 +1172,7 @@
     "loading": "Leyendo el catálogo de índices…",
     "noCollection": "No hay ninguna colección seleccionada.",
     "actions": "Acciones del índice",
-    "edit": "Editar…",
+    "edit": "Editar",
     "hide": "Ocultar",
     "unhide": "Mostrar",
     "drop": "Eliminar",
@@ -1256,8 +1256,8 @@
     "replaced": "Índice {{name}} reconstruido"
   },
   "tabs": {
-    "queryFileName": "query.sql",
-    "mongoQueryFileName": "query",
+    "queryFileName": "consulta.sql",
+    "mongoQueryFileName": "consulta",
     "tableFallback": "Tabla",
     "structureSuffix": "estructura",
     "viewSuffix": "vista",
@@ -1270,13 +1270,13 @@
     "unpin": "Desfijar pestaña",
     "color": "Color",
     "colorNone": "Sin color",
-    "colorCustom": "Color personalizado…",
+    "colorCustom": "Color personalizado",
     "splitRight": "Dividir a la derecha",
     "splitDown": "Dividir abajo",
     "floatPanel": "Sacar a ventana flotante",
-    "newQuery": "Nueva query",
-    "newQueryTooltip": "Nueva query (usa la conexión activa)",
-    "emptyOpenSomething": "Abre una tabla desde el explorador de esquemas o crea una nueva pestaña de query.",
+    "newQuery": "Nueva consulta",
+    "newQueryTooltip": "Nueva consulta (usa la conexión activa)",
+    "emptyOpenSomething": "Abre una tabla desde el explorador de esquemas o crea una nueva pestaña de consulta.",
     "emptyConnectFirst": "Selecciona o crea una conexión para empezar.",
     "detachedUnavailable": "Esta pestaña ya no está disponible.",
     "aggregationSuffix": "agregación",
@@ -1537,8 +1537,8 @@
         "desc": "Al arrancar la aplicación, reconectar automáticamente a las conexiones que estaban abiertas la última vez que la cerraste. Usa las credenciales guardadas en el llavero del sistema; se omiten las conexiones cuya contraseña no esté almacenada."
       },
       "queryHistoryLimit": {
-        "label": "Tamaño del historial de queries",
-        "desc": "Número máximo de queries recientes guardadas en el historial."
+        "label": "Tamaño del historial de consultas",
+        "desc": "Número máximo de consultas recientes guardadas en el historial."
       },
       "cellEditorMode": {
         "label": "Editor de celdas",
@@ -1643,8 +1643,8 @@
       "editingVariant": "Editando",
       "deleteTooltip": "Eliminar tema personalizado",
       "duplicateLabel": "Duplicar como personalizado",
-      "exportTooltip": "Exportar tema…",
-      "importTitle": "Importar tema…",
+      "exportTooltip": "Exportar tema",
+      "importTitle": "Importar tema",
       "importSuccess": "Se importó «{{name}}» como nuevo tema personalizado",
       "importFilter": "Temas (.json, .vsix)",
       "importError": {
@@ -1744,7 +1744,7 @@
       "stopQuery": "Detener la consulta en curso",
       "formatQuery": "Formatear el SQL del editor",
       "expandSelectedCell": "Expandir celda seleccionada",
-      "pressKey": "Pulsa una tecla…",
+      "pressKeyPlaceholder": "Pulsa una tecla…",
       "resetToDefault": "Restablecer por defecto",
       "resetAll": "Restablecer todos los atajos",
       "conflict": "Ya usado por {{action}}. Elige otra tecla.",
@@ -2172,7 +2172,7 @@
         "generate": "Generar",
         "noConnection": "Conéctate antes al servidor con tu cuenta de administrador: el script se construye a partir de su catálogo.",
         "copied": "Script copiado",
-        "save": "Guardar…",
+        "save": "Guardar",
         "copy": "Copiar"
       },
       "freeSqlShortOn": "sí",
@@ -2220,7 +2220,7 @@
       "password": {
         "label": "Contraseña maestra",
         "desc": "Cámbiala sin tocar los secretos de la bóveda.",
-        "change": "Cambiar…"
+        "change": "Cambiar"
       },
       "lockNow": {
         "label": "Bloquear ahora",
@@ -2285,7 +2285,7 @@
   "transfer": {
     "export": {
       "title": "Exportar perfiles",
-      "tooltip": "Exportar perfiles…",
+      "tooltip": "Exportar perfiles",
       "profiles": "Perfiles a exportar",
       "selectAll": "Seleccionar todos",
       "deselectAll": "Deseleccionar todos",
@@ -2301,10 +2301,10 @@
     },
     "import": {
       "title": "Importar perfiles",
-      "tooltip": "Importar perfiles…",
+      "tooltip": "Importar perfiles",
       "pickTitle": "Seleccionar fichero de exportación",
       "pickDescription": "Selecciona un fichero de exportación de perfiles de HuginnDB (.json) para importar.",
-      "browse": "Examinar…",
+      "browse": "Examinar",
       "passphraseRequired": "Este fichero contiene contraseñas cifradas. Introduce la contraseña con la que se exportó.",
       "passphrase": "Contraseña de exportación",
       "passphrasePlaceholder": "Introduce la contraseña de exportación",
@@ -2355,7 +2355,7 @@
       "title": "Importar esquemas JSON",
       "pickTitle": "Selecciona una exportación de esquemas JSON",
       "pickDescription": "Selecciona un archivo para importar.",
-      "pickNote": "Solo acepta un archivo generado por \"Exportar esquemas JSON\" en HuginnDB (incluye vínculos y metadatos). Para añadir un JSON Schema cualquiera a la librería, usa \"Añadir desde archivo…\" en Preferencias → Esquemas JSON.",
+      "pickNote": "Solo acepta un archivo generado por \"Exportar esquemas JSON\" en HuginnDB (incluye vínculos y metadatos). Para añadir un JSON Schema cualquiera a la librería, usa \"Añadir desde archivo\" en Preferencias → Esquemas JSON.",
       "reviewDescription": "{{schemas}} esquema(s) y {{bindings}} vínculo(s) en este archivo.",
       "unresolvedWarning": "{{count}} vínculo(s) nombran una conexión que no existe aquí, así que se importarán desactivados. Se conserva su ámbito, para que puedas apuntarlos a una conexión después.",
       "importButton": "Importar",
@@ -2369,7 +2369,7 @@
     "fullGuide": "Leer la guía completa de esquemas JSON",
     "library": {
       "new": "Nuevo esquema",
-      "addFromFile": "Añadir desde archivo…",
+      "addFromFile": "Añadir desde archivo",
       "addFromFileTitle": "Selecciona un archivo de esquema JSON",
       "filterPlaceholder": "Filtrar esquemas…",
       "noMatches": "Ningún esquema coincide con el filtro.",
@@ -2484,11 +2484,11 @@
       "ownSchemaTooltip": "Este documento declara su propio $schema ({{uri}}), que tiene prioridad, así que el vínculo se ignora. No se descarga nada de la red.",
       "menuTitle": "Esquema de «{{column}}»",
       "emptyLibrary": "Tu biblioteca está vacía.",
-      "infer": "Crear a partir de este valor…",
+      "infer": "Crear a partir de este valor",
       "inferNeedsJson": "El valor debe ser JSON válido para inferir un esquema a partir de él.",
       "unlink": "Desvincular",
-      "editRule": "Editar esta regla en Ajustes…",
-      "manage": "Gestionar esquemas JSON…"
+      "editRule": "Editar esta regla en Ajustes",
+      "manage": "Gestionar esquemas JSON"
     },
     "infer": {
       "title": "Crear un esquema a partir de este valor",
@@ -3010,7 +3010,7 @@
           },
           "aiProfileImport": {
             "title": "Que una IA escriba tus conexiones, sin tener tus llaves",
-            "body": "La guía del MCP documenta ahora el fichero de importación de perfiles, así que un asistente puede escribirte uno. Lo importas con Archivo → Importar perfiles… y escribes cada contraseña en la app: el asistente nunca las ve."
+            "body": "La guía del MCP documenta ahora el fichero de importación de perfiles, así que un asistente puede escribirte uno. Lo importas con Archivo → Importar perfiles y escribes cada contraseña en la app: el asistente nunca las ve."
           },
           "sshRsa": {
             "title": "Las claves RSA funcionan con servidores SSH actuales",
@@ -3248,7 +3248,7 @@
           },
           "vscodeThemeImport": {
             "title": "Importa un tema de color de VS Code",
-            "body": "El botón Importar tema… de Ajustes → Apariencia acepta ahora también un paquete .vsix o un *-color-theme.json suelto. El editor recibe el tema tal cual — tokenColors incluidos — y el resto de la app recibe una paleta derivada de él, que aterriza como un tema personalizado editable en vez de una aproximación."
+            "body": "El botón Importar tema de Ajustes → Apariencia acepta ahora también un paquete .vsix o un *-color-theme.json suelto. El editor recibe el tema tal cual — tokenColors incluidos — y el resto de la app recibe una paleta derivada de él, que aterriza como un tema personalizado editable en vez de una aproximación."
           }
         }
       },
@@ -3268,12 +3268,12 @@
             "body": "Un objeto es una fila, un array son muchas, y el backend convierte cualquiera de los dos en un INSERT multi-fila por cada bloque que cabe en el techo de parámetros, dentro de una sola transacción. Las claves se validan contra el catálogo real antes de poder convertirse en identificadores, y una fila cuyo conjunto de columnas difiere de la primera se rechaza en vez de rellenarse con defaults en silencio."
           },
           "queryThisTable": {
-            "title": "\"Consultar esta tabla…\" en el nivel en el que la gente hace clic derecho",
-            "body": "Una tabla o vista del árbol de esquema abre un editor de queries ya apuntando a la conexión y la base de datos de esa relación, con SELECT * FROM <tabla> LIMIT 100 dentro. La entrada existía uno y dos niveles más arriba y se quedaba corta justo en la tabla que estabas mirando."
+            "title": "\"Consultar esta tabla\" en el nivel en el que la gente hace clic derecho",
+            "body": "Una tabla o vista del árbol de esquema abre un editor de consultas ya apuntando a la conexión y la base de datos de esa relación, con SELECT * FROM <tabla> LIMIT 100 dentro. La entrada existía uno y dos niveles más arriba y se quedaba corta justo en la tabla que estabas mirando."
           },
           "focusFollowsTab": {
             "title": "El espacio de trabajo sigue a la pestaña con el foco",
-            "body": "Con una conexión MySQL y otra MongoDB vivas, hacer clic en una tabla de MySQL y pulsar + abría el editor contra MongoDB. El foco ahora es la conexión de la pestaña enfocada, derivada en un único sitio, y el título de la ventana, Pulse, el panel de IA, las Queries guardadas y el resaltado del árbol la siguen."
+            "body": "Con una conexión MySQL y otra MongoDB vivas, hacer clic en una tabla de MySQL y pulsar + abría el editor contra MongoDB. El foco ahora es la conexión de la pestaña enfocada, derivada en un único sitio, y el título de la ventana, Pulse, el panel de IA, las Consultas guardadas y el resaltado del árbol la siguen."
           },
           "fasterEnvironmentSwitch": {
             "title": "Cambiar de entorno deja de esperar a la red",
@@ -3294,11 +3294,11 @@
           },
           "mongoDatabases": {
             "title": "Las bases de datos MongoDB se pueden crear y eliminar",
-            "body": "«Eliminar base de datos…» dependía de soportar CREATE DATABASE, así que MongoDB —que no tiene ese comando porque el servidor no guarda una base de datos vacía— tampoco podía borrar una llena. Al crearla se pide también la primera colección, el mismo par que pide Compass."
+            "body": "«Eliminar base de datos» dependía de soportar CREATE DATABASE, así que MongoDB —que no tiene ese comando porque el servidor no guarda una base de datos vacía— tampoco podía borrar una llena. Al crearla se pide también la primera colección, el mismo par que pide Compass."
           },
           "databaseNode": {
             "title": "Una conexión a una sola base de datos tiene su nodo",
-            "body": "Un perfil con base de datos fijada no mostraba ningún nodo de base de datos, así que «Eliminar base de datos…» no existía en ninguna parte mientras «Nueva base de datos» vivía en el menú de la conexión. Ahora ambos modos pintan el mismo menú: MySQL y MongoDB funden el esquema en él; Postgres y SQL Server ganan el nivel por encima de public/dbo."
+            "body": "Un perfil con base de datos fijada no mostraba ningún nodo de base de datos, así que «Eliminar base de datos» no existía en ninguna parte mientras «Nueva base de datos» vivía en el menú de la conexión. Ahora ambos modos pintan el mismo menú: MySQL y MongoDB funden el esquema en él; Postgres y SQL Server ganan el nivel por encima de public/dbo."
           },
           "dropGuard": {
             "title": "Eliminar una base de datos hace la pregunta correcta",
@@ -3506,11 +3506,11 @@
         "items": {
           "mongoAggregation": {
             "title": "Edita vistas de MongoDB con un editor de agregación al estilo Compass",
-            "body": "\"Nueva agregación…\" en cualquier colección abre un pipeline en blanco, y \"Editar pipeline…\" en cualquier vista carga el suyo guardado — ambos en modo Etapas (una tarjeta por etapa con su propia muestra de salida) o en un único editor de Texto, con exportación como llamada mongosh, el pipeline a secas, o un snippet db.createView(…). $out y $merge se rechazan antes de llegar al servidor."
+            "body": "\"Nueva agregación\" en cualquier colección abre un pipeline en blanco, y \"Editar pipeline\" en cualquier vista carga el suyo guardado — ambos en modo Etapas (una tarjeta por etapa con su propia muestra de salida) o en un único editor de Texto, con exportación como llamada mongosh, el pipeline a secas, o un snippet db.createView(…). $out y $merge se rechazan antes de llegar al servidor."
           },
           "mongoIndexes": {
             "title": "Gestor de índices de verdad para MongoDB",
-            "body": "\"Índices…\" en cualquier colección abre el catálogo real — crear, ocultar, reemplazar y eliminar — mostrando el tamaño de cada índice y cuántas operaciones ha servido desde el último reinicio del contador, para detectar los que nadie consulta. Editar es eliminar y volver a crear, porque MongoDB no puede alterar un índice en el sitio."
+            "body": "\"Índices\" en cualquier colección abre el catálogo real — crear, ocultar, reemplazar y eliminar — mostrando el tamaño de cada índice y cuántas operaciones ha servido desde el último reinicio del contador, para detectar los que nadie consulta. Editar es eliminar y volver a crear, porque MongoDB no puede alterar un índice en el sitio."
           },
           "connectionReliability": {
             "title": "Las conexiones multi-base siguen funcionando tras estar inactivas",
@@ -3602,7 +3602,7 @@
         "items": {
           "exportImport": {
             "title": "Rediseño de exportación/importación",
-            "body": "\"Exportar base de datos…\" es ahora un diálogo que cubre una o varias bases de datos (y, por base de datos, qué tablas) en un único fichero .sql combinado; \"Importar .sql…\" previsualiza el número de sentencias y deja elegir destino en conexiones multi-BD. La barra de la rejilla ganó su propio \"Exportar datos\" (tabla completa o resultados de la consulta) y, en MongoDB, \"Importar JSON…\"."
+            "body": "\"Exportar base de datos\" es ahora un diálogo que cubre una o varias bases de datos (y, por base de datos, qué tablas) en un único fichero .sql combinado; \"Importar .sql\" previsualiza el número de sentencias y deja elegir destino en conexiones multi-BD. La barra de la rejilla ganó su propio \"Exportar datos\" (tabla completa o resultados de la consulta) y, en MongoDB, \"Importar JSON\"."
           },
           "bulkUpdate": {
             "title": "Actualización masiva",
@@ -3677,7 +3677,7 @@
         "items": {
           "viewsEditor": {
             "title": "Las vistas ya se pueden crear, editar y eliminar",
-            "body": "La nueva pestaña «Editar vista…» del explorador combina un editor Monaco completo con una rejilla de previsualización en vivo y un panel de DDL de solo lectura — sin necesidad de escribir a mano CREATE OR REPLACE VIEW."
+            "body": "La nueva pestaña «Editar vista» del explorador combina un editor Monaco completo con una rejilla de previsualización en vivo y un panel de DDL de solo lectura — sin necesidad de escribir a mano CREATE OR REPLACE VIEW."
           },
           "betweenFilter": {
             "title": "Nuevo operador «between» en el Filtro avanzado",
@@ -3778,7 +3778,7 @@
   "origins": {
     "title": "Orígenes compartidos",
     "description": "Importa conexiones desde un fichero en una carpeta compartida. Se registra de forma global, para todos los entornos; HuginnDB solo lo lee, nunca escribe en él.",
-    "add": "Añadir origen…",
+    "add": "Añadir origen",
     "adding": "Añadiendo…",
     "syncNow": "Sincronizar ahora",
     "empty": "Aún no hay orígenes. Apunta uno a un fichero de perfiles exportado en una ruta de red.",
@@ -3819,15 +3819,15 @@
       "retireConfirm": "¿Borrar el entorno «{{name}}»?\n\nSe pierden sus pestañas y su disposición. Las conexiones que agrupa no se borran.",
       "pending": "Entornos desaparecidos"
     },
-    "newDocument": "Nuevo documento…",
+    "newDocument": "Nuevo documento",
     "newDocumentTitle": "Crear un documento para publicar",
     "newDocumentHint": "Crea un fichero vacío en el recurso compartido y lo registra como uno que publica este equipo. Para publicar un fichero que ya existe, regístralo y cambia su rol.",
     "newDocumentBrowseTitle": "Dónde crear el documento",
     "newDocumentCreate": "Crear",
     "maintainerPlaceholder": "Responsable (opcional)",
     "browseTitle": "Elige el fichero compartido",
-    "editContent": "Editar el documento…",
-    "editRegistration": "Editar el registro…",
+    "editContent": "Editar el documento",
+    "editRegistration": "Editar el registro",
     "editRegistrationTitle": "{{name}} — registro",
     "passphraseKeepPlaceholder": "Frase de paso (en blanco mantiene la guardada)",
     "passphraseKeepHint": "En blanco mantiene la que haya en tu llavero.",
@@ -3884,11 +3884,11 @@
     "addTitle": "Registrar un origen"
   },
   "originEditor": {
-    "filter": "Filtrar…",
+    "filterPlaceholder": "Filtrar…",
     "noMatches": "Nada coincide",
     "revision": "rev. {{revision}}",
     "unsaved": "Cambios sin publicar",
-    "save": "Publicar…",
+    "save": "Publicar",
     "discard": "Descartar",
     "reload": "Recargar",
     "stale": "Alguien más publicó este fichero mientras lo tenías abierto.",
@@ -3942,10 +3942,10 @@
       "members": "Conexiones de este entorno",
       "membersHint": "Filtra lo que ven, no decide lo que reciben",
       "noConnections": "Añade antes conexiones al documento",
-      "import": "De los míos…",
+      "import": "De los míos",
       "importNone": "Todos los entornos de este equipo ya están en el fichero",
       "importCount": "{{count}} conexión(es)",
-      "emptyWithLocal": "El fichero no publica entornos. Copia uno de los tuyos con «De los míos…»."
+      "emptyWithLocal": "El fichero no publica entornos. Copia uno de los tuyos con «De los míos»."
     },
     "schemas": {
       "hint": "Los schemas son globales, no pertenecen a un entorno: viajan aquí para que un solo fichero deje un equipo listo.",
@@ -4128,7 +4128,7 @@
     "updatedEditorOnly": "Se actualizó el tema de editor de «{{name}}»; su paleta se ha respetado porque la habías editado",
     "inUse": "En uso",
     "page": "Página {{page}} de ~{{pages}}",
-    "chooseVariants": "Elegir variantes…"
+    "chooseVariants": "Elegir variantes"
   },
   "policy": {
     "lockedTitle": "Bloqueado por la política de tu organización",
@@ -4212,10 +4212,10 @@
       "reload": "Cargar su versión"
     },
     "discard": "Descartar cambios",
-    "save": "Guardar…",
-    "create": "Crear…",
+    "save": "Guardar",
+    "create": "Crear",
     "createPath": "Guardar la política como",
-    "browse": "Examinar…",
+    "browse": "Examinar",
     "invalid": "No es una política válida:",
     "fixJsonFirst": "El JSON no es válido, así que el formulario no puede mostrarlo. Corrígelo en el panel JSON.",
     "saved": "Política guardada",
@@ -4322,7 +4322,7 @@
       "endpointManual": "A mano",
       "endpointAnyExplain": "La regla vale para todos los servidores, llegue a ellos la conexión que llegue.",
       "noSavedConnections": "Este equipo no tiene conexiones guardadas. Guarda antes el servidor como conexión, o escríbelo a mano.",
-      "pickConnection": "Elige una conexión…",
+      "pickConnectionPlaceholder": "Elige una conexión…",
       "catalogReady": "Nombres de este servidor",
       "connectForNames": "Conectar para ver sus nombres",
       "pendingAny": "Hasta que elijas un servidor, la regla sigue valiendo para todos.",
@@ -4332,7 +4332,7 @@
       "patternMatches_one": "Coincide con {{count}} nombre del servidor",
       "patternMatches_other": "Coincide con {{count}} nombres del servidor",
       "catalogLoading": "Leyendo los nombres del servidor…",
-      "searchCatalog": "Buscar en {{source}}…",
+      "searchCatalogPlaceholder": "Buscar en {{source}}…",
       "catalogNoMatch": "No hay coincidencias.",
       "addPattern": "Añadir un patrón",
       "add": "Añadir",
@@ -4417,7 +4417,7 @@
     "preview": {
       "intro": "Lo que tendría una persona —y su IA— en cada conexión guardada si se guardara este borrador. No hace falta guardar nada para verlo.",
       "user": "Cuenta",
-      "pick": "Elige una cuenta…",
+      "pickPlaceholder": "Elige una cuenta…",
       "other": "Otra cuenta",
       "show": "Mostrar",
       "invalid": "Corrige antes la política: un borrador no válido no se puede previsualizar.",
@@ -4446,7 +4446,7 @@
       "cancelling": "Cancelando…",
       "progress": "Progreso de la descarga de mongosh",
       "missing": "mongosh no está instalado. Descárgalo con un clic o indica su ruta en Ajustes → Terminal.",
-      "elsewhere": "mongosh se está descargando en otra ventana…",
+      "downloadingElsewhere": "mongosh se está descargando en otra ventana…",
       "dismiss": "Descartar",
       "downloading": "Descargando mongosh {{version}} — {{received}} de {{total}}",
       "downloadingUnknown": "Descargando mongosh {{version}} — {{received}}",

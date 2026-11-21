@@ -39,13 +39,13 @@
     "defaultName": "Default",
     "switching": "Switching to “{{name}}”…",
     "switcherTooltip": "Environment — the connections in play and their session",
-    "create": "New environment…",
+    "create": "New environment",
     "createTitle": "New environment",
     "rename": "Rename",
     "openInNewWindow": "Open environment in new window",
     "renameTitle": "Rename environment",
-    "imageUpload": "Upload an image…",
-    "imageReplace": "Change the image…",
+    "imageUpload": "Upload an image",
+    "imageReplace": "Change the image",
     "imageRemove": "Remove the image",
     "imagePickTitle": "Choose an avatar image",
     "imageError": "Could not use that image: {{error}}",
@@ -59,7 +59,7 @@
     "replicateFrom": "Start from «{{name}}»",
     "replicateConnections": "Reopen the same connections and their tabs",
     "replicateLayout": "Reuse the pane layout",
-    "export": "Export…",
+    "export": "Export",
     "mirroredCosmeticsHint": "This environment comes from a shared origin — the name, colour, icon and theme below are saved only on this computer and won't be overwritten by the next sync.",
     "clearLocalOverride": "Follow the origin again",
     "loadFailed": "Could not load the environments",
@@ -86,18 +86,18 @@
   "menu": {
     "file": {
       "label": "File",
-      "newConnection": "New connection…",
-      "manageConnections": "Manage connections…",
+      "newConnection": "New connection",
+      "manageConnections": "Manage connections",
       "sectionProfiles": "Profiles",
-      "importProfiles": "Import profiles…",
-      "exportProfiles": "Export profiles…",
+      "importProfiles": "Import profiles",
+      "exportProfiles": "Export profiles",
       "sectionEnvironments": "Environments",
-      "exportEnvironments": "Export environments…",
-      "importEnvironment": "Import environments…",
+      "exportEnvironments": "Export environments",
+      "importEnvironment": "Import environments",
       "disconnectAll": "Disconnect all",
       "sectionJsonSchemas": "JSON Schemas",
-      "exportJsonSchemas": "Export JSON Schemas…",
-      "importJsonSchemas": "Import JSON Schemas…"
+      "exportJsonSchemas": "Export JSON Schemas",
+      "importJsonSchemas": "Import JSON Schemas"
     },
     "window": {
       "label": "Window",
@@ -112,7 +112,7 @@
       "metricHide": "Hide table metric",
       "metricRowCount": "Show row count",
       "metricSize": "Show table size",
-      "preferences": "Preferences…",
+      "preferences": "Preferences",
       "help": "Counts and sizes are engine estimates.",
       "metricBoth": "Both"
     },
@@ -137,7 +137,7 @@
   "connectionsTree": {
     "empty": "No saved connections yet. Add one from File → New connection.",
     "connect": "Connect",
-    "editConnection": "Edit connection…",
+    "editConnection": "Edit connection",
     "openInNewWindow": "Open in new window",
     "selectConnections": {
       "action": "Connections to show",
@@ -174,7 +174,7 @@
   "workspacePicker": {
     "connectionsTab": "Connections",
     "environmentsTab": "Environments",
-    "searchEnvironments": "Search environments…"
+    "searchEnvironmentsPlaceholder": "Search environments…"
   },
   "connections": {
     "scope": {
@@ -288,7 +288,7 @@
       "sshPassword": "SSH password",
       "privateKeyPath": "Private key file",
       "privateKeyPathPlaceholder": "C:\\Users\\you\\.ssh\\id_ed25519",
-      "browse": "Browse…",
+      "browse": "Browse",
       "passphrase": "Key passphrase",
       "passphraseKeepHint": "(leave blank to keep current)",
       "localPort": "Local port",
@@ -335,7 +335,7 @@
     "fromOriginNamed": "This connection comes from the shared origin “{{origin}}”, so it is read-only here — the next sync would overwrite any change. To adapt it, duplicate it: the copy is yours.",
     "fromOriginNotPulled": "This origin no longer pulls connections, so this entry stays as it is and won't be refreshed. Settings → Origins is where that is switched back on, or where you can release it as your own.",
     "fromOriginEditable": "This connection comes from the shared origin “{{origin}}”, which you publish — saving writes the change on this computer and then offers to publish it, so everyone else picks it up on their next sync.",
-    "editAtOrigin": "Edit at the origin…",
+    "editAtOrigin": "Edit at the origin",
     "mongoFold": {
       "title": "Go back to the form?",
       "description": "The connection string you typed can't be described by the form. Going back keeps the host, port, database, user and options it can read, and discards the rest.",
@@ -369,7 +369,7 @@
     "cancel": "Cancel"
   },
   "feedback": {
-    "menuEntry": "Report / suggest…",
+    "menuEntry": "Report / suggest",
     "title": "Report or suggest",
     "description": "File a bug or a feature request to the project's GitHub tracker.",
     "kindBug": "Bug",
@@ -430,19 +430,19 @@
       "copySelect": "Copy SELECT statement",
       "newQueryOnTable": "New query on this table",
       "refresh": "Refresh",
-      "editStructure": "Edit structure…",
-      "newTable": "New table…",
-      "rename": "Rename…",
-      "empty": "Empty table…",
-      "drop": "Drop table…",
-      "dropDatabase": "Drop database…",
-      "editView": "Edit view…",
-      "newView": "New view…",
-      "renameView": "Rename view…",
-      "dropView": "Drop view…",
-      "newAggregation": "New aggregation…",
-      "manageIndexes": "Indexes…",
-      "editViewPipeline": "Edit pipeline…",
+      "editStructure": "Edit structure",
+      "newTable": "New table",
+      "rename": "Rename",
+      "empty": "Empty table",
+      "drop": "Drop table",
+      "dropDatabase": "Drop database",
+      "editView": "Edit view",
+      "newView": "New view",
+      "renameView": "Rename view",
+      "dropView": "Drop view",
+      "newAggregation": "New aggregation",
+      "manageIndexes": "Indexes",
+      "editViewPipeline": "Edit pipeline",
       "kind": {
         "table": "table",
         "view": "view",
@@ -541,7 +541,7 @@
       "failed": "Could not drop the database {{name}}"
     },
     "exportDatabase": {
-      "title": "Export database…",
+      "title": "Export database",
       "success": "Database exported to {{path}}"
     },
     "exportDatabaseDialog": {
@@ -554,13 +554,13 @@
       "dataModeTruncateInsert": "Delete existing rows, then insert",
       "destPath": "Output file",
       "destPathPlaceholder": "Choose a destination file…",
-      "browse": "Browse…",
+      "browse": "Browse",
       "export": "Export",
       "exporting": "Exporting…",
       "progress": "{{done}} of {{total}} rows · SQL"
     },
     "importSql": {
-      "title": "Import .sql…",
+      "title": "Import .sql",
       "pickTitle": "Import SQL file",
       "confirm": "Run {{count}} statement(s) from this file? This can modify or delete data and cannot be undone.",
       "success": "Import finished — {{count}} statement(s) ran.",
@@ -572,10 +572,10 @@
       "running": "Running…"
     },
     "exportCollection": {
-      "title": "Export collection (JSON)…"
+      "title": "Export collection (JSON)"
     },
     "importCollection": {
-      "title": "Import JSON…",
+      "title": "Import JSON",
       "pickTitle": "Import JSON file",
       "confirm": "Insert the documents from this file into \"{{collection}}\"? Existing documents with the same _id will cause the import to stop.",
       "success": "Import finished — {{count}} document(s) inserted."
@@ -645,7 +645,7 @@
     "fitColumnsToWidth": "Fit all columns to the visible width",
     "insertMore": "Other ways to add data",
     "insertRows": {
-      "action": "Paste rows as JSON…",
+      "action": "Paste rows as JSON",
       "title": "Paste rows into {{table}}",
       "hint": "One JSON object is one row; paste an array to insert several at once. Every row must name the same columns — an omitted column takes the database default, and null writes a SQL NULL. All of it goes in as a single transaction.",
       "confirm": "Insert",
@@ -653,12 +653,12 @@
       "failed": "Could not insert: {{message}}"
     },
     "importFile": {
-      "action": "Import from file (CSV, JSON, Excel)…",
+      "action": "Import from file (CSV, JSON, Excel)",
       "pickTitle": "Import a CSV, JSON or Excel file",
       "title": "Import into {{table}}",
       "hint": "Each table column takes the file column of the same name; change any of them below. Columns left as “not imported” take their default. Every row goes in as one transaction: if one fails, nothing is imported.",
       "summary": "{{format}} · {{count}} rows",
-      "changeFile": "Change file…",
+      "changeFile": "Change file",
       "delimiter": "Delimiter",
       "delimiterAuto": "Detect ({{detected}})",
       "tab": "Tab",
@@ -677,7 +677,7 @@
       "failed": "Could not import: {{message}}"
     },
     "insertDocument": {
-      "action": "New document…",
+      "action": "New document",
       "title": "New document in {{collection}}",
       "hint": "Write the document in shell syntax — ObjectId(…), ISODate(…), unquoted keys and comments are all accepted. Paste an array to insert several at once.",
       "confirm": "Insert",
@@ -696,8 +696,8 @@
     "ctxCopyRowAs": "Copy row as",
     "ctxFilterBy": "Filter by this value",
     "ctxFilterExcluding": "Filter excluding this value",
-    "ctxInsertRow": "Insert row…",
-    "ctxDuplicateRow": "Duplicate row…",
+    "ctxInsertRow": "Insert row",
+    "ctxDuplicateRow": "Duplicate row",
     "ctxDeleteRow": "Delete row",
     "ctxRowsSelected": "{{count}} rows selected",
     "ctxCopyRowsAs": "Copy {{count}} rows as",
@@ -705,7 +705,7 @@
     "ctxFilterInSelected": "Filter {{column}} by the {{count}} selected values",
     "ctxFilterNotInSelected": "Exclude the {{count}} selected values of {{column}}",
     "filterValueCount": "{{count}} values",
-    "filterRows": "Filter rows… (Enter)",
+    "filterRowsPlaceholder": "Filter rows… (Enter)",
     "clearFilter": "Clear filter",
     "recentSearches": "Recent searches on this connection",
     "serverSideFilter": "Server-side filter",
@@ -809,8 +809,8 @@
     "fkLookup": {
       "loading": "Loading…",
       "noMatches": "No matches",
-      "search": "Search {{table}}…",
-      "filter": "Filter {{table}}…",
+      "searchPlaceholder": "Search {{table}}…",
+      "filterPlaceholder": "Filter {{table}}…",
       "showingFirst": "Showing first {{count}} rows · type to search all",
       "unavailable": "FK lookup unavailable: {{message}}"
     },
@@ -989,7 +989,7 @@
     },
     "bulkUpdate": {
       "toolbarTitle": "Update multiple rows/documents at once",
-      "toolbarLabel": "Bulk update…",
+      "toolbarLabel": "Bulk update",
       "expressionIgnored": "The query's hand-written expression is not applied here — only the conditions below are. Check the preview's count before updating.",
       "titleRows": "Update matching rows",
       "titleDocuments": "Update matching documents",
@@ -1040,7 +1040,7 @@
       "name": "Name",
       "namePlaceholder": "column_name",
       "type": "Type",
-      "customType": "Custom…",
+      "customType": "Custom",
       "customTypePlaceholder": "raw type, e.g. varchar(40)",
       "length": "Length/Set",
       "unsigned": "Unsigned",
@@ -1141,7 +1141,7 @@
       "disabledHint": "Stage is off — it runs neither here nor in a saved view."
     },
     "saveView": {
-      "titleCreate": "Save as view…",
+      "titleCreate": "Save as view",
       "titleUpdate": "Update view",
       "description": "A MongoDB view stores this pipeline and reads from the source collection every time it is queried.",
       "name": "View name",
@@ -1172,7 +1172,7 @@
     "loading": "Reading the index catalogue…",
     "noCollection": "No collection selected.",
     "actions": "Index actions",
-    "edit": "Edit…",
+    "edit": "Edit",
     "hide": "Hide",
     "unhide": "Unhide",
     "drop": "Drop",
@@ -1270,7 +1270,7 @@
     "unpin": "Unpin tab",
     "color": "Colour",
     "colorNone": "No colour",
-    "colorCustom": "Custom colour…",
+    "colorCustom": "Custom colour",
     "splitRight": "Split right",
     "splitDown": "Split down",
     "floatPanel": "Float in new window",
@@ -1643,8 +1643,8 @@
       "editingVariant": "Editing",
       "deleteTooltip": "Delete custom theme",
       "duplicateLabel": "Duplicate as custom",
-      "exportTooltip": "Export theme…",
-      "importTitle": "Import theme…",
+      "exportTooltip": "Export theme",
+      "importTitle": "Import theme",
       "importSuccess": "Imported \"{{name}}\" as a new custom theme",
       "importFilter": "Themes (.json, .vsix)",
       "importError": {
@@ -1744,7 +1744,7 @@
       "stopQuery": "Stop the running query",
       "formatQuery": "Format the SQL in the editor",
       "expandSelectedCell": "Expand selected cell",
-      "pressKey": "Press a key…",
+      "pressKeyPlaceholder": "Press a key…",
       "resetToDefault": "Reset to default",
       "resetAll": "Reset all shortcuts",
       "conflict": "Already used by {{action}}. Choose a different key.",
@@ -2172,7 +2172,7 @@
         "generate": "Generate",
         "noConnection": "Connect to the server with your administrator account first: the script is built from its catalog.",
         "copied": "Script copied",
-        "save": "Save…",
+        "save": "Save",
         "copy": "Copy"
       },
       "freeSqlShortOn": "yes",
@@ -2220,7 +2220,7 @@
       "password": {
         "label": "Master password",
         "desc": "Change it without touching the secrets in the vault.",
-        "change": "Change…"
+        "change": "Change"
       },
       "lockNow": {
         "label": "Lock now",
@@ -2285,7 +2285,7 @@
   "transfer": {
     "export": {
       "title": "Export profiles",
-      "tooltip": "Export profiles…",
+      "tooltip": "Export profiles",
       "profiles": "Profiles to export",
       "selectAll": "Select all",
       "deselectAll": "Deselect all",
@@ -2301,10 +2301,10 @@
     },
     "import": {
       "title": "Import profiles",
-      "tooltip": "Import profiles…",
+      "tooltip": "Import profiles",
       "pickTitle": "Select export file",
       "pickDescription": "Select a HuginnDB profile export file (.json) to import.",
-      "browse": "Browse…",
+      "browse": "Browse",
       "passphraseRequired": "This file contains encrypted passwords. Enter the passphrase used when it was exported.",
       "passphrase": "Passphrase",
       "passphrasePlaceholder": "Enter the export passphrase",
@@ -2355,7 +2355,7 @@
       "title": "Import JSON Schemas",
       "pickTitle": "Select a JSON Schema export",
       "pickDescription": "Select a file to import.",
-      "pickNote": "Only accepts a file generated by \"Export JSON Schemas\" in HuginnDB (includes bindings and metadata). To add a plain JSON Schema document to the library, use \"Add from file…\" in Preferences → JSON Schemas.",
+      "pickNote": "Only accepts a file generated by \"Export JSON Schemas\" in HuginnDB (includes bindings and metadata). To add a plain JSON Schema document to the library, use \"Add from file\" in Preferences → JSON Schemas.",
       "reviewDescription": "{{schemas}} schema(s) and {{bindings}} binding(s) in this file.",
       "unresolvedWarning": "{{count}} binding(s) name a connection that does not exist here, so they will be imported switched off. Their scope is kept, so you can point them at a connection later.",
       "importButton": "Import",
@@ -2369,7 +2369,7 @@
     "fullGuide": "Read the full JSON Schemas guide",
     "library": {
       "new": "New schema",
-      "addFromFile": "Add from file…",
+      "addFromFile": "Add from file",
       "addFromFileTitle": "Select a JSON Schema file",
       "filterPlaceholder": "Filter schemas…",
       "noMatches": "No schema matches that filter.",
@@ -2484,11 +2484,11 @@
       "ownSchemaTooltip": "This document declares its own $schema ({{uri}}), which takes precedence, so the binding is ignored. Nothing is fetched from the network.",
       "menuTitle": "Schema for \"{{column}}\"",
       "emptyLibrary": "Your library is empty.",
-      "infer": "Create from this value…",
+      "infer": "Create from this value",
       "inferNeedsJson": "The value has to be valid JSON to infer a schema from it.",
       "unlink": "Unlink",
-      "editRule": "Edit this rule in Settings…",
-      "manage": "Manage JSON Schemas…"
+      "editRule": "Edit this rule in Settings",
+      "manage": "Manage JSON Schemas"
     },
     "infer": {
       "title": "Create a schema from this value",
@@ -3010,7 +3010,7 @@
           },
           "aiProfileImport": {
             "title": "Let an AI write your connections, not hold your keys",
-            "body": "The MCP guide now documents the profile import file, so an assistant can write one for you. You import it with File → Import profiles… and type each password in the app — the assistant never sees them."
+            "body": "The MCP guide now documents the profile import file, so an assistant can write one for you. You import it with File → Import profiles and type each password in the app — the assistant never sees them."
           },
           "sshRsa": {
             "title": "RSA keys work with current SSH servers",
@@ -3248,7 +3248,7 @@
           },
           "vscodeThemeImport": {
             "title": "Import a VS Code colour theme",
-            "body": "Settings → Appearance's Import theme… now also accepts a .vsix package or a bare *-color-theme.json. The editor gets the theme itself — tokenColors and all — and the rest of the app gets a palette derived from it, landing as an editable custom theme rather than an approximation."
+            "body": "Settings → Appearance's Import theme now also accepts a .vsix package or a bare *-color-theme.json. The editor gets the theme itself — tokenColors and all — and the rest of the app gets a palette derived from it, landing as an editable custom theme rather than an approximation."
           }
         }
       },
@@ -3268,7 +3268,7 @@
             "body": "One object is one row, an array is many, and the backend turns either into one multi-row INSERT per bind-ceiling chunk inside a single transaction. Keys are matched against the real catalogue before they can become identifiers, and a row whose column set differs from the first is refused rather than silently defaulted."
           },
           "queryThisTable": {
-            "title": "\"Query this table…\" on the level people right-click",
+            "title": "\"Query this table\" on the level people right-click",
             "body": "A table or view in the schema tree opens a query editor already scoped to that relation's connection and database, seeded with SELECT * FROM <table> LIMIT 100. The entry existed one and two levels up and stopped short of the table you were looking at."
           },
           "focusFollowsTab": {
@@ -3294,11 +3294,11 @@
           },
           "mongoDatabases": {
             "title": "MongoDB databases can be created and dropped",
-            "body": "\"Drop database…\" was gated on CREATE DATABASE support, so MongoDB — which has no such command because the server does not store an empty database — could not delete a full one either. Creating asks for the first collection too, the same pair Compass asks for."
+            "body": "\"Drop database\" was gated on CREATE DATABASE support, so MongoDB — which has no such command because the server does not store an empty database — could not delete a full one either. Creating asks for the first collection too, the same pair Compass asks for."
           },
           "databaseNode": {
             "title": "A single-database connection has a database node",
-            "body": "A profile with a database set showed no database node at all, so \"Drop database…\" existed nowhere while \"New database\" sat in the connection's menu. Both modes now render the same menu: MySQL and MongoDB merge the schema into it, Postgres and SQL Server grow the level above public/dbo."
+            "body": "A profile with a database set showed no database node at all, so \"Drop database\" existed nowhere while \"New database\" sat in the connection's menu. Both modes now render the same menu: MySQL and MongoDB merge the schema into it, Postgres and SQL Server grow the level above public/dbo."
           },
           "dropGuard": {
             "title": "Dropping a database asks the right question",
@@ -3506,11 +3506,11 @@
         "items": {
           "mongoAggregation": {
             "title": "Edit MongoDB views with a Compass-style aggregation editor",
-            "body": "\"New aggregation…\" on any collection opens a scratch pipeline, and \"Edit pipeline…\" on any view loads its stored one — both in a Stages view (one card per stage, its own sample output) or a single Text editor, with export as a mongosh call, a bare pipeline, or a db.createView(…) snippet. $out and $merge are refused before they ever reach the server."
+            "body": "\"New aggregation\" on any collection opens a scratch pipeline, and \"Edit pipeline\" on any view loads its stored one — both in a Stages view (one card per stage, its own sample output) or a single Text editor, with export as a mongosh call, a bare pipeline, or a db.createView(…) snippet. $out and $merge are refused before they ever reach the server."
           },
           "mongoIndexes": {
             "title": "A real index manager for MongoDB",
-            "body": "\"Indexes…\" on any collection opens the real catalogue — create, hide, replace and drop — showing each index's size and how many operations it's served since the counter was last reset, so you can spot the ones nobody queries. Editing is a drop plus a create, since MongoDB can't alter an index in place."
+            "body": "\"Indexes\" on any collection opens the real catalogue — create, hide, replace and drop — showing each index's size and how many operations it's served since the counter was last reset, so you can spot the ones nobody queries. Editing is a drop plus a create, since MongoDB can't alter an index in place."
           },
           "connectionReliability": {
             "title": "Multi-database connections stay usable after sitting idle",
@@ -3602,7 +3602,7 @@
         "items": {
           "exportImport": {
             "title": "Export/import redesign",
-            "body": "\"Export database…\" is now a dialog covering one or more databases (and, per database, which tables) into a single combined .sql file; \"Import .sql…\" previews the statement count and lets multi-DB connections pick a target. The grid toolbar gained its own \"Export data\" (full table or query results) and, for MongoDB, \"Import JSON…\"."
+            "body": "\"Export database\" is now a dialog covering one or more databases (and, per database, which tables) into a single combined .sql file; \"Import .sql\" previews the statement count and lets multi-DB connections pick a target. The grid toolbar gained its own \"Export data\" (full table or query results) and, for MongoDB, \"Import JSON\"."
           },
           "bulkUpdate": {
             "title": "Bulk update",
@@ -3677,7 +3677,7 @@
         "items": {
           "viewsEditor": {
             "title": "Views can now be created, edited and dropped",
-            "body": "The schema explorer's new \"Edit view…\" tab pairs a full Monaco SQL editor with a live preview grid and a read-only DDL pane — no more hand-writing CREATE OR REPLACE VIEW."
+            "body": "The schema explorer's new \"Edit view\" tab pairs a full Monaco SQL editor with a live preview grid and a read-only DDL pane — no more hand-writing CREATE OR REPLACE VIEW."
           },
           "betweenFilter": {
             "title": "A `between` operator in the Advanced Filter",
@@ -3778,7 +3778,7 @@
   "origins": {
     "title": "Shared origins",
     "description": "Pull connections from a file on a shared folder. Registered globally, across every environment; HuginnDB only ever reads it.",
-    "add": "Add origin…",
+    "add": "Add origin",
     "adding": "Adding…",
     "syncNow": "Sync now",
     "empty": "No shared origins yet. Point one at an exported profiles file on a network share.",
@@ -3819,15 +3819,15 @@
       "retireConfirm": "Delete the environment \"{{name}}\"?\n\nIts tabs and layout are lost. The connections it groups are not deleted.",
       "pending": "Disappeared environments"
     },
-    "newDocument": "New document…",
+    "newDocument": "New document",
     "newDocumentTitle": "Create a document to publish",
     "newDocumentHint": "Creates an empty file on the share and registers it as one this machine publishes. To publish a file that already exists, register it and switch its role instead.",
     "newDocumentBrowseTitle": "Where to create the document",
     "newDocumentCreate": "Create",
     "maintainerPlaceholder": "Maintainer (optional)",
     "browseTitle": "Pick the shared file",
-    "editContent": "Edit the document…",
-    "editRegistration": "Edit the registration…",
+    "editContent": "Edit the document",
+    "editRegistration": "Edit the registration",
     "editRegistrationTitle": "{{name}} — registration",
     "passphraseKeepPlaceholder": "Passphrase (leave blank to keep the stored one)",
     "passphraseKeepHint": "Blank keeps whatever is in your keychain.",
@@ -3884,11 +3884,11 @@
     "addTitle": "Register an origin"
   },
   "originEditor": {
-    "filter": "Filter…",
+    "filterPlaceholder": "Filter…",
     "noMatches": "Nothing matches",
     "revision": "rev. {{revision}}",
     "unsaved": "Unsaved changes",
-    "save": "Publish…",
+    "save": "Publish",
     "discard": "Discard",
     "reload": "Reload",
     "stale": "Someone else published this file while you had it open.",
@@ -3942,10 +3942,10 @@
       "members": "Connections in this environment",
       "membersHint": "Filters what they see; it does not decide what they receive",
       "noConnections": "Add connections to the document first",
-      "import": "From mine…",
+      "import": "From mine",
       "importNone": "Every environment on this machine is already in the file",
       "importCount": "{{count}} connection(s)",
-      "emptyWithLocal": "The file publishes no environments. Copy one of yours in with “From mine…”."
+      "emptyWithLocal": "The file publishes no environments. Copy one of yours in with “From mine”."
     },
     "schemas": {
       "hint": "Schemas are global, not owned by an environment: they ride along so one file can set up a whole machine.",
@@ -4128,7 +4128,7 @@
     "updatedEditorOnly": "Updated the editor theme for \"{{name}}\" — its palette was left alone because you had edited it",
     "inUse": "In use",
     "page": "Page {{page}} of ~{{pages}}",
-    "chooseVariants": "Choose variants…"
+    "chooseVariants": "Choose variants"
   },
   "policy": {
     "lockedTitle": "Locked by your organization's policy",
@@ -4212,10 +4212,10 @@
       "reload": "Load their version"
     },
     "discard": "Discard changes",
-    "save": "Save…",
-    "create": "Create…",
+    "save": "Save",
+    "create": "Create",
     "createPath": "Save the policy as",
-    "browse": "Browse…",
+    "browse": "Browse",
     "invalid": "Not a valid policy:",
     "fixJsonFirst": "The JSON is not valid, so the form cannot show it. Fix it in the JSON pane.",
     "saved": "Policy saved",
@@ -4322,7 +4322,7 @@
       "endpointManual": "By hand",
       "endpointAnyExplain": "The rule applies to every server, whatever connection reaches it.",
       "noSavedConnections": "This computer has no saved connections. Save the server as a connection first, or give it by hand.",
-      "pickConnection": "Pick a connection…",
+      "pickConnectionPlaceholder": "Pick a connection…",
       "catalogReady": "Names from this server",
       "connectForNames": "Connect to list its names",
       "pendingAny": "Until you pick a server, the rule still applies to every server.",
@@ -4332,7 +4332,7 @@
       "patternMatches_one": "Matches {{count}} name on the server",
       "patternMatches_other": "Matches {{count}} names on the server",
       "catalogLoading": "Reading the server's names…",
-      "searchCatalog": "Search {{source}}…",
+      "searchCatalogPlaceholder": "Search {{source}}…",
       "catalogNoMatch": "Nothing matches.",
       "addPattern": "Add a pattern",
       "add": "Add",
@@ -4417,7 +4417,7 @@
     "preview": {
       "intro": "What one person — and their AI — would get on every saved connection if this draft were saved. Nothing is saved to see it.",
       "user": "Account",
-      "pick": "Pick an account…",
+      "pickPlaceholder": "Pick an account…",
       "other": "Another account",
       "show": "Show",
       "invalid": "Fix the policy first: an invalid draft cannot be previewed.",
@@ -4446,7 +4446,7 @@
       "cancelling": "Cancelling…",
       "progress": "mongosh download progress",
       "missing": "mongosh is not installed. Download it with one click, or set its path in Settings → Terminal.",
-      "elsewhere": "mongosh is being downloaded in another window…",
+      "downloadingElsewhere": "mongosh is being downloaded in another window…",
       "dismiss": "Dismiss",
       "downloading": "Downloading mongosh {{version}} — {{received}} of {{total}}",
       "downloadingUnknown": "Downloading mongosh {{version}} — {{received}}",

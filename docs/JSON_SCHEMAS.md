@@ -26,7 +26,7 @@ Two things to know before anything else:
    Monaco editor (or use the docked side editor).
 2. In the editor's header, next to the `valid JSON` chip, find the schema badge.
    With nothing attached it reads **no schema**.
-3. Click it → **Create from this value…**. HuginnDB drafts a schema from the
+3. Click it → **Create from this value**. HuginnDB drafts a schema from the
    document in front of you.
 4. Give it a name and press **Create**. It is saved to your library and linked to
    this column in one step.
@@ -186,7 +186,7 @@ byte-identical schema, so regenerating produces a readable diff.
 
 ## Sharing
 
-**Export / import a file.** File → *Export JSON Schemas…* writes the entries you
+**Export / import a file.** File → *Export JSON Schemas* writes the entries you
 pick, optionally with their bindings. There is no passphrase, because there is
 nothing secret in a schema.
 
@@ -206,7 +206,7 @@ collides with yours steps aside rather than renaming yours; and nothing is
 deleted — an entry that disappears from the file is reported, never removed, for
 the same reason a vanished connection is.
 
-If you are the one publishing, Settings → Shared origins → "Edit the document…"
+If you are the one publishing, Settings → Shared origins → "Edit the document"
 is where you choose which schemas and which bindings ride along; see
 `docs/ENVIRONMENTS.md`.
 

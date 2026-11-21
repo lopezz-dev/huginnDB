@@ -289,6 +289,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
   
 ### Changed
 
+- **Actions no longer end in "…".** Menu items, buttons and dialog titles drop
+  the trailing ellipsis that used to hint "this opens a dialog" — it was
+  applied by hand and had drifted, so the same action could carry it in one
+  menu and not in the next. "…" now appears only where it still means
+  something: an input's placeholder ("Filter connections…"), work in progress
+  ("Loading…", "Exporting…") and text that was cut. The guides quote the
+  labels as the app now shows them.
+  - Internally, convention #144 writes the rule down and
+    `src/lib/i18n/ellipsis.test.ts` enforces it from each key's name: a
+    placeholder's key ends in `placeholder`, a state in progress has an `-ing`
+    word (or `pending` / `progress`), and nothing else may end in "…". Ten keys
+    were renamed to say which they are (`dataGrid.filterRows` →
+    `dataGrid.filterRowsPlaceholder`, `terminal.download.elsewhere` →
+    `terminal.download.downloadingElsewhere`, …). The export menu's `ellipsis`
+    prop is gone.
+- **Spanish says "consulta", not "query".** "Nueva query" is now "Nueva
+  consulta", a new tab is named `consulta.sql`, and the query-history settings
+  and two What's New entries follow, matching the explorer and the command
+  palette. A test keeps the anglicism out of `es.json`.
 - **A tab's right-click menu names its connection again, and a long name no
   longer hides what the menu is about.** The tags beside a context menu's
   title (a connection, a column's type) used to keep their full length, so a

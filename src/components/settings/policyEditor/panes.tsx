@@ -314,7 +314,7 @@ export function PreviewPane({
           value={accounts.includes(user) ? user : ""}
           onChange={(e) => e.target.value && onUserChange(e.target.value)}
         >
-          <option value="">{t("policyEditor.preview.pick")}</option>
+          <option value="">{t("policyEditor.preview.pickPlaceholder")}</option>
           {accounts.map((a) => (
             <option key={a} value={a}>
               {a}

@@ -28,7 +28,7 @@ Dos cosas antes de nada:
    al editor Monaco (o usa el editor lateral acoplado).
 2. En la cabecera del editor, junto a la insignia `JSON válido`, está la insignia
    de esquema. Sin nada vinculado dice **sin esquema**.
-3. Púlsala → **Crear a partir de este valor…**. HuginnDB redacta un esquema a
+3. Púlsala → **Crear a partir de este valor**. HuginnDB redacta un esquema a
    partir del documento que tienes delante.
 4. Ponle un nombre y pulsa **Crear**. Se guarda en tu biblioteca y se vincula a
    esta columna en un solo paso.
@@ -196,7 +196,7 @@ un esquema idéntico byte a byte, así que regenerar produce un diff legible.
 
 ## Compartir
 
-**Exportar / importar un archivo.** Archivo → *Exportar esquemas JSON…* escribe las
+**Exportar / importar un archivo.** Archivo → *Exportar esquemas JSON* escribe las
 entradas que elijas, opcionalmente con sus vínculos. No hay contraseña, porque en
 un esquema no hay nada secreto.
 
@@ -218,7 +218,7 @@ que desaparezca del archivo se reporta, nunca se elimina, por la misma razón qu
 una conexión desaparecida.
 
 Si eres quien publica, en Ajustes → Orígenes compartidos → «Editar el
-documento…» eliges qué esquemas y qué vínculos viajan; ver
+documento» eliges qué esquemas y qué vínculos viajan; ver
 `docs/ENVIRONMENTS.es.md`.
 
 **Una advertencia, en ambos casos.** Un vínculo fijado a una *conexión* la
