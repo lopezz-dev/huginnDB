@@ -8,6 +8,8 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
 
 ## [Sin publicar]
 
+## [1.40.0] — 2026-11-21
+
 ### Añadido
 
 - **MCP: `pulse_explain` responde en SQL Server, sin ejecutar la
@@ -533,7 +535,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es/1.1.0/) y el p
   *panics* siguen desenrollando la pila, así que un fallo dentro de una tarea
   en segundo plano sigue tumbando solo esa tarea y no cierra la aplicación.
   
- - **Una cuarta parte menos de código que cargar antes de que aparezca la
+- **Una cuarta parte menos de código que cargar antes de que aparezca la
   ventana.** El script que cada ventana de HuginnDB tiene que procesar antes
   de poder dibujar nada baja de 8,0 MB a 5,9 MB. Los dos changelogs, las guías
   de documentación y el motor de la terminal iban dentro, aunque la mayoría de

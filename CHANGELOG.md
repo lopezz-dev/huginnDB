@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [1.40.0] — 2026-11-21
+
 ### Added
 
 - **MCP: `pulse_explain` answers on SQL Server, without running the

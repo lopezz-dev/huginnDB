@@ -2902,6 +2902,39 @@
     "readMore": "Read more",
     "readLess": "Read less",
     "releases": {
+      "1_40_0": {
+        "tagline": "One right-click menu across the whole app, a redesigned query editor that shows one result per statement and stops on the server, and data that exports to CSV, Excel and JSON and imports back.",
+        "items": {
+          "oneMenu": {
+            "title": "One right-click menu everywhere",
+            "body": "The grid, the explorer, tabs, environments and every Monaco editor now open the same menu: headed by what it is about, its actions under the same headings in the same order, each with its key, and what cannot be undone in red. The menu bar and dropdowns share its density, and the editors' menu is HuginnDB's, no longer Monaco's in English."
+          },
+          "queryEditor": {
+            "title": "A redesigned query editor",
+            "body": "Running several statements shows one result tab per statement, with a Summary and cards for writes and errors. Ctrl+Enter runs the selection or the statement under the cursor (Ctrl+Shift+Enter runs everything), the toolbar shows every action as an icon, Format and Explain included, and the history is a panel of its own beside Saved queries."
+          },
+          "stopQuery": {
+            "title": "Stop a query on the server",
+            "body": "While a query runs, Run becomes Stop (Ctrl+.), and stopping stops the statement on the server, not just the wait. The result says whether it applied or may have, and a stopped batch shows where it stopped."
+          },
+          "queryResults": {
+            "title": "A query's results work like a table",
+            "body": "In the results of a single-table SELECT you can follow a foreign key, pick its value from a list, paste a block from a spreadsheet, and Copy as SQL names the real table, aliases included. Column headers say whether the column takes NULL and where its key points. A result cut at 50 000 rows now says so."
+          },
+          "exportData": {
+            "title": "Export to CSV, Excel and JSON",
+            "body": "A table exports the rows its query panel selects, and a query its results, as CSV (comma, or semicolon for a Spanish Excel), Excel, JSON or SQL INSERT. Excel keeps numbers as numbers and long codes as text. A result cut at 50 000 rows can export everything, run again on the server."
+          },
+          "importFile": {
+            "title": "Import a file into a table",
+            "body": "A SQL table's Insert menu imports a CSV, JSON or Excel file: each column takes the file column of the same name, and you can change any before importing. It all goes in as one transaction, so a failing row imports nothing and the message names it. What HuginnDB exports imports back, up to 200 000 rows per file."
+          },
+          "mcpReads": {
+            "title": "An AI's reads, better behaved",
+            "body": "Each MCP call gets a connection of its own and at most two AI reads run at once against a connection. A read finishes before the client gives up, and a timeout says whether it is still running. running_queries and cancel_query let the AI see and stop its own reads, and pulse_explain gives SQL Server's estimated plan."
+          }
+        }
+      },
       "1_39_0": {
         "tagline": "HuginnDB now runs on Apple Silicon Macs, a Unix timestamp reads as a date in one click, MongoDB collections open faster, and an AI's read that runs out of time is stopped on the server.",
         "items": {

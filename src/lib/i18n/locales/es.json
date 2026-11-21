@@ -2902,6 +2902,39 @@
     "readMore": "Leer más",
     "readLess": "Leer menos",
     "releases": {
+      "1_40_0": {
+        "tagline": "Un único menú contextual en toda la app, un editor de consultas rediseñado que muestra un resultado por sentencia y se detiene en el servidor, y datos que se exportan a CSV, Excel y JSON y se vuelven a importar.",
+        "items": {
+          "oneMenu": {
+            "title": "Un único menú contextual en todas partes",
+            "body": "El grid, el explorador, las pestañas, los entornos y todos los editores Monaco abren ya el mismo menú: encabezado por aquello de lo que trata, con sus acciones bajo los mismos títulos y en el mismo orden, cada una con su atajo, y en rojo lo que no se puede deshacer. La barra de menús y los desplegables comparten su densidad, y el menú de los editores es el de HuginnDB, ya no el de Monaco en inglés."
+          },
+          "queryEditor": {
+            "title": "Un editor de consultas rediseñado",
+            "body": "Ejecutar varias sentencias muestra una pestaña de resultado por sentencia, con un Resumen y tarjetas para escrituras y errores. Ctrl+Enter ejecuta la selección o la sentencia bajo el cursor (Ctrl+Shift+Enter lo ejecuta todo), la barra de herramientas muestra cada acción como un icono, Formatear y Explicar incluidos, y el historial es un panel propio junto a Consultas guardadas."
+          },
+          "stopQuery": {
+            "title": "Detén una consulta en el servidor",
+            "body": "Mientras una consulta se ejecuta, Ejecutar pasa a Detener (Ctrl+.), y detenerla detiene la sentencia en el servidor, no solo la espera. El resultado dice si se aplicó o si pudo aplicarse, y un lote detenido muestra dónde se paró."
+          },
+          "queryResults": {
+            "title": "Los resultados de una consulta funcionan como una tabla",
+            "body": "En los resultados de un SELECT sobre una sola tabla puedes seguir una clave foránea, elegir su valor de una lista, pegar un bloque desde una hoja de cálculo, y Copiar como SQL nombra la tabla real, también con alias. Las cabeceras dicen si la columna admite NULL y adónde apunta su clave. Un resultado cortado en 50 000 filas ahora lo dice."
+          },
+          "exportData": {
+            "title": "Exporta a CSV, Excel y JSON",
+            "body": "Una tabla exporta las filas que selecciona su panel de consulta, y una consulta sus resultados, como CSV (con comas, o con punto y coma para un Excel en español), Excel, JSON o SQL INSERT. Excel mantiene los números como números y los códigos largos como texto. Un resultado cortado en 50 000 filas puede exportarlo todo, ejecutándose de nuevo en el servidor."
+          },
+          "importFile": {
+            "title": "Importa un fichero en una tabla",
+            "body": "El menú Insertar de una tabla SQL importa un fichero CSV, JSON o Excel: cada columna toma la columna del fichero con el mismo nombre, y puedes cambiar cualquiera antes de importar. Todo entra en una sola transacción, así que una fila que falla no importa nada y el mensaje la nombra. Lo que exporta HuginnDB se vuelve a importar, hasta 200 000 filas por fichero."
+          },
+          "mcpReads": {
+            "title": "Las lecturas de una IA, mejor educadas",
+            "body": "Cada llamada MCP tiene su propia conexión y como mucho dos lecturas de IA se ejecutan a la vez contra una conexión. Una lectura termina antes de que el cliente desista, y un timeout dice si sigue en marcha. running_queries y cancel_query dejan que la IA vea y detenga sus propias lecturas, y pulse_explain da el plan estimado de SQL Server."
+          }
+        }
+      },
       "1_39_0": {
         "tagline": "HuginnDB ya funciona en los Mac con Apple Silicon, un timestamp de Unix se lee como fecha con un clic, las colecciones de MongoDB se abren más rápido y la lectura de una IA que se queda sin tiempo se detiene en el servidor.",
         "items": {

@@ -117,6 +117,48 @@ export interface ReleaseNote {
  */
 export const RELEASE_NOTES: ReleaseNote[] = [
   {
+    version: "1.40.0",
+    major: true,
+    taglineKey: "whatsNew.releases.1_40_0.tagline",
+    highlights: [
+      {
+        icon: LayoutList,
+        titleKey: "whatsNew.releases.1_40_0.items.oneMenu.title",
+        bodyKey: "whatsNew.releases.1_40_0.items.oneMenu.body",
+      },
+      {
+        icon: FileCode,
+        titleKey: "whatsNew.releases.1_40_0.items.queryEditor.title",
+        bodyKey: "whatsNew.releases.1_40_0.items.queryEditor.body",
+      },
+      {
+        icon: OctagonX,
+        titleKey: "whatsNew.releases.1_40_0.items.stopQuery.title",
+        bodyKey: "whatsNew.releases.1_40_0.items.stopQuery.body",
+      },
+      {
+        icon: Table2,
+        titleKey: "whatsNew.releases.1_40_0.items.queryResults.title",
+        bodyKey: "whatsNew.releases.1_40_0.items.queryResults.body",
+      },
+      {
+        icon: Download,
+        titleKey: "whatsNew.releases.1_40_0.items.exportData.title",
+        bodyKey: "whatsNew.releases.1_40_0.items.exportData.body",
+      },
+      {
+        icon: FileInput,
+        titleKey: "whatsNew.releases.1_40_0.items.importFile.title",
+        bodyKey: "whatsNew.releases.1_40_0.items.importFile.body",
+      },
+      {
+        icon: Bot,
+        titleKey: "whatsNew.releases.1_40_0.items.mcpReads.title",
+        bodyKey: "whatsNew.releases.1_40_0.items.mcpReads.body",
+      },
+    ],
+  },
+  {
     version: "1.39.0",
     major: true,
     taglineKey: "whatsNew.releases.1_39_0.tagline",
